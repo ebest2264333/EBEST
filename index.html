@@ -406,6 +406,13 @@ function schedulePushShared(){
   clearTimeout(pushTimer);
   pushTimer=setTimeout(pushShared, 2000);
 }
+function tsOf(v){
+  // updatedAt(숫자 타임스탬프)와 createdAt("2026-07-28" 같은 날짜 문자열)을 같은 기준으로 비교하기 위해 통일된 숫자로 변환
+  if(v==null || v==='') return 0;
+  if(typeof v==='number') return v;
+  const t=new Date(v).getTime();
+  return isNaN(t) ? 0 : t;
+}
 function mergeField(local, remote){
   // 배열(id/_id 보유) → 레코드 단위 병합, 객체(맵) → 키 단위 병합(로컬 우선, 없는 키는 원격에서 보충), 그 외 → 로컬 우선
   if(Array.isArray(local) && Array.isArray(remote)){
@@ -421,7 +428,7 @@ function mergeField(local, remote){
       if(!x||x[key]==null) return;
       const cur=map[x[key]];
       if(!cur){ map[x[key]]=x; return; }
-      const curTs=cur.updatedAt||cur.createdAt||0, newTs=x.updatedAt||x.createdAt||0;
+      const curTs=tsOf(cur.updatedAt||cur.createdAt), newTs=tsOf(x.updatedAt||x.createdAt);
       if(newTs>=curTs) map[x[key]]=x;
     });
     return Object.values(map);
