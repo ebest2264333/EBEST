@@ -639,7 +639,8 @@ function updateSubjectField(a,m,id,idx,field,value){
 
 /* ---------- 상태 ---------- */
 const todayISO = ()=>new Date().toISOString().slice(0,10);
-let state = {tab:'today', sub:'class', todayOpen:{}, ac: MODE==='all'?'all':MODE, dept:'all', q:'', month:(allDataMonths().slice(-1)[0]||'2026-07'), tf:null, date:todayISO(), myOnly:true, classOpen:{}, ttDay:null, ttView:null, rosterOpen:{}, rosterView:null, rosterClass:null, rosterStatus:null};
+const LASTTAB_KEY='academy-dash-lasttab-'+MODE;
+let state = {tab:(localStorage.getItem(LASTTAB_KEY)||'today'), sub:'class', todayOpen:{}, ac: MODE==='all'?'all':MODE, dept:'all', q:'', month:(allDataMonths().slice(-1)[0]||'2026-07'), tf:null, date:todayISO(), myOnly:true, classOpen:{}, ttDay:null, ttView:null, rosterOpen:{}, rosterView:null, rosterClass:null, rosterStatus:null};
 
 /* ---------- 로그인 ---------- */
 function isMgr(){ const lt=loginTeacher(); return !!(lt && lt.t.role==='실장'); }
@@ -729,6 +730,7 @@ document.getElementById('lgGo').onclick=()=>{
   const lt=loginTeacher();
   if(lt){ state.tf={a:lt.a,i:lt.i}; state.myOnly=true; }
   state.tab='today';
+  try{ localStorage.setItem(LASTTAB_KEY, 'today'); }catch(e){}
   document.getElementById('lgPw').value='';
   refreshLoginSel(); mountLogin(); render();
   if(syncOn()) pullShared(true);
@@ -757,6 +759,7 @@ function tabDefs(){
 }
 function goTab(t){
   state.tab=t;
+  try{ localStorage.setItem(LASTTAB_KEY, t); }catch(e){}
   render();
   window.scrollTo({top:0});
 }
@@ -1661,15 +1664,17 @@ function renderWordTestToday(){
   const admin=isAdminRole(); const lt=loginTeacher();
   const wd=wdOf(todayISO()); const date=todayISO();
   let studentsList;
-  if(admin){
-    studentsList=store.students.filter(s=>s.status==='재원' && (state.ac==='all'||s.academy===state.ac));
-  } else if(lt){
+  if(lt){
+    // 특정 선생님으로 로그인(일반 선생님·실장 모두 포함) — 담당으로 배정된 반의 학생만 표시
     const todaysDutyClasses=classesFor(date.slice(0,7)).filter(c=>c.academy===lt.a && cdays(c).includes(wd) && wordDutyForDay(c,wd)!=null && wordDutyForDay(c,wd)===lt.t.id);
     if(!todaysDutyClasses.length){
       return `<div class="empty">오늘(${wd}요일)은 담당으로 배정된 반이 없습니다. (배정은 [시간표]에서 관리자·실장이 설정합니다)</div>`;
     }
     const classNames=new Set(todaysDutyClasses.map(c=>c.name));
     studentsList=store.students.filter(s=>s.academy===lt.a && s.status==='재원' && classNames.has(s.className));
+  } else if(admin){
+    // 특정 선생님이 아닌 순수 관리자(원장) 로그인 — 전체 재원생 표시
+    studentsList=store.students.filter(s=>s.status==='재원' && (state.ac==='all'||s.academy===state.ac));
   } else {
     return '<div class="empty">로그인 후 이용해주세요.</div>';
   }
@@ -1696,13 +1701,14 @@ function renderWordTestToday(){
   return header+viewChips+`<div class="rowlist">${studentsList.map(s=>wtStudentRow(s,date)).join('')}</div>`;
 }
 function renderWordTestPending(){
-  const pending=store.wordTests.filter(r=>r.retestNeeded && !r.retestCompleted && (state.ac==='all'||r.academy===state.ac));
+  const pending=store.wordTests.filter(r=>r.retestNeeded && !r.retestCompleted && !r.absent && (state.ac==='all'||r.academy===state.ac));
   pending.sort((a,b)=>a.date.localeCompare(b.date));
   if(!pending.length) return '<div class="empty">재시험 대기 학생이 없습니다.</div>';
   return '<div class="rowlist">'+pending.map(r=>{
     const s=store.students.find(x=>x.id===r.studentId);
+    const meta=[r.date, r.wordbook||'', r.lang||'', r.range||''].filter(Boolean).join(' · ');
     return `<div class="rowitem" style="align-items:center">
-      <span class="key">${esc(s?s.nameKo:'(삭제된 학생)')} ${MODE==='all'?bdg(r.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${r.date} · ${esc(r.wordbook||'')} ${esc(r.range||'')}</span></span>
+      <span class="key">${esc(s?s.nameKo:'(삭제된 학생)')} ${MODE==='all'?bdg(r.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(meta)}</span></span>
       <span class="val"><button class="btn small" data-wtdone="${r.id}">✔ 재시험 완료 처리</button></span></div>`;
   }).join('')+'</div>';
 }
@@ -2279,19 +2285,33 @@ function renderToday(list){
   cls.forEach(c=>{
     const k=ckey(c);
     const recs=at[k]||{};
+    const daySubjects=(c.subjects||[]).filter(s=>subjOnDay(s,wd));
+    const subjNames=daySubjects.length?[...new Set(daySubjects.map(s=>s.subject||'-'))]:['-'];
     (c.students||[]).forEach(sname=>{
-      const dedupKey=k+'|'+sname;
-      if(recs[sname]==='결' && !seenAbsent.has(dedupKey)){
+      if(recs[sname]!=='결') return;
+      subjNames.forEach(subjName=>{
+        const dedupKey=k+'|'+sname+'|'+subjName;
+        if(seenAbsent.has(dedupKey)) return;
         seenAbsent.add(dedupKey);
         const hrec=(hw[k]||{})[sname]||{};
-        absentHwList.push({className:c.name, academy:c.academy, student:sname, note:hrec.note||'', done:!!hrec.done});
-      }
+        const bs=(hrec.bySubject||{})[subjName]||{};
+        absentHwList.push({className:c.name, academy:c.academy, student:sname, subject:subjName, note:bs.note||'', done:!!bs.done, kakaoSent:!!bs.kakaoSent, k, s:sname});
+      });
     });
   });
-  const absentHwSection=isAdminRole()?`<div class="ysec" style="margin-top:16px;border-top:4px solid #c0392b"><h3>📕 오늘 결석생 숙제 확인 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">${state.date} 전체 반 기준 (${absentHwList.length}명, 실장·관리자만 보임)</span></h3>
+  const absentHwSection=`<div class="ysec" style="margin-top:16px;border-top:4px solid #c0392b"><h3>📕 오늘 결석생 숙제 확인 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">${state.date} 전체 반 기준 (${absentHwList.length}건 · 과목별로 표시됩니다)</span></h3>
     <div style="padding:0 16px 14px">
-      ${absentHwList.length?absentHwList.map(x=>`<div class="rowitem" style="align-items:center"><span class="key">${esc(x.student)} ${MODE==='all'?bdg(x.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(x.className)}</span></span><span class="val">${x.note?esc(x.note):'<span style="color:#c3c9d6">입력된 숙제 메모 없음</span>'} ${x.done?' · <span style="color:var(--ok);font-weight:700">숙제 완료 체크됨</span>':''}</span></div>`).join(''):'<div style="font-size:.82rem;color:#8b93a7">오늘 결석 처리된 학생이 없습니다.</div>'}
-    </div></div>`:'';
+      ${absentHwList.length?absentHwList.map(x=>{
+        const rk=esc(x.k)+'|'+esc(x.s)+'|'+esc(x.subject);
+        return `<div class="rowitem" style="align-items:flex-start;flex-wrap:wrap;gap:6px">
+          <span class="key" style="min-width:140px">${esc(x.student)} ${MODE==='all'?bdg(x.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(x.className)} · ${esc(x.subject)}</span></span>
+          <span class="val" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;flex:1">
+            <input type="text" class="absenthwnote" data-absenthw="${rk}" value="${esc(x.note)}" placeholder="이 과목 결석 숙제 메모" style="flex:1;min-width:160px;border:1.5px solid var(--line);border-radius:8px;padding:6px 9px;font-family:inherit;font-size:.83rem">
+            <label class="hwlab"><input type="checkbox" data-absentdone="${rk}" ${x.done?'checked':''}>완료</label>
+            <label class="hwlab" style="color:${x.kakaoSent?'#3a9a3a':'var(--sub)'}"><input type="checkbox" data-kakaosent="${rk}" ${x.kakaoSent?'checked':''}>💬 카톡 전송</label>
+          </span></div>`;
+      }).join(''):'<div style="font-size:.82rem;color:#8b93a7">오늘 결석 처리된 학생이 없습니다.</div>'}
+    </div></div>`;
   return h+staySection+absentHwSection+wtSection;
 }
 function bindToday(){
@@ -2356,6 +2376,32 @@ function bindToday(){
     const parts=b.dataset.staydone.split('|'); const st=parts.pop(); const k=parts.join('|'); // k(ckey) 자체에 '|'가 포함되어 있어 마지막 조각만 학생명으로 분리
     const st2=stayFor(state.date);
     st2[k]=st2[k]||{}; st2[k][st]=st2[k][st]||{}; st2[k][st].doneDate=todayISO(); save(); render(true);
+  });
+  function parseAbsentKey(raw){
+    // 형식: 학원|반명|학생명|과목명 (반명 안에 '|'가 없다는 전제하에 뒤에서부터 과목·학생을 떼어내고 나머지를 반 key로 합친다)
+    const parts=raw.split('|'); const subj=parts.pop(); const stu=parts.pop(); const k=parts.join('|');
+    return {k, stu, subj};
+  }
+  v.querySelectorAll('[data-absenthw]').forEach(inp=>inp.onchange=()=>{
+    const {k,stu,subj}=parseAbsentKey(inp.dataset.absenthw);
+    const hw2=hwFor(state.date);
+    hw2[k]=hw2[k]||{}; hw2[k][stu]=hw2[k][stu]||{}; hw2[k][stu].bySubject=hw2[k][stu].bySubject||{};
+    hw2[k][stu].bySubject[subj]=hw2[k][stu].bySubject[subj]||{}; hw2[k][stu].bySubject[subj].note=inp.value;
+    save();
+  });
+  v.querySelectorAll('[data-absentdone]').forEach(cb=>cb.onchange=()=>{
+    const {k,stu,subj}=parseAbsentKey(cb.dataset.absentdone);
+    const hw2=hwFor(state.date);
+    hw2[k]=hw2[k]||{}; hw2[k][stu]=hw2[k][stu]||{}; hw2[k][stu].bySubject=hw2[k][stu].bySubject||{};
+    hw2[k][stu].bySubject[subj]=hw2[k][stu].bySubject[subj]||{}; hw2[k][stu].bySubject[subj].done=cb.checked;
+    save(); render(true);
+  });
+  v.querySelectorAll('[data-kakaosent]').forEach(cb=>cb.onchange=()=>{
+    const {k,stu,subj}=parseAbsentKey(cb.dataset.kakaosent);
+    const hw2=hwFor(state.date);
+    hw2[k]=hw2[k]||{}; hw2[k][stu]=hw2[k][stu]||{}; hw2[k][stu].bySubject=hw2[k][stu].bySubject||{};
+    hw2[k][stu].bySubject[subj]=hw2[k][stu].bySubject[subj]||{}; hw2[k][stu].bySubject[subj].kakaoSent=cb.checked;
+    save(); render(true);
   });
 }
 
@@ -3572,9 +3618,37 @@ function repArchive(){
 }
 
 /* ---------- 설정 · 업로드 ---------- */
+function findDuplicateClasses(){
+  // 현재 반·교재 자료 안에서 (학원|월) 기준으로 이름이 겹치는 반들을 찾아 정리용 목록을 만든다
+  const groups=[];
+  for(const a of academies()){
+    for(const m of monthsOf(a)){
+      const arr=editArr(a,m); // _id가 없으면 삭제할 수 없으므로 여기서 확실히 부여해둔다
+      const byName={};
+      arr.forEach(c=>{ (byName[c.name]=byName[c.name]||[]).push(c); });
+      for(const name in byName){
+        if(byName[name].length>1) groups.push({academy:a, month:m, name, items:byName[name]});
+      }
+    }
+  }
+  return groups;
+}
 function renderSet(){
   let h='';
   const isTeacher=!!loginTeacher() && !isMgr();
+  // 중복 반 정리 (관리자·실장만)
+  if(!isTeacher){
+    const dupGroups=findDuplicateClasses();
+    h+=`<div class="setsec" style="border:2px solid #f59e0b"><h3>⚠ 중복 반 정리 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">(${dupGroups.length}건)</span></h3>
+      <div class="desc">같은 이름의 반이 같은 달에 여러 개 있으면 여기서 한눈에 비교하고 필요 없는 걸 지울 수 있습니다. 학생·과목 내용을 확인하고 최신·정확한 것만 남기고 나머지를 삭제해주세요.</div>
+      ${dupGroups.length?dupGroups.map(g=>`<div style="margin-bottom:10px;padding:8px 10px;background:#fff8ec;border-radius:10px">
+        <div style="font-size:.82rem;font-weight:800;margin-bottom:4px">${AC[g.academy].label} · ${mLabel(g.month)} · ${esc(g.name)} (${g.items.length}개)</div>
+        ${g.items.map(c=>`<div class="rowitem" style="align-items:center">
+          <span class="key" style="font-weight:400;font-size:.8rem">학생 ${c.count!=null?c.count:(c.students||[]).length}명 · 과목 ${(c.subjects||[]).length}개${c.updatedAt?' · 수정 '+new Date(c.updatedAt).toLocaleString('ko'):''}</span>
+          <span class="val"><button class="btn small" style="color:#c0392b;border-color:#e7b3ab" data-dupdel="${g.academy}|${g.month}|${esc(c._id||'')}">🗑 이 반 삭제</button></span></div>`).join('')}
+      </div>`).join(''):'<div style="font-size:.82rem;color:#8b93a7">중복된 반이 없습니다.</div>'}
+    </div>`;
+  }
   // 데이터 마스터 (관리자만)
   if(!isTeacher) h+=`<div class="setsec" style="border:2px solid var(--ebest)"><h3>📄 데이터 마스터 (엑셀, 백업·대량 변경용)</h3>
     <div class="desc">이제 평소에는 <b>[반 · 교재] 탭에서 바로 수정</b>하시면 됩니다 (반 생성·삭제, 학생 추가·삭제, 과목·교재·담당·진도 편집 모두 실시간 반영). 
@@ -3755,6 +3829,11 @@ function parseWorkbook(wb){
 }
 function bindSet(){
   const v=document.getElementById('view');
+  v.querySelectorAll('[data-dupdel]').forEach(b=>b.onclick=()=>{
+    if(!isAdminRole())return;
+    const [a,m,id]=b.dataset.dupdel.split('|');
+    deleteClassAction(a,m,id);
+  });
   const ae=v.querySelector('#adminEmail'); if(ae) ae.onchange=()=>{ store.adminEmail=ae.value.trim(); save(); };
   const ap=v.querySelector('#adminPw'); if(ap) ap.onchange=()=>{ store.adminPw=ap.value; save(); };
   const syU=v.querySelector('#syUrl'), syC=v.querySelector('#syCode');
