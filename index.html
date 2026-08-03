@@ -758,10 +758,10 @@ function tabDefs(){
             more:[['roster','학생 명단'],['yearly','연간 교재'],['cal','일정 · 회의'],['set','설정']]};
   }
   if(isMgr()){
-    return {main:[['today','🏠 홈'],['consult','상담'],['report','업무보고'],['dash','반 · 교재'],['stats','학생 통계']],
+    return {main:[['today','🏠 홈'],['consult','상담'],['report','업무보고'],['dash','반 · 교재']],
             more:[['roster','학생 명단'],['timetable','🕒 시간표'],['attend','출결 (월별)'],['yearly','연간 교재'],['cal','일정 · 회의'],['archive','전체 기록'],['set','설정']]};
   }
-  return {main:[['today','오늘 수업'],['consult','상담 관리'],['report','업무보고'],['dash','반 · 교재'],['stats','학생 통계']],
+  return {main:[['today','오늘 수업'],['consult','상담 관리'],['report','업무보고'],['dash','반 · 교재']],
           more:[['roster','학생 명단'],['timetable','🕒 시간표'],['attend','출결 (월별)'],['yearly','연간 교재'],['cal','일정 · 회의'],['archive','전체 기록'],['set','설정 · 업로드']]};
 }
 function goTab(t){
@@ -1485,9 +1485,9 @@ function renderRosterStats(){
   const byClass={};
   all.filter(s=>s.status==='재원').forEach(s=>{ const k=(s.className||'').trim()||'미배정'; byClass[k]=(byClass[k]||0)+1; });
   const classKeys=Object.keys(byClass).sort((a,b)=>{ if(a==='미배정')return 1; if(b==='미배정')return -1; return a.localeCompare(b,'ko',{numeric:true}); });
-  h+=`<div class="ysec" style="margin-bottom:14px"><h3>반별 재원생 (${classKeys.length}개 반)</h3><div style="padding:0 16px 14px">
+  h+=`<details class="ysec" style="margin-bottom:14px"><summary style="cursor:pointer;padding:10px 16px;font-weight:800;font-size:.95rem">반별 재원생 (${classKeys.length}개 반)</summary><div style="padding:0 16px 14px">
     ${classKeys.map(k=>`<div class="rowitem"><span class="key">${esc(k)}</span><span class="val"><b>${byClass[k]}명</b></span></div>`).join('')}
-  </div></div>`;
+  </div></details>`;
   // 학년별 (재원생 기준) — 초1~고3 형식으로. 반의 부서(초등/중등/고등)와 학년 숫자를 합쳐서 표시
   const deptPrefix={'초등':'초','중등':'중','고등':'고'};
   const classDept={};
@@ -1507,9 +1507,9 @@ function renderRosterStats(){
     if(ia===-1) return 1; if(ib===-1) return -1;
     return ia-ib;
   });
-  h+=`<div class="ysec" style="margin-bottom:14px"><h3>학년별 재원생</h3><div style="padding:0 16px 14px">
+  h+=`<details class="ysec" style="margin-bottom:14px"><summary style="cursor:pointer;padding:10px 16px;font-weight:800;font-size:.95rem">학년별 재원생</summary><div style="padding:0 16px 14px">
     ${gradeKeys.map(g=>`<div class="rowitem"><span class="key">${esc(g)}</span><span class="val"><b>${byGrade[g]}명</b></span></div>`).join('')}
-  </div></div>`;
+  </div></details>`;
   // 월별 신입·퇴원·유지율 추이 (기존 [학생 통계] 탭 내용을 여기 안에도 그대로 포함)
   h+=renderStats();
   return h;
