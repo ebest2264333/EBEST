@@ -1075,7 +1075,7 @@ function classCard(c, admin, dayFilter, dupCount){
   // ---- 편집 모드 ----
   const deptOpts=['초등','중등','고등'];
   if(!deptOpts.includes(c.dept)) deptOpts.push(c.dept||'');
-  return `<article class="card ${a.cls}" style="border:2px solid ${a.cls==='eb'?'var(--ebest)':'var(--icon)'}">
+  return `<article class="card ${a.cls}" style="border:2px solid ${a.cls==='eb'?'var(--ebest)':'var(--icon)'};grid-column:1/-1">
     ${teacherDatalist(c.academy)}
     <datalist id="dl_roster_${c.academy}">${store.students.filter(x=>x.academy===c.academy).map(x=>`<option value="${esc(x.nameKo)}">`).join('')}</datalist>
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
