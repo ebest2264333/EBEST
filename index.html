@@ -1348,9 +1348,20 @@ function addStudentRecord(a){
   state.rosterOpen[id]=true;
   save(); render(true);
 }
+function removeStudentFromRosters(academy, nameKo){
+  // 퇴원·휴원 처리된 학생을 현재(최신) 달의 반 명단에서 자동으로 제외한다
+  const month=allDataMonths().slice(-1)[0]; if(!month) return;
+  const arr=editArr(academy, month);
+  arr.forEach(c=>{
+    if(!c.students || !c.students.length) return;
+    const idx=c.students.indexOf(nameKo);
+    if(idx>=0){ c.students.splice(idx,1); c.count=c.students.length; c.updatedAt=Date.now(); }
+  });
+}
 function updateStudentField(id, field, value){
   const s=store.students.find(x=>x.id===id); if(!s) return;
   s[field]=value; s.updatedAt=Date.now();
+  if(field==='status' && (value==='퇴원'||value==='휴원')) removeStudentFromRosters(s.academy, s.nameKo);
   save(); render(true);
 }
 function removeStudentRecord(id){
@@ -1477,13 +1488,30 @@ function renderRosterStats(){
   h+=`<div class="ysec" style="margin-bottom:14px"><h3>반별 재원생 (${classKeys.length}개 반)</h3><div style="padding:0 16px 14px">
     ${classKeys.map(k=>`<div class="rowitem"><span class="key">${esc(k)}</span><span class="val"><b>${byClass[k]}명</b></span></div>`).join('')}
   </div></div>`;
-  // 학년별 (재원생 기준)
+  // 학년별 (재원생 기준) — 초1~고3 형식으로. 반의 부서(초등/중등/고등)와 학년 숫자를 합쳐서 표시
+  const deptPrefix={'초등':'초','중등':'중','고등':'고'};
+  const classDept={};
+  classesFor(state.month).forEach(c=>{ classDept[c.academy+'|'+c.name]=c.dept; });
+  const gradeOf=s=>{
+    const dept=classDept[s.academy+'|'+(s.className||'').trim()];
+    const g=(s.grade||'').trim();
+    if(dept && deptPrefix[dept]) return deptPrefix[dept]+(g||'?');
+    return g?g+'학년':'미배정';
+  };
   const byGrade={};
-  all.filter(s=>s.status==='재원').forEach(s=>{ const g=(s.grade||'').trim()||'미상'; byGrade[g]=(byGrade[g]||0)+1; });
-  const gradeKeys=Object.keys(byGrade).sort((a,b)=>{ if(a==='미상')return 1; if(b==='미상')return -1; return a.localeCompare(b,'ko',{numeric:true}); });
-  h+=`<div class="ysec"><h3>학년별 재원생</h3><div style="padding:0 16px 14px">
+  all.filter(s=>s.status==='재원').forEach(s=>{ const g=gradeOf(s); byGrade[g]=(byGrade[g]||0)+1; });
+  const gradeOrder=['초1','초2','초3','초4','초5','초6','중1','중2','중3','고1','고2','고3'];
+  const gradeKeys=Object.keys(byGrade).sort((a,b)=>{
+    const ia=gradeOrder.indexOf(a), ib=gradeOrder.indexOf(b);
+    if(ia===-1 && ib===-1) return a.localeCompare(b,'ko',{numeric:true});
+    if(ia===-1) return 1; if(ib===-1) return -1;
+    return ia-ib;
+  });
+  h+=`<div class="ysec" style="margin-bottom:14px"><h3>학년별 재원생</h3><div style="padding:0 16px 14px">
     ${gradeKeys.map(g=>`<div class="rowitem"><span class="key">${esc(g)}</span><span class="val"><b>${byGrade[g]}명</b></span></div>`).join('')}
   </div></div>`;
+  // 월별 신입·퇴원·유지율 추이 (기존 [학생 통계] 탭 내용을 여기 안에도 그대로 포함)
+  h+=renderStats();
   return h;
 }
 function renderRoster(list){
@@ -1555,6 +1583,7 @@ function bindRoster(){
   const rsSel=v.querySelector('[data-rosterstatus]');
   if(rsSel) rsSel.onchange=()=>{ state.rosterStatus=rsSel.value; state.rosterClass=null; render(true); };
   v.querySelectorAll('[data-rosterview]').forEach(b=>b.onclick=()=>{ state.rosterView=b.dataset.rosterview; render(true); });
+  if(state.rosterView==='stats'){ bindStats(); return; }
   const rcSel=v.querySelector('[data-rosterclass]');
   if(rcSel) rcSel.onchange=()=>{ state.rosterClass=rcSel.value; render(true); };
   const bcBtn=v.querySelector('[data-rsbulkclass]');
@@ -2155,6 +2184,28 @@ function atFor(d){ return store.attend[d]=store.attend[d]||{}; }
 function stayFor(d){ return store.stayback[d]=store.stayback[d]||{}; }
 function cdays(c){ return store.daysedit[ckey(c)] || c.days || ''; }
 function subjOnDay(s,d){ return !s.day || String(s.day).includes(d); } // s.day는 "화,목"처럼 여러 요일 가능
+// 출석은 이제 "반" 단위가 아니라 "그날 그 반의 과목(수업)" 단위로 기록한다 (예: RC는 결석, 뒤 GR 수업엔 출석 — 그런 경우 반영)
+function daySubjectNames(c, wd){
+  const daySubjects=(c.subjects||[]).filter(s=>subjOnDay(s,wd));
+  const names=[...new Set(daySubjects.map(s=>s.subject||'-'))];
+  return names;
+}
+function attKeysFor(c, wd){
+  const k=ckey(c); const names=daySubjectNames(c, wd);
+  return names.length>1 ? names.map(nm=>({subject:nm, key:k+'#'+nm})) : [{subject:names[0]||null, key:k}];
+}
+function attStatusAgg(c, wd, sname, atForDate){
+  // 그날 여러 과목 중 하나라도 결석이면 결석, 아니면 지각 있으면 지각, 아니면 출석 있으면 출석 (월별 출결부·통계용 요약)
+  const keys=attKeysFor(c, wd);
+  let worst='';
+  for(const {key} of keys){
+    const v=(atForDate[key]||{})[sname]||'';
+    if(v==='결') return '결';
+    if(v==='지') worst='지';
+    else if(v==='출' && worst!=='지') worst='출';
+  }
+  return worst;
+}
 function wordDutyForDay(c,wd){
   if(c.wordDutyByDay && c.wordDutyByDay[wd]!=null && c.wordDutyByDay[wd]!=='') return c.wordDutyByDay[wd];
   return (c.wordDuty!=null && c.wordDuty!=='') ? c.wordDuty : null;
@@ -2279,8 +2330,8 @@ function renderToday(list){
     const mine = lt && teacherTeaches(c,lt);
     const daySubjects=(c.subjects||[]).filter(s=>subjOnDay(s,wd));
     const teas=[...new Set(daySubjects.map(s=>s.teacher).filter(Boolean))];
-    const recs=at[k]||{};
-    const present=(c.students||[]).filter(s=>recs[s]==='출').length;
+    const attKeys=attKeysFor(c, wd); const attMulti=attKeys.length>1;
+    const present=(c.students||[]).filter(s=>attStatusAgg(c,wd,s,at)==='출').length;
     const hwdone=(c.students||[]).filter(s=>hw[k]&&hw[k][s]&&hw[k][s].done).length;
     const asg=((hw[k]||{})['_assign']||{}).note||'';
     const ref=daySubjects.filter(s=>s.hw).map(s=>`${esc(s.subject)}: ${esc(s.hw)}`).join('  ·  ');
@@ -2294,12 +2345,22 @@ function renderToday(list){
     let body='';
     if(c.students&&c.students.length){
       body=asgBox+c.students.map(s=>{
-        const a=(at[k]||{})[s]||'';
         const hrec=(hw[k]||{})[s]||{};
         const srec=(stay[k]||{})[s]||{};
+        const atGroups = attMulti
+          ? attKeys.map(({subject,key})=>{
+              const a=(at[key]||{})[s]||'';
+              return `<span class="atsubj" style="display:inline-flex;align-items:center;gap:3px;margin-right:8px;padding:2px 6px;background:#f3f5fa;border-radius:7px">
+                <b style="font-size:.68rem;color:var(--sub);font-weight:800">${esc(subject)}</b>
+                ${['출','지','결'].map(v=>`<button class="atb ${a===v?'on'+v:''}" data-k="${esc(key)}" data-s="${esc(s)}" data-v="${v}">${v}</button>`).join('')}
+              </span>`;
+            }).join('')
+          : (()=>{ const key=attKeys[0].key; const a=(at[key]||{})[s]||'';
+              return ['출','지','결'].map(v=>`<button class="atb ${a===v?'on'+v:''}" data-k="${esc(key)}" data-s="${esc(s)}" data-v="${v}">${v}</button>`).join('');
+            })();
         return `<div class="trow2">
           <span class="sn">${hl(s)}</span>
-          <span class="atg">${['출','지','결'].map(v=>`<button class="atb ${a===v?'on'+v:''}" data-k="${esc(k)}" data-s="${esc(s)}" data-v="${v}">${v}</button>`).join('')}</span>
+          <span class="atg" style="display:flex;flex-wrap:wrap;align-items:center;gap:4px">${atGroups}</span>
           <label class="hwlab"><input type="checkbox" class="hwchk" data-k="${esc(k)}" data-s="${esc(s)}" ${hrec.done?'checked':''}>숙제</label>
           <input type="text" class="hwnote" data-k="${esc(k)}" data-s="${esc(s)}" placeholder="숙제 확인 · 수정 지시 · 수업 메모…" value="${esc(hrec.note||'')}"></div>
         <div style="display:flex;gap:8px;align-items:center;padding:1px 0 7px 2px">
@@ -2319,7 +2380,7 @@ function renderToday(list){
         ${c.students&&c.students.length?`<span class="prg">출석 ${present}/${c.students.length} · 숙제 ${hwdone}/${c.students.length}</span>`:''}
       </div><div class="cbody">${body}</div></div>`;
   });
-  const stayList=[]; const seenStay=new Set();
+  const stayList=[]; const seenStay=new Set(); const seenStayName=new Set();
   cls.forEach(c=>{
     const k=ckey(c);
     const recs=stay[k]||{};
@@ -2327,13 +2388,22 @@ function renderToday(list){
       const dedupKey=k+'|'+sname;
       if(recs[sname] && recs[sname].stay && !recs[sname].doneDate && !seenStay.has(dedupKey)){
         seenStay.add(dedupKey);
+        seenStayName.add(c.academy+'|'+sname);
         stayList.push({className:c.name, academy:c.academy, student:sname, memo:recs[sname].memo||'', k, s:sname});
       }
     });
   });
-  const staySection=isAdminRole()?`<div class="ysec" style="margin-top:16px;border-top:4px solid #b45309"><h3>🙋 오늘 남는 학생 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">${state.date} 전체 반 기준 (${stayList.length}명)</span></h3>
+  // 재시험 대상 학생도 "오늘 남는 학생"에 자동으로 합쳐서 보여준다 (재시험은 보통 남아서 다시 봐야 하므로)
+  store.wordTests.filter(r=>r.date===state.date && r.retestNeeded && !r.retestCompleted && !r.absent).forEach(r=>{
+    const st=store.students.find(x=>x.id===r.studentId); if(!st) return;
+    const nameKey=st.academy+'|'+st.nameKo;
+    if(seenStayName.has(nameKey)) return; // 이미 수동으로 "오늘 남기" 체크된 학생이면 중복 표시 안함
+    seenStayName.add(nameKey);
+    stayList.push({className:st.className||'-', academy:st.academy, student:st.nameKo, memo:'📖 재시험 대상'+(r.wordbook?' · '+r.wordbook:'')+(r.range?' · '+r.range:''), isRetest:true, wtId:r.id});
+  });
+  const staySection=isAdminRole()?`<div class="ysec" style="margin-top:16px;border-top:4px solid #b45309"><h3>🙋 오늘 남는 학생 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">${state.date} 전체 반 기준 (${stayList.length}명, 재시험 대상 포함)</span></h3>
     <div style="padding:0 16px 14px">
-      ${stayList.length?stayList.map(x=>`<div class="rowitem" style="align-items:center"><span class="key">${esc(x.student)} ${MODE==='all'?bdg(x.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(x.className)}</span></span><span class="val">${x.memo?esc(x.memo):'<span style="color:#c3c9d6">메모 없음</span>'} <button class="btn small" data-staydone="${esc(x.k)}|${esc(x.s)}">✔ 완료</button></span></div>`).join(''):'<div style="font-size:.82rem;color:#8b93a7">오늘 남는 학생이 없습니다.</div>'}
+      ${stayList.length?stayList.map(x=>`<div class="rowitem" style="align-items:center"><span class="key">${esc(x.student)} ${MODE==='all'?bdg(x.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(x.className)}</span></span><span class="val">${x.memo?esc(x.memo):'<span style="color:#c3c9d6">메모 없음</span>'} ${x.isRetest?`<button class="btn small" data-wtdone="${x.wtId}">✔ 재시험 완료</button>`:`<button class="btn small" data-staydone="${esc(x.k)}|${esc(x.s)}">✔ 완료</button>`}</span></div>`).join(''):'<div style="font-size:.82rem;color:#8b93a7">오늘 남는 학생이 없습니다.</div>'}
     </div></div>`:'';
   // 결석생 숙제 확인 — 실장·관리자 전용 요약 (담당 선생님이 입력한 숙제/메모를 한 곳에서 확인)
   const absentHwList=[]; const seenAbsent=new Set();
@@ -2504,9 +2574,14 @@ function renderAttend(list){
       let o=0,ji=0,gy=0;
       let row=`<tr><td class="nm">${hl(s)}</td>`;
       dates.forEach(d=>{
-        const v=((store.attend[d]||{})[k]||{})[s]||'';
+        const dWd=wdOf(d);
+        const keysToday=attKeysFor(c, dWd);
+        const multiToday=keysToday.length>1;
+        const v=attStatusAgg(c, dWd, s, store.attend[d]||{});
         if(v==='출')o++; else if(v==='지')ji++; else if(v==='결')gy++;
-        row+=`<td class="mk m${v}" data-d="${d}" data-k="${esc(k)}" data-s="${esc(s)}">${v||'·'}</td>`;
+        row+=multiToday
+          ? `<td class="mk m${v}" style="cursor:default" title="이 날은 과목이 여러 개라 [오늘 수업] 탭에서 과목별로 수정해주세요" data-multi="1">${v||'·'}</td>`
+          : `<td class="mk m${v}" data-d="${d}" data-k="${esc(keysToday[0].key)}" data-s="${esc(s)}">${v||'·'}</td>`;
       });
       row+=`<td class="tot">${o}</td><td class="tot">${ji}</td><td class="tot">${gy}</td></tr>`;
       h+=row;
@@ -2528,6 +2603,7 @@ function bindAttend(){
   const mo=v.querySelector('#myOnly'); if(mo) mo.onchange=()=>{state.myOnly=mo.checked; render();};
   const cycle={'':'출','출':'지','지':'결','결':''};
   v.querySelectorAll('td.mk').forEach(td=>td.onclick=()=>{
+    if(td.dataset.multi==='1'){ alert('이 날은 과목이 여러 개라 여기서는 수정할 수 없어요.\n[오늘 수업] 탭에서 그 날짜로 이동해 과목별로 출석을 수정해주세요.'); return; }
     const d=td.dataset.d, k=td.dataset.k, s=td.dataset.s;
     const at=atFor(d); at[k]=at[k]||{};
     const nv=cycle[at[k][s]||''];
@@ -2551,12 +2627,13 @@ function classesOn(dateISO){
 }
 function dayStats(dateISO){
   const cls=classesOn(dateISO);
+  const wd=wdOf(dateISO);
   const at=store.attend[dateISO]||{}, hw=store.homework[dateISO]||{};
   let tot=0,pres=0,late=0,abs=0,hwd=0;
   const absents=[], lates=[], hwmiss=[], notes=[];
   cls.forEach(c=>{ const k=ckey(c);
     (c.students||[]).forEach(s=>{ tot++;
-      const a=((at[k]||{})[s])||'';
+      const a=attStatusAgg(c,wd,s,at); // 그날 여러 과목 중 결석/지각이 하나라도 있으면 그걸 우선 반영
       if(a==='출')pres++; else if(a==='지'){late++;lates.push({c,s});} else if(a==='결'){abs++;absents.push({c,s});}
       const hr=((hw[k]||{})[s])||{};
       if(hr.done)hwd++; else if(a==='출'||a==='지') hwmiss.push({c,s});
@@ -2597,14 +2674,15 @@ function repWorkDaily(dateISO){
   // 반별 요약
   h+=`<div style="font-weight:bold;font-size:11pt;margin:8px 0 6px;${rF}">반별 수업 요약</div>`;
   h+=`<table style="width:100%;border-collapse:collapse;${rF}"><tr>${rTH('반')}${rTH('출석')}${rTH('숙제')}${rTH('오늘의 과제')}${rTH('결석 · 지각')}</tr>`;
+  const dailyWd=wdOf(dateISO);
   st.cls.forEach((c,i)=>{
     const k=ckey(c); const z=i%2?'background:#f7f9fc;':'';
     const at=store.attend[dateISO]||{}, hw=store.homework[dateISO]||{};
     const n=(c.students||[]).length;
-    const pres=(c.students||[]).filter(s=>((at[k]||{})[s])==='출').length;
+    const pres=(c.students||[]).filter(s=>attStatusAgg(c,dailyWd,s,at)==='출').length;
     const hwd=(c.students||[]).filter(s=>(((hw[k]||{})[s])||{}).done).length;
     const asg=(((hw[k]||{})['_assign'])||{}).note || (c.subjects||[]).filter(s=>s.hw).map(s=>s.subject+': '+s.hw).join(' · ');
-    const prob=(c.students||[]).filter(s=>['지','결'].includes(((at[k]||{})[s])||'')).map(s=>{const a=(at[k]||{})[s];return s+'('+a+')';}).join(', ');
+    const prob=(c.students||[]).filter(s=>['지','결'].includes(attStatusAgg(c,dailyWd,s,at))).map(s=>{const a=attStatusAgg(c,dailyWd,s,at);return s+'('+a+')';}).join(', ');
     h+=`<tr>${rTD(`<b style="color:${AC[c.academy].color}">${esc(c.name)}</b>`,z+'white-space:nowrap')}${rTD(n?pres+'/'+n:'-',z+'text-align:center')}${rTD(n?hwd+'/'+n:'-',z+'text-align:center')}${rTD(esc(asg),z)}${rTD(prob?'<span style="color:#b45309">'+esc(prob)+'</span>':'',z)}</tr>`;
   });
   h+='</table>';
