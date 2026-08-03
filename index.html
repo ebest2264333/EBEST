@@ -2194,6 +2194,16 @@ function attKeysFor(c, wd){
   const k=ckey(c); const names=daySubjectNames(c, wd);
   return names.length>1 ? names.map(nm=>({subject:nm, key:k+'#'+nm})) : [{subject:names[0]||null, key:k}];
 }
+// 로그인한 선생님(실장 포함)이 그 반에서 실제로 맡은 과목만 골라준다.
+// 과목마다 담당(teacher)이 명시돼 있으면 그 이름과 일치하는 과목만; 명시된 담당이 하나도 없는 반(예: 전체 담당 배정)이면 제한하지 않고 전부 보여준다.
+function mySubjectKeys(c, wd, lt){
+  if(!lt) return null; // 순수 관리자(원장) 로그인이면 제한 없이 전체 표시
+  const daySubjs=(c.subjects||[]).filter(s=>subjOnDay(s,wd));
+  const nm=norm(lt.t.name);
+  const mySubjs=daySubjs.filter(s=>s.teacher && norm(s.teacher)===nm);
+  if(!mySubjs.length) return null; // 이 반에 과목별 담당 표기가 없으면(전체 담당 방식) 제한하지 않음
+  return new Set(mySubjs.map(s=>s.subject||'-'));
+}
 function attStatusAgg(c, wd, sname, atForDate){
   // 그날 여러 과목 중 하나라도 결석이면 결석, 아니면 지각 있으면 지각, 아니면 출석 있으면 출석 (월별 출결부·통계용 요약)
   const keys=attKeysFor(c, wd);
@@ -2330,7 +2340,10 @@ function renderToday(list){
     const mine = lt && teacherTeaches(c,lt);
     const daySubjects=(c.subjects||[]).filter(s=>subjOnDay(s,wd));
     const teas=[...new Set(daySubjects.map(s=>s.teacher).filter(Boolean))];
-    const attKeys=attKeysFor(c, wd); const attMulti=attKeys.length>1;
+    let attKeys=attKeysFor(c, wd);
+    const mySubjSet=mySubjectKeys(c, wd, lt);
+    if(mySubjSet){ const filtered=attKeys.filter(x=>x.subject==null || mySubjSet.has(x.subject)); if(filtered.length) attKeys=filtered; }
+    const attMulti=attKeys.length>1;
     const present=(c.students||[]).filter(s=>attStatusAgg(c,wd,s,at)==='출').length;
     const hwdone=(c.students||[]).filter(s=>hw[k]&&hw[k][s]&&hw[k][s].done).length;
     const asg=((hw[k]||{})['_assign']||{}).note||'';
