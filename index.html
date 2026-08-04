@@ -1270,8 +1270,9 @@ function renderTimetableWeek(list){
     const label=o.s&&o.s.subject ? o.s.subject : o.c.name;
     const sub2=o.s&&o.s.subject ? o.c.name : '';
     const tea=o.s&&o.s.teacher ? o.s.teacher : '';
+    const mp=mergedPartnerClass(o.c);
     return `<div data-ttjump="${o.d}|${o.c._id}" style="cursor:pointer;margin-bottom:4px;padding:5px 7px;border-radius:7px;font-size:.76rem;line-height:1.35;background:${AC[o.c.academy].cls==='eb'?'#eaf1ff':'#fff2e6'};border:1px solid ${AC[o.c.academy].cls==='eb'?'var(--ebest)':'var(--icon)'}">
-      <b>${esc(label)}</b>${sub2?` <span style="font-weight:400;color:var(--sub)">${esc(sub2)}</span>`:''}${MODE==='all'?' '+bdg(o.c.academy):''}<br><span style="color:var(--sub)">${esc(tea||'담당 미지정')}</span>
+      <b>${esc(label)}</b>${sub2?` <span style="font-weight:400;color:var(--sub)">${esc(sub2)}</span>`:''}${MODE==='all'?' '+bdg(o.c.academy):''}${mp?` <span title="합반: ${esc(mp.name)}" style="color:#6366f1;font-weight:800">🔗${esc(mp.name)}</span>`:''}<br><span style="color:var(--sub)">${esc(tea||'담당 미지정')}</span>
     </div>`;
   };
   let grid='';
@@ -1446,8 +1447,15 @@ function linkSibling(id, siblingName){
   const s=store.students.find(x=>x.id===id); if(!s) return;
   const sib=store.students.find(x=>x.id!==id && x.nameKo && x.nameKo.trim()===String(siblingName||'').trim());
   if(!sib){ alert('명단에서 그 이름의 학생을 찾을 수 없습니다.'); return; }
-  s.siblings=s.siblings||[]; if(!s.siblings.includes(sib.id)) s.siblings.push(sib.id);
-  sib.siblings=sib.siblings||[]; if(!sib.siblings.includes(id)) sib.siblings.push(id);
+  // 삼형제 이상인 경우: 나 또는 상대가 이미 다른 형제자매와 연결되어 있으면, 그 그룹 전체를 서로 빠짐없이 연결해준다
+  const groupIds=new Set([id, sib.id]);
+  (s.siblings||[]).forEach(x=>groupIds.add(x));
+  (sib.siblings||[]).forEach(x=>groupIds.add(x));
+  groupIds.forEach(memberId=>{
+    const member=store.students.find(x=>x.id===memberId); if(!member) return;
+    member.siblings=[...groupIds].filter(x=>x!==memberId);
+    member.updatedAt=Date.now();
+  });
   save(); render(true);
 }
 function unlinkSibling(id, siblingId){
@@ -2423,9 +2431,13 @@ function renderToday(list){
         : (()=>{ const key=ownerAttKeys[0].key; const a=(at[key]||{})[s]||'';
             return ['출','지','결'].map(v=>`<button class="atb ${a===v?'on'+v:''}" data-k="${esc(key)}" data-s="${esc(s)}" data-v="${v}">${v}</button>`).join('');
           })();
+      // 전체결석: 과목이 여러 개로 나뉜 반에서, 관리자가 한 번에 그 학생의 그날 모든 과목을 결석 처리할 수 있는 체크칸
+      const allKeysStr=ownerAttKeys.map(x=>x.key).join(',');
+      const allAbsent=rowMulti && ownerAttKeys.every(({key})=>((at[key]||{})[s])==='결');
+      const allAbsentChk=(rowMulti && isAdminRole())?`<label class="hwlab" style="color:${allAbsent?'#c0392b':'var(--sub)'}"><input type="checkbox" class="allabsentchk" data-keys="${esc(allKeysStr)}" data-s="${esc(s)}" ${allAbsent?'checked':''}>전체결석</label>`:'';
       return `<div class="trow2">
         <span class="sn">${hl(s)}</span>
-        <span class="atg" style="display:flex;flex-wrap:wrap;align-items:center;gap:4px">${atGroups}</span>
+        <span class="atg" style="display:flex;flex-wrap:wrap;align-items:center;gap:4px">${atGroups}${allAbsentChk}</span>
         <label class="hwlab"><input type="checkbox" class="hwchk" data-k="${esc(ownerK)}" data-s="${esc(s)}" ${hrec.done?'checked':''}>숙제</label>
         <input type="text" class="hwnote" data-k="${esc(ownerK)}" data-s="${esc(s)}" placeholder="숙제 확인 · 수정 지시 · 수업 메모…" value="${esc(hrec.note||'')}"></div>
       <div style="display:flex;gap:8px;align-items:center;padding:1px 0 7px 2px">
@@ -2442,7 +2454,7 @@ function renderToday(list){
     }
     // 합반(같이 수업하는 다른 반) 상대가 있으면, 그 반 학생들도 이 카드 안에 같이 보여줘서 한 번에 출석 체크할 수 있게 한다
     const mergedPartner=mergedPartnerClass(c);
-    if(mergedPartner && mergedPartner.students && mergedPartner.students.length){
+    if(mergedPartner && classMeets(mergedPartner, wd) && mergedPartner.students && mergedPartner.students.length){
       const pk=ckey(mergedPartner);
       let pAttKeys=attKeysFor(mergedPartner, wd);
       const pMySubjSet=mySubjectKeys(mergedPartner, wd, lt);
@@ -2569,6 +2581,12 @@ function bindToday(){
   v.querySelectorAll('.staychk').forEach(cb=>cb.onchange=()=>{
     const k=cb.dataset.k, st=cb.dataset.s, st2=stayFor(state.date);
     st2[k]=st2[k]||{}; st2[k][st]=st2[k][st]||{}; st2[k][st].stay=cb.checked; save(); render(true);
+  });
+  v.querySelectorAll('.allabsentchk').forEach(cb=>cb.onchange=()=>{
+    if(!isAdminRole())return;
+    const keys=cb.dataset.keys.split(','), sname=cb.dataset.s, at2=atFor(state.date);
+    keys.forEach(key=>{ at2[key]=at2[key]||{}; if(cb.checked) at2[key][sname]='결'; else delete at2[key][sname]; });
+    save(); render(true);
   });
   v.querySelectorAll('.staynote').forEach(inp=>inp.onchange=()=>{
     const k=inp.dataset.k, st=inp.dataset.s, st2=stayFor(state.date);
@@ -2886,13 +2904,13 @@ function journalForm(who, date){
         <button class="btn small" id="wlTempSave">📝 임시 저장</button>
         ${submitBtn('journal',who,date,w.t.color)}
       </span></h2>`;
-  // 월간·주간 (접힘)
-  h+=`<details style="margin-top:10px"><summary style="cursor:pointer;font-size:.84rem;font-weight:800;color:var(--sub);padding:6px 0">월간 · 주간 업무 보기</summary>
+  // 월간·주간 (접힘 상태를 기억해서, 줄 추가·상태 변경으로 다시 그려져도 열려있던 채로 유지됨)
+  h+=`<details id="wlMonthlyDetails" ${state.wlMonthlyOpen?'open':''} style="margin-top:10px"><summary style="cursor:pointer;font-size:.84rem;font-weight:800;color:var(--sub);padding:6px 0">월간 · 주간 업무 보기</summary>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:6px">`;
   for(const [sec,label] of [['monthly',`월간 ( ${mo} )월`],['weekly',`주간 ( ${wk} )주차`]]){
     h+=`<div><div class="myclass">${label} 업무 · 처리결과</div>`;
     e[sec].forEach((x,i)=>{
-      h+=`<div style="display:flex;gap:6px;margin:5px 0">${ti(sec,i,'t',x.t,(i+1)+') 업무 내용')}${resSel(sec,i,x.r)}</div>`;
+      h+=`<div style="display:flex;gap:6px;margin:5px 0;align-items:center">${ti(sec,i,'t',x.t,(i+1)+') 업무 내용')}${resSel(sec,i,x.r)}<button class="wl-del" data-sec="${sec}" data-i="${i}" title="이 줄 삭제" style="border:none;background:none;color:#c0392b;cursor:pointer;font-weight:800;padding:0 6px;font-size:1rem">×</button></div>`;
     });
     h+=`<button class="btn small wl-add" data-sec="${sec}">+ 줄 추가</button></div>`;
   }
@@ -2903,7 +2921,7 @@ function journalForm(who, date){
     e[sec].forEach((x,i)=>{
       h+=`<div style="display:flex;gap:6px;margin:5px 0;align-items:center">
         ${ti(sec,i,'t',x.t,'업무계획','42%')}${ti(sec,i,'d',x.d,'상세내용','46%')}
-        ${res?resSel(sec,i,x.r):starBtn(i,x.r)}</div>`;
+        ${res?resSel(sec,i,x.r):starBtn(i,x.r)}<button class="wl-del" data-sec="${sec}" data-i="${i}" title="이 줄 삭제" style="border:none;background:none;color:#c0392b;cursor:pointer;font-weight:800;padding:0 6px;font-size:1rem">×</button></div>`;
     });
     h+=`<button class="btn small wl-add" data-sec="${sec}">+ 줄 추가</button>`;
   }
@@ -2922,11 +2940,18 @@ function journalForm(who, date){
 function bindJournal(who, date){
   const v=document.getElementById('view'); const e=wlGet(who,date);
   const touch=()=>{ e.updatedAt=Date.now(); };
+  const md=v.querySelector('#wlMonthlyDetails');
+  if(md) md.addEventListener('toggle', ()=>{ state.wlMonthlyOpen=md.open; });
   v.querySelectorAll('.wl-t').forEach(inp=>inp.onchange=()=>{ e[inp.dataset.sec][Number(inp.dataset.i)][inp.dataset.f]=inp.value; touch(); save(); });
   v.querySelectorAll('.wl-r').forEach(s=>s.onchange=()=>{ e[s.dataset.sec][Number(s.dataset.i)].r=s.value; touch(); save(); render(true); });
   v.querySelectorAll('.wl-star').forEach(b=>b.onclick=()=>{ const x=e.tomorrow[Number(b.dataset.i)]; x.r=x.r?'':'★'; touch(); save(); render(true); });
   v.querySelectorAll('.wl-add').forEach(b=>b.onclick=()=>{ const sec=b.dataset.sec;
     e[sec].push(sec==='monthly'||sec==='weekly'?{t:'',r:''}:{t:'',d:'',r:''}); touch(); save(); render(true); });
+  v.querySelectorAll('.wl-del').forEach(b=>b.onclick=()=>{
+    const sec=b.dataset.sec, i=Number(b.dataset.i);
+    if(!confirm('이 줄을 삭제할까요?')) return;
+    e[sec].splice(i,1); touch(); save(); render(true);
+  });
   v.querySelectorAll('.wl-l').forEach(inp=>inp.onchange=()=>{ e.lessons[Number(inp.dataset.i)][inp.dataset.f]=inp.value; touch(); save(); });
   v.querySelectorAll('.wl-ldel').forEach(b=>b.onclick=()=>{ e.lessons.splice(Number(b.dataset.i),1); touch(); save(); render(true); });
   const la=v.querySelector('#wlLadd'); if(la) la.onclick=()=>{ e.lessons.push({cls:'',time:'',book:'',lesson:'',hw:'',prog:''}); touch(); save(); render(true); };
