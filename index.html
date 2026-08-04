@@ -1266,11 +1266,44 @@ function renderTimetable(list){
   const viewChips=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
     <button class="chip ${state.ttView==='week'?'on':''}" data-ttview="week">📋 전체 시간표</button>
     <button class="chip ${state.ttView==='day'?'on':''}" data-ttview="day">📅 요일별 편집</button>
+    <button class="chip ${state.ttView==='bulk'?'on':''}" data-ttview="bulk">🗓 일괄 수정</button>
   </div>`;
   let body;
   if(state.ttView==='week') body=renderTimetableWeek(list);
+  else if(state.ttView==='bulk') body=renderTimetableBulk();
   else body=renderTimetableDay(list);
   return viewChips+body;
+}
+function renderTimetableBulk(){
+  // 여러 반의 요일·시간을 한 화면에 표로 쭉 나열해서 한 번에 빠르게 수정할 수 있게 한다 (학기 개편처럼 많이 바뀔 때 용도)
+  const bulkMonth = state.bulkMonth || state.month;
+  const monthPicker = `<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+    <label style="font-size:.82rem;font-weight:700;color:var(--sub)">수정할 달:</label>
+    <select id="bulkMonthSel" style="padding:6px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-weight:700">
+      ${monthOptions().map(m=>`<option value="${m}" ${bulkMonth===m?'selected':''}>${mLabel(m)}</option>`).join('')}
+    </select>
+    <span style="font-size:.76rem;color:#8b93a7">반명 옆 요일·과목·시간 칸을 바로 클릭해서 고치시면 됩니다. (엔터 또는 다른 칸 클릭 시 저장)</span>
+  </div>`;
+  let rows='';
+  academies().forEach(a=>{
+    const arr=editArr(a, bulkMonth);
+    arr.forEach(c=>{
+      if(c._deleted) return;
+      (c.subjects||[]).forEach((s,i)=>{
+        rows+=`<tr data-a="${a}" data-m="${bulkMonth}" data-id="${esc(c._id)}" data-idx="${i}">
+          <td style="padding:5px 8px;border-bottom:1px solid #f1f3f8;white-space:nowrap">${MODE==='all'?bdg(a)+' ':''}<b>${esc(c.name)}</b></td>
+          <td style="padding:5px 8px;border-bottom:1px solid #f1f3f8"><input type="text" class="bulk-f" data-f="subject" value="${esc(s.subject||'')}" style="width:90px;border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-family:inherit;font-size:.8rem"></td>
+          <td style="padding:5px 8px;border-bottom:1px solid #f1f3f8"><input type="text" class="bulk-f" data-f="day" value="${esc(s.day||'')}" placeholder="예: 월,수" style="width:80px;border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-family:inherit;font-size:.8rem"></td>
+          <td style="padding:5px 8px;border-bottom:1px solid #f1f3f8"><input type="text" class="bulk-f" data-f="time" value="${esc(s.time||'')}" placeholder="예: 4:00-4:40" style="width:110px;border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-family:inherit;font-size:.8rem"></td>
+          <td style="padding:5px 8px;border-bottom:1px solid #f1f3f8"><input type="text" class="bulk-f" data-f="teacher" value="${esc(s.teacher||'')}" style="width:70px;border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-family:inherit;font-size:.8rem"></td>
+        </tr>`;
+      });
+    });
+  });
+  return monthPicker+`<div style="overflow-x:auto"><table style="border-collapse:collapse;min-width:600px;width:100%">
+    <thead><tr>${['반명','과목','요일','시간','담당'].map(x=>`<th style="background:var(--ink);color:#fff;padding:6px 8px;font-size:.74rem;text-align:left">${x}</th>`).join('')}</tr></thead>
+    <tbody>${rows||'<tr><td colspan="5" style="padding:12px;text-align:center;color:#8b93a7">이 달에 등록된 과목이 없습니다.</td></tr>'}</tbody>
+  </table></div>`;
 }
 function renderTimetableWeek(list){
   const days=['월','화','수','목','금','토','일'];
@@ -1358,6 +1391,11 @@ function renderTimetableDay(list){
 function bindClassEdit(){
   const v=document.getElementById('view');
   v.querySelectorAll('[data-ttview]').forEach(b=>b.onclick=()=>{ state.ttView=b.dataset.ttview; render(true); });
+  const bms=v.querySelector('#bulkMonthSel'); if(bms) bms.onchange=()=>{ state.bulkMonth=bms.value; render(true); };
+  v.querySelectorAll('.bulk-f').forEach(inp=>inp.onchange=()=>{
+    const tr=inp.closest('tr');
+    updateSubjectField(tr.dataset.a, tr.dataset.m, tr.dataset.id, Number(tr.dataset.idx), inp.dataset.f, inp.value);
+  });
   v.querySelectorAll('[data-ttjump]').forEach(b=>b.onclick=()=>{
     const [d,id]=b.dataset.ttjump.split('|');
     state.ttView='day'; state.ttDay=d; state.classOpen[id]=true; render(true);
@@ -1571,6 +1609,9 @@ function studentCard(s, admin){
     </div>
     <div style="font-size:.78rem;font-weight:700;color:var(--sub);margin-bottom:4px">특이사항 코멘트</div>
     <textarea data-rsfield-note="${s.id}" placeholder="특이사항 코멘트…" style="width:100%;min-height:50px;border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:.83rem">${esc(s.note||'')}</textarea>
+    <div style="font-size:.78rem;font-weight:700;color:#b45309;margin:8px 0 4px">🔔 오늘 공지 <span style="font-weight:400;color:#8b93a7">(전화 상담 등으로 알게 된 급한 내용 — 저장하면 이 학생이 수업 있는 날 선생님들 홈 화면에 자동으로 뜹니다)</span></div>
+    <textarea data-rsfield="${s.id}|alertNote" placeholder="예: 여행으로 숙제 밀림 — 스트레스 받지 않게 지적하지 말아달라고 어머님 요청" style="width:100%;min-height:50px;border:1.5px solid #f0c987;background:#fffaf0;border-radius:8px;padding:7px 10px;font-family:inherit;font-size:.83rem">${esc(s.alertNote||'')}</textarea>
+    ${s.alertNote?`<div style="margin-top:4px"><button class="btn small" data-rsalertdone="${s.id}">✔ 공지 해제</button></div>`:''}
   </article>`;
 }
 function renderRosterStats(){
@@ -1715,6 +1756,7 @@ function bindRoster(){
     updateStudentField(id,field,el.value);
   });
   v.querySelectorAll('[data-rsfield-note]').forEach(t=>t.onchange=()=>updateStudentField(t.dataset.rsfieldNote,'note',t.value));
+  v.querySelectorAll('[data-rsalertdone]').forEach(b=>b.onclick=()=>updateStudentField(b.dataset.rsalertdone,'alertNote',''));
   v.querySelectorAll('[data-rsnote]').forEach(t=>t.onchange=()=>updateStudentField(t.dataset.rsnote,'note',t.value));
   v.querySelectorAll('[data-rssiblink]').forEach(b=>b.onclick=()=>{
     const id=b.dataset.rssiblink;
@@ -2524,6 +2566,22 @@ function renderToday(list){
         ${c.students&&c.students.length?`<span class="prg">출석 ${present}/${c.students.length} · 숙제 ${hwdone}/${c.students.length}</span>`:''}
       </div><div class="cbody">${body}</div></div>`;
   });
+  // 오늘 수업 있는 학생 중 "오늘 공지"(전화 상담 등으로 알게 된 급한 특이사항)가 걸려있는 학생을 모아서 맨 위에 보여준다
+  const alertList=[]; const seenAlert=new Set();
+  cls.forEach(c=>{
+    (c.students||[]).forEach(sname=>{
+      const key=c.academy+'|'+sname;
+      if(seenAlert.has(key)) return;
+      // 반 명단에는 "Kayla(유주)"처럼 영어(한글) 형식으로 저장된 예전 자료도 있어서, 괄호 안 한글 이름도 같이 비교한다
+      const koPart=(String(sname).match(/\(([^)]+)\)\s*$/)||[])[1];
+      const st=store.students.find(x=>x.academy===c.academy && !x._deleted && (x.nameKo===sname || (koPart && x.nameKo.endsWith(koPart.trim()))));
+      if(st && st.alertNote){ seenAlert.add(key); alertList.push({id:st.id, student:sname, academy:c.academy, className:c.name, note:st.alertNote}); }
+    });
+  });
+  const alertSection=alertList.length?`<div class="ysec" style="margin-bottom:16px;border-top:4px solid #e0a020;background:#fffaf0"><h3>🔔 오늘 학생 특이사항 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">(${alertList.length}명)</span></h3>
+    <div style="padding:0 16px 14px">
+      ${alertList.map(x=>`<div class="rowitem" style="align-items:flex-start"><span class="key">${esc(x.student)} ${MODE==='all'?bdg(x.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(x.className)}</span></span><span class="val" style="display:flex;gap:8px;align-items:flex-start"><span>${esc(x.note)}</span><button class="btn small" data-rsalertdone="${x.id}" style="white-space:nowrap">✔ 해제</button></span></div>`).join('')}
+    </div></div>`:'';
   const stayList=[]; const seenStay=new Set(); const seenStayName=new Set();
   cls.forEach(c=>{
     const k=ckey(c);
@@ -2581,11 +2639,12 @@ function renderToday(list){
           </span></div>`;
       }).join(''):'<div style="font-size:.82rem;color:#8b93a7">오늘 결석 처리된 학생이 없습니다.</div>'}
     </div></div>`;
-  return h+staySection+absentHwSection+wtSection;
+  return alertSection+h+staySection+absentHwSection+wtSection;
 }
 function bindToday(){
   const v=document.getElementById('view');
   bindWordTest();
+  v.querySelectorAll('[data-rsalertdone]').forEach(b=>b.onclick=()=>updateStudentField(b.dataset.rsalertdone,'alertNote',''));
   v.querySelectorAll('.todogo').forEach(b=>b.onclick=()=>{
     if(b.dataset.rk) state.rkind=b.dataset.rk;
     goTab(b.dataset.tab);
@@ -3090,6 +3149,7 @@ function autoWeekRows(who, days){
   const rows=[];
   days.forEach(d=>{
     autoLessons(who,d).forEach(L=>{
+      if(String(L.lesson||'').trim().toUpperCase()==='IBT') return; // IBT는 주간 진도계획표 작성 대상에서 제외
       const [p1,p2]=splitProg(L.prog);
       rows.push({date:d, cls:L.cls, book:L.book, prog:p1, test:'', hw:L.hw, mprog:p2});
     });
@@ -3174,14 +3234,59 @@ function repWeekPlan(who, days){
   return `<div style="${rF}">${h}</div>`;
 }
 
+/* ---------- 인수인계표 (월 1회 작성 + 주간 진도계획표 자동 반영) ---------- */
+if(!store.handover) store.handover={};
+function handoverGet(who, month){
+  store.handover[who]=store.handover[who]||{};
+  if(!store.handover[who][month]) store.handover[who][month]={notes:'', updatedAt:0};
+  return store.handover[who][month];
+}
+function handoverForm(who, month, readOnly){
+  const w=whoTeacher(who); const hd=handoverGet(who,month);
+  const days=weekOf(todayISO());
+  const wp=wpGet(who,days[0],days); // 이번 주 진도계획표 (선생님이 직접 쓴 내용까지 반영된, 살아있는 자료)
+  const rows=[...wp.rows].filter(r=>r.cls||r.book).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  const savedLabel = hd.updatedAt ? '마지막 작성 · '+new Date(hd.updatedAt).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '이번 달 아직 작성 안 됨';
+  let h=`<div class="mypanel" style="border-top-color:${w.t.color}">
+    <h2><span class="tdot" style="background:${w.t.color}"></span>인수인계표 — ${esc(w.t.name)} 선생님
+      <span style="font-weight:400;font-size:.78rem;color:var(--sub)">${month} · ${savedLabel}</span>
+      <span style="margin-left:auto">${readOnly?'':'<button class="btn small" id="hoSave">💾 저장</button>'}</span></h2>
+    <div style="font-size:.78rem;font-weight:700;color:var(--sub);margin:10px 0 4px">📝 인수인계 메모 (이 달에 한 번 작성 — 다음 담당 선생님이 알아야 할 내용)</div>
+    <textarea id="hoNotes" ${readOnly?'readonly':''} placeholder="예: OO반 진도 2타임 밀림, XX반 숙제 습관 지도 필요, 학부모 특이사항 등" style="width:100%;min-height:140px;border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;font-family:inherit;font-size:.86rem;line-height:1.5;resize:vertical">${esc(hd.notes||'')}</textarea>
+    <div style="font-size:.78rem;font-weight:700;color:var(--sub);margin:16px 0 4px">📚 현재 진도 현황 <span style="font-weight:400;color:#8b93a7">(주간 진도계획표에서 자동으로 가져옴 · 이번 주 기준으로 항상 최신 상태)</span></div>
+    <div style="overflow-x:auto"><table style="min-width:700px;border-collapse:collapse;width:100%">
+    <thead><tr>${['날짜','반명','교재','진도','과제'].map(x=>`<th style="background:var(--ink);color:#fff;padding:6px 8px;font-size:.72rem;text-align:center">${x}</th>`).join('')}</tr></thead><tbody>
+    ${rows.length?rows.map(r=>`<tr>
+      <td style="padding:5px 8px;text-align:center;font-size:.8rem;border-bottom:1px solid #f1f3f8">${esc(r.date||'')}</td>
+      <td style="padding:5px 8px;text-align:center;font-size:.8rem;font-weight:700;border-bottom:1px solid #f1f3f8">${esc(r.cls)}</td>
+      <td style="padding:5px 8px;font-size:.8rem;border-bottom:1px solid #f1f3f8">${esc(r.book)}</td>
+      <td style="padding:5px 8px;text-align:center;font-size:.8rem;border-bottom:1px solid #f1f3f8">${esc(r.prog)}</td>
+      <td style="padding:5px 8px;font-size:.8rem;border-bottom:1px solid #f1f3f8">${esc(r.hw)}</td></tr>`).join(''):'<tr><td colspan="5" style="padding:10px;text-align:center;color:#8b93a7;font-size:.82rem">이번 주 진도계획표에 입력된 내용이 없습니다.</td></tr>'}
+    </tbody></table></div>
+  </div>`;
+  return h;
+}
+function bindHandover(who, month, readOnly){
+  if(readOnly) return;
+  const v=document.getElementById('view');
+  const btn=v.querySelector('#hoSave'); if(!btn) return;
+  btn.onclick=()=>{
+    const hd=handoverGet(who,month);
+    hd.notes=v.querySelector('#hoNotes').value; hd.updatedAt=Date.now();
+    save();
+    toast('📋 인수인계표 저장됨');
+    render(true);
+  };
+}
 function renderReport(){
   state.rkind=state.rkind||'daily';
   const lt=loginTeacher();
   const days=weekOf(state.date);
-  const canBrowseOthers = !lt || state.rkind==='weekly'; // 주간 진도계획표는 모든 선생님이 다른 선생님 것도 조회 가능
+  const curMonth=state.date.slice(0,7);
+  const canBrowseOthers = !lt || state.rkind==='weekly' || state.rkind==='handover'; // 주간 진도계획표·인수인계표는 모든 선생님이 다른 선생님 것도 조회 가능
   const who = (canBrowseOthers && state.wlWho) ? state.wlWho : curWho();
   const w=whoTeacher(who);
-  const viewingOthers = lt && !isMgr() && who!==whoKey(lt); // 실장 미만이 남의 계획표를 보는 중 → 읽기 전용
+  const viewingOthers = lt && !isMgr() && who!==whoKey(lt); // 실장 미만이 남의 것을 보는 중 → 읽기 전용
   let pick='';
   if(canBrowseOthers){
     let opts='';
@@ -3192,16 +3297,18 @@ function renderReport(){
   let h=`<div class="todaybar">
     <button class="chip ${state.rkind==='daily'?'on':''}" id="rkD">일간 업무일지</button>
     <button class="chip ${state.rkind==='weekly'?'on':''}" id="rkW">주간 진도계획표</button>
-    <input type="date" id="rdate" value="${state.date}">
+    <button class="chip ${state.rkind==='handover'?'on':''}" id="rkH">📋 인수인계표</button>
+    ${state.rkind!=='handover'?`<input type="date" id="rdate" value="${state.date}">`:''}
     ${state.rkind==='weekly'?`<button class="btn small" id="wkPrev">◀ 지난 주</button><button class="btn small" id="wkNext">다음 주 ▶</button>`:''}
-    <span style="font-size:.82rem;color:var(--sub)">${state.rkind==='daily'?wdOf(state.date)+'요일':days[0]+' ~ '+days[5]+' (월~토)'}</span>
+    <span style="font-size:.82rem;color:var(--sub)">${state.rkind==='daily'?wdOf(state.date)+'요일':state.rkind==='weekly'?days[0]+' ~ '+days[5]+' (월~토)':curMonth+' 인수인계'}</span>
     ${pick}
     ${lt?`<span class="mytag" style="background:${lt.t.color}">👤 ${esc(lt.t.name)}</span>`:''}
-    <span style="font-size:.72rem;color:#8b93a7;margin-left:auto">${state.rkind==='daily'?'수업·진도는 자료로 자동, 나머지는 직접 작성 → 인쇄·엑셀로 제출':'다음 주 수업·교재·과제·진도를 자료로 자동 채움 · 테스트 등 직접 수정'}</span>
+    <span style="font-size:.72rem;color:#8b93a7;margin-left:auto">${state.rkind==='daily'?'수업·진도는 자료로 자동, 나머지는 직접 작성 → 인쇄·엑셀로 제출':state.rkind==='weekly'?'다음 주 수업·교재·과제·진도를 자료로 자동 채움 · 테스트 등 직접 수정':'이 달에 한 번 작성 · 진도 현황은 주간 계획표에서 자동으로 최신 반영됨'}</span>
   </div>`;
   if(!w) return h+'<div class="empty">선생님을 먼저 등록해주세요 (설정 탭).</div>';
   if(state.rkind==='daily') h+=journalForm(who, state.date);
-  else h+=weekPlanForm(who, days, viewingOthers);
+  else if(state.rkind==='weekly') h+=weekPlanForm(who, days, viewingOthers);
+  else h+=handoverForm(who, curMonth, viewingOthers);
   return h;
 }
 function bindReport(){
@@ -3209,17 +3316,19 @@ function bindReport(){
   const d=v.querySelector('#rdate'); if(d) d.onchange=()=>{state.date=d.value||todayISO(); render();};
   const rd=v.querySelector('#rkD'); if(rd) rd.onclick=()=>{state.rkind='daily'; render();};
   const rw=v.querySelector('#rkW'); if(rw) rw.onclick=()=>{state.rkind='weekly'; render();};
+  const rh=v.querySelector('#rkH'); if(rh) rh.onclick=()=>{state.rkind='handover'; render();};
   const shift=n=>{ const dt=new Date(state.date+'T00:00:00'); dt.setDate(dt.getDate()+n); state.date=dt.toISOString().slice(0,10); render(); };
   const wp=v.querySelector('#wkPrev'); if(wp) wp.onclick=()=>shift(-7);
   const wn=v.querySelector('#wkNext'); if(wn) wn.onclick=()=>shift(7);
   const ws=v.querySelector('#wlWho'); if(ws) ws.onchange=()=>{state.wlWho=ws.value; render();};
   const lt=loginTeacher();
-  const canBrowseOthers = !lt || state.rkind==='weekly';
+  const canBrowseOthers = !lt || state.rkind==='weekly' || state.rkind==='handover';
   const who = (canBrowseOthers && state.wlWho) ? state.wlWho : curWho();
   const viewingOthers = lt && !isMgr() && who!==whoKey(lt);
   if(whoTeacher(who)){
     if(state.rkind==='daily') bindJournal(who, state.date);
-    else bindWeekPlan(who, weekOf(state.date), viewingOthers);
+    else if(state.rkind==='weekly') bindWeekPlan(who, weekOf(state.date), viewingOthers);
+    else bindHandover(who, state.date.slice(0,7), viewingOthers);
   }
 }
 
