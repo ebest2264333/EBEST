@@ -2294,10 +2294,15 @@ function classProgress(c){
 }
 function studentRow(k, s, showClass, c){
   const rec=mRecords()[k]||{}; const r=rec[s]||{};
+  const stRec=matchStudentByRosterName(c.academy, s);
+  const preCheck=stRec?(stRec.preCheck||''):'';
   return `<div class="srow">
     <input type="checkbox" data-k="${esc(k)}" data-s="${esc(s)}" ${r.done?'checked':''}>
     <span class="sn ${r.done?'done':''}">${hl(s)}${showClass?`<span class="cls">${esc(c.name)} · ${AC[c.academy].label}</span>`:''}</span>
-    <textarea placeholder="상담 내용 메모…" data-k="${esc(k)}" data-s="${esc(s)}">${esc(r.memo||'')}</textarea>
+    <div style="display:flex;flex-direction:column;gap:5px">
+      ${preCheck?`<div style="font-size:.76rem;color:#b45309;background:#fff8ec;border:1px solid #f0dcae;border-radius:7px;padding:5px 8px">🔎 상담 전 확인: ${esc(preCheck)}</div>`:''}
+      <textarea placeholder="상담 내역…" data-k="${esc(k)}" data-s="${esc(s)}">${esc(r.memo||'')}</textarea>
+    </div>
     <input type="date" class="dtin" title="상담일자" data-k="${esc(k)}" data-s="${esc(s)}" value="${esc(r.date||'')}" style="border:1px solid var(--line);border-radius:8px;padding:5px 7px;font-family:inherit;font-size:.78rem;color:var(--sub)"></div>`;
 }
 function ensureAssign(){
@@ -2855,6 +2860,7 @@ function renderToday(list){
     const mine = lt && teacherTeaches(c,lt);
     const daySubjects=(c.subjects||[]).filter(s=>subjOnDay(s,wd)&&!isWordTestSubject(s));
     const teas=[...new Set(daySubjects.map(s=>s.teacher).filter(Boolean))];
+    const subjNames=[...new Set(daySubjects.map(s=>s.subject).filter(Boolean))];
     let attKeys=attKeysFor(c, wd);
     const mySubjSet=mySubjectKeys(c, wd, lt);
     if(mySubjSet){ const filtered=attKeys.filter(x=>x.subject==null || mySubjSet.has(x.subject)); if(filtered.length) attKeys=filtered; }
@@ -2933,7 +2939,7 @@ function renderToday(list){
     const cardOpen = state.todayOpen && state.todayOpen[k];
     h+=`<div class="ccard ${cardOpen?'open':''}" id="tc-${esc(k).replace(/[^0-9A-Za-z가-힣]/g,'_')}" style="border-left-color:${mine&&lt?lt.t.color:AC[c.academy].color}">
       <div class="chead" data-toggle="${esc(k)}"><span class="arrow">▶</span>
-        <h3>${hl(c.name)}</h3>${bdg(c.academy)}
+        <h3>${hl(c.name)}${subjNames.length?' · '+esc(subjNames.join(', ')):''}</h3>${bdg(c.academy)}
         <span style="font-size:.76rem;color:var(--sub)">${esc(cdays(c))}${teas.length?' · 담당: '+esc(teas.join(', ')):''}</span>
         ${c.students&&c.students.length?`<span class="prg">출석 ${present}/${c.students.length} · 숙제 ${hwdone}/${c.students.length}</span>`:''}
       </div><div class="cbody">${body}</div></div>`;
