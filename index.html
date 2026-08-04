@@ -562,19 +562,14 @@ function startSyncLoop(){
 function academies(){ return MODE==='all' ? ['ebest','icon'] : [MODE]; }
 function monthsOf(a){
   const s=new Set(Object.keys(CLASSDATA[a]||{}));
-  for(const k in store.uploads){
-    const [m,aa]=k.split('|'); if(aa!==a) continue;
-    const tomb=store.uploadTombstones[k]||0, stamp=store.uploadStamps[k]||0;
-    if(tomb && stamp<=tomb) continue; // 삭제된 업로드 자료는 월 목록에서 제외
-    s.add(m);
-  }
+  for(const k in store.uploads){ const [m,aa]=k.split('|'); if(aa===a) s.add(m); }
   return [...s].sort();
 }
 function dataFor(a,m){
   const key=m+'|'+a;
   const d=store.uploads[key];
-  const tomb=store.uploadTombstones[key]||0, stamp=store.uploadStamps[key]||0;
-  if(d && (!tomb || stamp>tomb)) return d.filter(c=>!c._deleted);
+  if(d) return d.filter(c=>!c._deleted);
+  if(store.uploadTombstones[key]) return []; // 명시적으로 삭제된 자료 — 내장 예시자료로 되돌아가지 않음
   return (CLASSDATA[a]||{})[m];
 }
 function allDataMonths(){ const s=new Set(); academies().forEach(a=>monthsOf(a).forEach(m=>s.add(m))); return [...s].sort(); }
@@ -605,11 +600,9 @@ function classesFor(month){
 function genClassId(){ return 'c'+Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
 function editArr(a,m){
   const key=m+'|'+a;
-  const tomb=store.uploadTombstones[key]||0, stamp=store.uploadStamps[key]||0;
-  const isDeleted = tomb && stamp<=tomb;
-  if(!store.uploads[key] || isDeleted){
-    store.uploads[key]=JSON.parse(JSON.stringify((CLASSDATA[a]||{})[m]||[]));
-    store.uploadStamps[key]=Date.now(); // 편집을 시작하면 삭제된 자료라도 다시 살아있는 것으로 취급
+  if(!store.uploads[key]){
+    // 예전에 이 자료를 명시적으로 삭제한 적이 있으면(tombstone) 내장 예시자료로 되살리지 않고 빈 채로 시작한다
+    store.uploads[key] = store.uploadTombstones[key] ? [] : JSON.parse(JSON.stringify((CLASSDATA[a]||{})[m]||[]));
   }
   let changed=false;
   const teachersArr=store.teachers[a]||[];
@@ -1635,6 +1628,18 @@ function resetStudentDB(){
   });
   save(); refreshMonthSel(); render();
   alert('학생 DB를 초기화했습니다. 이제 [학생 명단]과 [반 · 교재] 탭에서 새로 입력해주세요.');
+}
+function forceWipeMonthClasses(a, m){
+  if(!isAdminRole()) return;
+  const cur=(store.uploads[m+'|'+a]||[]).filter(c=>!c._deleted).length;
+  if(!confirm(`⚠ ${mLabel(m)} ${AC[a].label}의 반 데이터(현재 ${cur}개 — 중복된 것 포함)를 통째로 완전히 비웁니다.\n학생 명단(store.students)이나 다른 달 자료는 건드리지 않습니다.\n삭제 후에는 되돌릴 수 없습니다 — 먼저 [데이터 내보내기]로 백업해두는 것을 권장합니다.\n\n정말 진행할까요?`)) return;
+  const check=prompt('정말 확실하다면 아래 칸에 정확히 "초기화"라고 입력해주세요.');
+  if(check!=='초기화'){ alert('입력이 일치하지 않아 취소되었습니다.'); return; }
+  const key=m+'|'+a;
+  store.uploads[key]=[]; // 중복까지 포함해 통째로 비움
+  store.uploadTombstones[key]=Date.now();
+  save(); refreshMonthSel(); render();
+  alert(`${mLabel(m)} ${AC[a].label} 반 데이터를 완전히 비웠습니다. 이제 엑셀을 다시 업로드하거나 [+ 새 반 추가]로 새로 입력해주세요.`);
 }
 function bulkRenameClass(oldName){
   const inp=document.getElementById('rsBulkClassName');
@@ -4628,7 +4633,7 @@ function renderSet(){
       <button class="btn mup" data-a="${a}">⬆ ${AC[a].label} 마스터 업로드</button></div>`).join('')}
     </div>`;
   // 업로드 (관리자만 상세)
-  const upKeys=Object.keys(store.uploads).filter(k=>{ const tomb=store.uploadTombstones[k]||0, stamp=store.uploadStamps[k]||0; return !tomb || stamp>tomb; }).sort();
+  const upKeys=Object.keys(store.uploads).filter(k=>{ const d=store.uploads[k]; return d && d.some(c=>!c._deleted); }).sort();
   if(!isTeacher) h+=`<div class="setsec"><h3>엑셀 파일 업로드 (마스터 · 월별 · 연간 · 학사일정)</h3>
     <div class="desc">위 "데이터 마스터 다운로드"로 받은 엑셀에 자료를 채워서 올리면 그 달의 반·학생·교재 정보가 자동 반영됩니다.
     시트 이름이 <b>「2026-08 이베스트」</b>, <b>「2026-08 아이콘」</b> 형식이면 여러 달·여러 학원을 한 파일에 담아 한 번에 올릴 수 있습니다.
@@ -4705,6 +4710,18 @@ function renderSet(){
   if(!isTeacher) h+=`<div class="setsec" style="border:2px solid #c0392b"><h3>⚠ 학생 DB 초기화</h3>
     <div class="desc">현재 꼬여있는 학생 명단과 모든 반의 학생 배정을 <b>전부 삭제</b>하고 새로 입력하려 할 때 사용하세요. 반·과목·교재·시간표 등 다른 자료는 그대로 남습니다. <b>되돌릴 수 없는 작업</b>이니, 먼저 아래 [데이터 내보내기]로 백업을 남겨두는 것을 강력히 권장합니다.</div>
     <button class="btn" style="color:#c0392b;border-color:#e7b3ab" id="resetStudentDbBtn">🗑 학생 명단 · 반 학생 배정 전체 삭제</button>
+  </div>`;
+  if(!isTeacher) h+=`<div class="setsec" style="border:2px solid #c0392b"><h3>⚠ 특정 달 반 데이터 완전 초기화 (중복 정리용)</h3>
+    <div class="desc">동기화 오류 등으로 반이 중복되어 꼬였을 때, 그 달의 반 데이터를 통째로 비우고 새로 시작할 때 사용하세요. 학생 명단·다른 달 자료는 영향받지 않습니다. <b>되돌릴 수 없는 작업</b>이니 먼저 백업을 권장합니다.</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <select id="wipeAcSel" style="padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
+        ${academies().map(a=>`<option value="${a}">${AC[a].label}</option>`).join('')}
+      </select>
+      <select id="wipeMoSel" style="padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
+        ${monthOptions().map(m=>`<option value="${m}" ${m===state.month?'selected':''}>${mLabel(m)}</option>`).join('')}
+      </select>
+      <button class="btn" style="color:#c0392b;border-color:#e7b3ab" id="wipeMonthBtn">🗑 이 달 반 데이터 통째로 비우기</button>
+    </div>
   </div>`;
   if(!isTeacher) h+=`<div class="setsec"><h3>📖 단어장 목록 관리</h3>
     <div class="desc">단어시험 입력 시 선택할 수 있는 단어장 목록입니다. 추가·삭제하면 모든 선생님 화면에 바로 반영됩니다.</div>
@@ -4885,7 +4902,7 @@ function bindSet(){
       const yks=Object.keys(yearly).filter(k=>!k.startsWith('_count_')&&k!=='_calendar');
       const calN=yearly['_calendar']?yearly['_calendar'].length:0;
       if(!ks.length && !yks.length && !calN){ alert('반영할 시트를 찾지 못했습니다.\n월별 시트는 「2026-08 이베스트」, 연간교재 시트는 「연간 이베스트」 형식이어야 합니다.'+(skipped.length?'\n\n건너뛴 시트: '+skipped.join(', '):'')); return; }
-      ks.forEach(k=>{ store.uploads[k]=found[k]; store.uploadStamps[k]=Date.now(); });
+      ks.forEach(k=>{ store.uploads[k]=found[k]; delete store.uploadTombstones[k]; });
       yks.forEach(k=>{ if(k!=='_calendar') store.bookedit[k]=yearly[k]; });
       if(yearly['_calendar']){
         if(UPFILTER){
@@ -4940,6 +4957,12 @@ function bindSet(){
     store.teachers[a].push({id:'teacher_'+a+'_new_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6), name:'새 선생님',color:c,updatedAt:Date.now()}); save(); render(true);
   });
   const rsdb=v.querySelector('#resetStudentDbBtn'); if(rsdb) rsdb.onclick=resetStudentDB;
+  const wipeBtn=v.querySelector('#wipeMonthBtn');
+  if(wipeBtn) wipeBtn.onclick=()=>{
+    const acSel=v.querySelector('#wipeAcSel'), moSel=v.querySelector('#wipeMoSel');
+    if(!acSel||!moSel) return;
+    forceWipeMonthClasses(acSel.value, moSel.value);
+  };
   v.querySelectorAll('[data-wbdel]').forEach(b=>b.onclick=()=>{
     if(!isAdminRole())return;
     const i=Number(b.dataset.wbdel);
