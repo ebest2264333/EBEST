@@ -1144,7 +1144,7 @@ function renderAI(){
         <label>반</label><select id="aiC"><option value="">반 선택…</option>${cls.map(c=>`<option ${p.cls&&c.name===p.cls.name?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
         <label>학생</label><select id="aiS">${stuOpts}</select>
       </div>
-      <textarea id="aiM">${esc(p.content)}</textarea>
+      <textarea id="aiM">${esc(p.content)}</textarea> 
       <div style="display:flex;gap:8px">
         <button class="btn primary" id="aiSave" style="background:${lt.t.color};border-color:${lt.t.color}">저장</button>
         <button class="btn" id="aiCancel">취소</button>
@@ -2836,7 +2836,7 @@ function attKeysFor(c, wd){
   daySubjects.forEach(s=>{ const nm=s.subject||'-'; if(repTime[nm]==null && s.time) repTime[nm]=s.time; });
   const withOrder=names.map((nm,idx)=>{
     const r=repTime[nm]?parseRange(repTime[nm]):null;
-    return {subject:nm, key:k+'#'+nm, t:r?r[0]:(1000+idx)}; // 시간 정보 없으면 원래 순서를 유지하도록 뒤로 밀어둠
+    return {subject:nm, key:k+'_'+nm, t:r?r[0]:(1000+idx)}; // 시간 정보 없으면 원래 순서를 유지하도록 뒤로 밀어둠
   });
   withOrder.sort((a,b)=>a.t-b.t);
   return withOrder.map(({subject,key})=>({subject,key}));
