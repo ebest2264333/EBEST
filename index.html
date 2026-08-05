@@ -4198,9 +4198,9 @@ function weekPlanForm(who, days, readOnly){
 }
 function bindWeekPlan(who, days, readOnly){
   const v=document.getElementById('view'); const wp=wpGet(who,days[0],days);
-  if(readOnly) return; // 조회 전용 — 편집 이벤트 바인딩하지 않음
+  if(readOnly) return; // 조회 전용 — 편집 이벤트 바인딩하지 안함
   
-  v.querySelectorAll('.wp-c').forEach(inp=>inp.onchange=()=>{
+  v.querySelectorAll('.wp-c').forEach(inp=>inp.onchange= async ()=>{
     const idx = Number(inp.dataset.i); // 몇 번째 줄인지
     const field = inp.dataset.f; // 어떤 칸을 수정했는지 (cls, book, hw, prog 등)
     const val = inp.value; // 수정한 내용
@@ -4231,17 +4231,31 @@ function bindWeekPlan(who, days, readOnly){
         }
     }
 
-    save(); // 전체 저장
+    await saveAndSync(); // 파이어베이스 실시간 동기화 및 저장 호출로 변경
     if(field === 'date') render(true);
   });
-  
-  v.querySelectorAll('.wp-del').forEach(b=>b.onclick=()=>{ wp.rows.splice(Number(b.dataset.i),1); save(); render(true); });
-  const ad=v.querySelector('#wpAdd'); if(ad) ad.onclick=()=>{
-    const last=wp.rows[wp.rows.length-1];
-    wp.rows.push({date:last?last.date:days[0],cls:'',book:'',prog:'',test:'',hw:'',mprog:''}); save(); render(true); };
-  const rf=v.querySelector('#wpRefill'); if(rf) rf.onclick=()=>{
-    if(!confirm('이번 주 계획표를 학원 자료 기준으로 다시 채울까요? (직접 수정한 내용은 지워집니다)')) return;
-    wp.rows=autoWeekRows(who,days); save(); render(true);
+
+  const addBtn = v.querySelector('#wpAdd');
+  if(addBtn) addBtn.onclick = async ()=>{
+    wp.rows.push({date: days[0], cls:'', book:'', prog:'', test:'', hw:'', mprog:''});
+    await saveAndSync();
+    render(true);
+  };
+
+  v.querySelectorAll('.wp-del').forEach(b=>b.onclick = async ()=>{
+    const idx = Number(b.dataset.i);
+    if(!confirm('이 줄을 삭제할까요?')) return;
+    wp.rows.splice(idx, 1);
+    await saveAndSync();
+    render(true);
+  });
+
+  const refBtn = v.querySelector('#wpRefill');
+  if(refBtn) refBtn.onclick = async ()=>{
+    if(!confirm('주간 진도계획표를 학원 자료 기준으로 다시 채울까요? (직접 수정한 내용은 지워집니다)')) return;
+    wp.rows = autoWeekRows(who, days);
+    await saveAndSync();
+    render(true);
   };
 }
 function repWeekPlan(who, days){
