@@ -38,16 +38,29 @@ select#month{padding:8px 13px;border-radius:10px;border:1px solid rgba(255,255,2
 .searchrow{display:flex;gap:10px;margin:13px 0 11px}
 #q{flex:1;min-width:200px;padding:10px 15px;border:1px solid rgba(255,255,255,.12);border-radius:11px;font-size:1rem;color:var(--ink);background:#fff;box-shadow:var(--shadow)}
 #q:focus{outline:3px solid #7b93e8}
-.tabs{display:flex;gap:2px;max-width:1180px;margin:0 auto;flex-wrap:nowrap;overflow:hidden}
-.tab{background:transparent;border:none;color:#9aa3c4;font-size:.89rem;font-weight:700;padding:10px 15px;cursor:pointer;border-radius:10px 10px 0 0;transition:color .12s ease,background-color .12s ease}
-.tab:hover{color:#e3e7fb}
-.tab.on{background:var(--bg);color:var(--ink)}
-.tab .dot{display:inline-block;min-width:18px;padding:0 5px;border-radius:9px;background:var(--warn);color:#fff;font-size:.7rem;margin-left:4px;font-weight:800}
+/* ---------- 왼쪽 세로 탭(사이드바) 레이아웃 ---------- */
+.shell{max-width:1400px;margin:0 auto;display:flex;align-items:flex-start;gap:0}
+.sidebar{flex:0 0 190px;position:sticky;top:0;align-self:flex-start;max-height:100vh;overflow-y:auto;padding:14px 10px 24px;background:#fff;border-right:1px solid var(--line);box-shadow:1px 0 0 rgba(28,39,64,.02)}
+.content{flex:1;min-width:0}
+.tabs{display:flex;flex-direction:column;gap:3px}
+.tab{background:transparent;border:none;color:#5b6480;font-size:.89rem;font-weight:700;padding:10px 13px;cursor:pointer;border-radius:10px;transition:color .12s ease,background-color .12s ease;text-align:left;width:100%;font-family:inherit;display:flex;align-items:center;gap:6px}
+.tab:hover{background:#f2f4f9;color:var(--ink)}
+.tab.on{background:var(--ink);color:#fff}
+.tab .dot{display:inline-block;min-width:18px;padding:0 5px;border-radius:9px;background:var(--warn);color:#fff;font-size:.7rem;margin-left:auto;font-weight:800}
 .morewrap{position:relative}
-.moremenu{position:absolute;top:100%;right:0;background:#fff;border:1px solid var(--line);border-radius:13px;box-shadow:var(--shadow-lg);padding:6px;display:none;z-index:50;min-width:154px}
+.moremenu{position:absolute;left:0;top:100%;background:#fff;border:1px solid var(--line);border-radius:13px;box-shadow:var(--shadow-lg);padding:6px;display:none;z-index:50;min-width:170px}
 .moremenu.open{display:block}
-.moremenu button{display:block;width:100%;text-align:left;border:none;background:none;padding:9px 13px;font-size:.88rem;font-weight:700;color:var(--ink);border-radius:9px;cursor:pointer}
+.moremenu button{display:block;width:100%;text-align:left;border:none;background:none;padding:9px 13px;font-size:.88rem;font-weight:700;color:var(--ink);border-radius:9px;cursor:pointer;font-family:inherit}
 .moremenu button:hover{background:#f2f4f9}
+/* 좁은 화면(태블릿·휴대폰)에서는 예전처럼 가로 탭으로 되돌린다 */
+@media(max-width:900px){
+  .shell{display:block}
+  .sidebar{position:static;max-height:none;flex:none;padding:0 12px;border-right:none;border-bottom:1px solid var(--line);overflow-x:auto}
+  .tabs{flex-direction:row;flex-wrap:nowrap;gap:2px}
+  .tab{width:auto;border-radius:10px 10px 0 0;white-space:nowrap}
+  .tab .dot{margin-left:4px}
+  .moremenu{left:auto;right:0}
+}
 
 .filters{max-width:1180px;margin:14px auto 4px;padding:0 20px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .chip{border:1.5px solid var(--line);background:#fff;color:var(--sub);border-radius:999px;padding:6px 14px;font-size:.83rem;font-weight:700;cursor:pointer;transition:border-color .12s ease,background-color .12s ease,color .12s ease,box-shadow .12s ease}
@@ -283,14 +296,18 @@ footer{max-width:1180px;margin:0 auto;padding:0 20px 40px;font-size:.73rem;color
     </div>
     <div class="searchrow"><input id="q" type="search" placeholder="학생 이름 · 반 이름 · 교재명으로 검색"></div>
   </div>
-  <nav class="tabs" id="tabsnav"></nav>
 </header>
 
-<div class="filters" id="filters"></div>
-<div class="toolbar"><button class="btn small" id="printBtn">🖨 인쇄 · PDF</button><button class="btn small" id="xlsBtn">⬇ 엑셀</button></div>
-<div class="srcnote" id="srcnote"></div>
-<main><div id="view"></div></main>
-<footer>선생님 설정·상담 기록·업로드 자료는 이 브라우저에 자동 저장됩니다. 다른 컴퓨터로 옮길 때는 [설정 → 데이터 내보내기/가져오기]를 사용하세요. PDF는 [인쇄 → 대상: PDF로 저장]을 선택하면 됩니다.</footer>
+<div class="shell">
+  <aside class="sidebar"><nav class="tabs" id="tabsnav"></nav></aside>
+  <div class="content">
+    <div class="filters" id="filters"></div>
+    <div class="toolbar"><button class="btn small" id="printBtn">🖨 인쇄 · PDF</button><button class="btn small" id="xlsBtn">⬇ 엑셀</button></div>
+    <div class="srcnote" id="srcnote"></div>
+    <main><div id="view"></div></main>
+    <footer>선생님 설정·상담 기록·업로드 자료는 이 브라우저에 자동 저장됩니다. 다른 컴퓨터로 옮길 때는 [설정 → 데이터 내보내기/가져오기]를 사용하세요. PDF는 [인쇄 → 대상: PDF로 저장]을 선택하면 됩니다.</footer>
+  </div>
+</div>
 <div class="saved" id="saved">저장됨 ✓</div>
 <div id="loginwrap"><div class="logincard">
   <h1 id="lgTitle"></h1><div class="lsub">학원 업무 대시보드 — 사용자를 선택하고 로그인하세요</div>
@@ -348,6 +365,7 @@ if(!store.bookedit) store.bookedit={};
 if(!store.bookGiven) store.bookGiven={};
 if(!store.uploadTombstones) store.uploadTombstones={};
 if(!store.uploadStamps) store.uploadStamps={};
+if(!store.fieldStamps) store.fieldStamps={};
 if(!store.wordbookOptions) store.wordbookOptions=['초등 베이직','초등 컴플리트','중등 실력','중등 고난도','고등 베이직','수능 2000','하이스트','하이퍼'];
 if(!store.submits) store.submits=[];
 if(store.adminEmail==null) store.adminEmail='';
@@ -395,6 +413,13 @@ if(!store.wordTests) store.wordTests=[];
 if(!store.sharedAt) store.sharedAt=0;
 if(!store.inboxDone) store.inboxDone={};
 const SHARE_FIELDS=['uploads','bookedit','bookdone','daysedit','timeedit','calendar','meetings','teachers','adminEmail','enrollment','newStudents','students','admissionConsults','wordTests','attend','homework','stayback','bookGiven','uploadTombstones','uploadStamps','wordbookOptions'];
+// 반 자료·학생 명단처럼 "삭제"가 중요한 항목은 병합하지 않고 통째로 교체한다(마지막 저장이 우선).
+// 병합 방식(mergeById)에는 삭제라는 개념이 없어서, 지운 반·학생이 다른 기기 자료와 합쳐지며 계속 되살아나기 때문.
+const REPLACE_FIELDS=['uploads','students','teachers','bookedit','bookdone','daysedit','timeedit','wordbookOptions'];
+// 출결·숙제 등은 여러 선생님이 동시에 서로 다른 학생을 입력하므로 기존처럼 병합해야 안전하다.
+function isReplaceField(f){ return REPLACE_FIELDS.includes(f); }
+// 각 항목을 마지막으로 편집한 시각 — 교체 방식에서 "누가 더 최신인지" 판단에 사용
+function stampField(f){ store.fieldStamps=store.fieldStamps||{}; store.fieldStamps[f]=Date.now(); }
 if(!store.teachers) store.teachers = {
   ebest:[{name:'Alice',color:PALETTE[0]},{name:'Sunny',color:PALETTE[1]},{name:'Joy',color:PALETTE[2]},{name:'May',color:PALETTE[3]},{name:'Matilda',color:PALETTE[4]},{name:'Daniel',color:PALETTE[5]},{name:'Raina',color:PALETTE[6]}],
   icon:[{name:'수진T',color:PALETTE[0]},{name:'윤서T',color:PALETTE[1]},{name:'주은T',color:PALETTE[2]}]
@@ -414,7 +439,11 @@ if(!store.teachersIdMigrated){
 }
 // 단어시험 담당(선생님 순번→고유id 변환)은 반 자료를 실제로 불러올 때(editArr) 그때그때 처리합니다.
 let saveTimer=null;
-function save(){ localStorage.setItem(KEY, JSON.stringify(store));
+function save(){
+  // 어떤 값이든 바뀌면 그 즉시 이 기기에 저장되고, 곧바로 서버로도 올라간다(글자 하나만 고쳐도 반영)
+  store.fieldStamps=store.fieldStamps||{};
+  REPLACE_FIELDS.forEach(f=>{ store.fieldStamps[f]=Date.now(); });
+  localStorage.setItem(KEY, JSON.stringify(store));
   const el=document.getElementById('saved'); el.classList.add('show');
   clearTimeout(saveTimer); saveTimer=setTimeout(()=>el.classList.remove('show'),900);
   if(MODE==='all' || isAdminRole() || loginTeacher()) schedulePushShared(); }
@@ -426,8 +455,8 @@ function syncBase(){
   if(!/^https:\/\//.test(u)) u='https://'+u;
   return u+'/academies/'+encodeURIComponent(store.sync.code.trim());
 }
-async function fbGet(path){ const r=await fetch(syncBase()+path+'.json'); if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }
-async function fbPut(path, data){ const r=await fetch(syncBase()+path+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}); if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }
+async function fbGet(path){ const r=await fetch(syncBase()+path+'.json'); if(!r.ok){ let body=''; try{ body=await r.text(); }catch(e){} throw new Error('HTTP '+r.status+(body?' — '+body.slice(0,200):'')); } return r.json(); }
+async function fbPut(path, data){ const r=await fetch(syncBase()+path+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}); if(!r.ok){ let body=''; try{ body=await r.text(); }catch(e){} throw new Error('HTTP '+r.status+(body?' — '+body.slice(0,200):'')); } return r.json(); }
 async function fbDel(path){ await fetch(syncBase()+path+'.json',{method:'DELETE'}); }
 function toast(msg){ const el=document.getElementById('saved'); el.textContent=msg; el.classList.add('show');
   clearTimeout(saveTimer); saveTimer=setTimeout(()=>{el.classList.remove('show'); el.textContent='저장됨 ✓';},2200); }
@@ -437,7 +466,8 @@ let pushTimer=null, syncBusy=false;
 function schedulePushShared(){
   if(!syncOn()) return;
   clearTimeout(pushTimer);
-  pushTimer=setTimeout(pushShared, 2000);
+  // 타자 치는 중에 매 글자마다 전송하면 느려지므로, 입력이 잠깐 멈추면(0.4초) 곧바로 올린다
+  pushTimer=setTimeout(pushShared, 400);
 }
 function tsOf(v){
   // updatedAt(숫자 타임스탬프)와 createdAt("2026-07-28" 같은 날짜 문자열)을 같은 기준으로 비교하기 위해 통일된 숫자로 변환
@@ -484,12 +514,22 @@ async function pushShared(){
     let remotePack=null;
     try{ remotePack=await fbGet('/shared'); }catch(e){}
     if(remotePack){
+      const rStamps=remotePack.fieldStamps||{};
+      const lStamps=store.fieldStamps||{};
       SHARE_FIELDS.forEach(f=>{
         if(remotePack[f]==null) return;
+        if(isReplaceField(f)){
+          // 교체 방식: 서버 쪽이 더 나중에 편집된 경우에만 받아온다(아니면 내 것을 그대로 올려 덮어씀)
+          if((rStamps[f]||0) > (lStamps[f]||0)){
+            store[f]=remotePack[f];
+            store.fieldStamps=store.fieldStamps||{}; store.fieldStamps[f]=rStamps[f];
+          }
+          return;
+        }
         store[f]=mergeField(store[f], remotePack[f]);
       });
     }
-    const pack={updatedAt:Date.now()};
+    const pack={updatedAt:Date.now(), fieldStamps:store.fieldStamps||{}};
     SHARE_FIELDS.forEach(f=>pack[f]=store[f]);
     await fbPut('/shared', pack);
     store.sharedAt=pack.updatedAt;
@@ -506,7 +546,10 @@ async function forcePushShared(){
   if(syncBusy) return;
   try{
     syncBusy=true;
-    const pack={updatedAt:Date.now()};
+    // 이 기기 자료가 무조건 이기도록 모든 항목의 편집시각을 지금으로 찍어 올린다
+    store.fieldStamps=store.fieldStamps||{};
+    REPLACE_FIELDS.forEach(f=>{ store.fieldStamps[f]=Date.now(); });
+    const pack={updatedAt:Date.now(), fieldStamps:store.fieldStamps};
     SHARE_FIELDS.forEach(f=>pack[f]=store[f]);
     await fbPut('/shared', pack);
     store.sharedAt=pack.updatedAt;
@@ -533,8 +576,18 @@ async function pullShared(silent){
   try{
     const pack=await fbGet('/shared');
     if(pack && pack.updatedAt && pack.updatedAt>(store.sharedAt||0)){
+      const rStamps=pack.fieldStamps||{};
+      const lStamps=store.fieldStamps||{};
       SHARE_FIELDS.forEach(f=>{
         if(pack[f]==null) return;
+        if(isReplaceField(f)){
+          // 서버가 더 최신일 때만 통째로 받아온다 — 그래야 다른 기기에서 삭제한 내용이 제대로 반영된다
+          if((rStamps[f]||0) > (lStamps[f]||0)){
+            store[f]=pack[f];
+            store.fieldStamps=store.fieldStamps||{}; store.fieldStamps[f]=rStamps[f];
+          }
+          return;
+        }
         store[f]=mergeField(store[f], pack[f]);
       });
       store.sharedAt=pack.updatedAt;
@@ -570,8 +623,9 @@ async function pollInbox(){
 function startSyncLoop(){
   if(!syncOn()) return;
   pullShared(true);
-  if(MODE==='all'){ pollInbox(); setInterval(()=>{ pullShared(false); pollInbox(); }, 15000); }
-  else setInterval(()=>pullShared(false), 15000);
+  // 다른 사람이 바꾼 내용도 빨리 보이도록 5초마다 확인
+  if(MODE==='all'){ pollInbox(); setInterval(()=>{ pullShared(false); pollInbox(); }, 5000); }
+  else setInterval(()=>pullShared(false), 5000);
   document.addEventListener('visibilitychange',()=>{ if(!document.hidden){ pullShared(true); if(MODE==='all') pollInbox(); } });
 }
 
@@ -906,8 +960,16 @@ function adjustTabOverflow(){
   const tabButtons=[...nav.querySelectorAll('button.tab[data-tab]')];
   tabButtons.forEach(b=>b.style.display='');
   moreMenu.innerHTML=''; moreWrap.style.display='none';
+  // 넓은 화면에서는 탭이 왼쪽에 세로로 쌓이므로 넘칠 일이 없다 — 전부 그대로 보여준다
+  if(window.innerWidth>900) return;
   const navWidth=nav.clientWidth;
-  if(!navWidth) return; // 아직 화면에 그려지기 전이면 다음 기회에
+  if(!navWidth){
+    // 아직 화면에 그려지기 전(폭 0)이면 계산이 불가능하다.
+    // 예전에는 여기서 그냥 끝내버려서, 넘치는 탭들이 화면 밖으로 밀려나고 [더보기] 버튼도 안 생겨
+    // 설정 탭에 아예 들어갈 수 없는 상태가 됐다 → 다음 그리기 차례에 다시 계산하도록 예약한다
+    requestAnimationFrame(()=>{ if(document.getElementById('tabsnav')) adjustTabOverflow(); });
+    return;
+  }
   let total=0, overflowStart=-1;
   const moreBtnWidth=90;
   for(let i=0;i<tabButtons.length;i++){
@@ -915,6 +977,8 @@ function adjustTabOverflow(){
     if(total>navWidth-moreBtnWidth){ overflowStart=i; break; }
   }
   if(overflowStart>=0 && overflowStart<tabButtons.length){
+    // 최소 한 개는 남겨둬야 모든 탭이 사라지는 일이 없다
+    if(overflowStart===0) overflowStart=1;
     for(let i=overflowStart;i<tabButtons.length;i++){
       const b=tabButtons[i];
       b.style.display='none';
@@ -927,6 +991,8 @@ function adjustTabOverflow(){
     moreWrap.style.display='';
   }
 }
+// 창 크기가 바뀌면 넘침 계산을 다시 한다(예전에는 다시 계산하지 않아 탭이 잘린 채로 남았음)
+window.addEventListener('resize',()=>{ adjustTabOverflow(); });
 document.addEventListener('click',()=>{ const m=document.getElementById('moreMenu'); if(m) m.classList.remove('open'); });
 let tabResizeTimer=null;
 window.addEventListener('resize',()=>{ clearTimeout(tabResizeTimer); tabResizeTimer=setTimeout(adjustTabOverflow,150); });
@@ -1596,14 +1662,18 @@ function syncStudentClassRoster(student, oldClassName, oldNameKo){
     }
     // 현재 반에 (현재 이름으로) 없으면 추가 / 이름이 바뀐 경우 옛 이름이 남아있으면 새 이름으로 교체
     if(student.className){
-      const newC=arr.find(c=>c.name===student.className);
-      if(newC){
-        newC.students=newC.students||[];
-        const staleIdx=(oldClassName===student.className && oldNameKo!=null)?newC.students.indexOf(oldNameKo):-1;
-        if(staleIdx>=0) newC.students[staleIdx]=student.nameKo;
-        else if(!newC.students.includes(student.nameKo)) newC.students.push(student.nameKo);
-        newC.count=newC.students.length; newC.updatedAt=Date.now();
+      let newC=arr.find(c=>c.name===student.className);
+      if(!newC){
+        // 반·교재 탭에 아직 없는 반 이름을 학생 명단에서 입력한 경우 → 그 반을 새로 만들어 준다
+        // (예전에는 기존 반에만 넣어줘서, 새 반 이름을 적으면 반·교재 탭에 아무것도 안 생겼음)
+        newC={_id:genStudentId(), academy:student.academy, name:student.className, dept:'', days:'', time:'', students:[], count:0, subjects:[], updatedAt:Date.now()};
+        arr.push(newC);
       }
+      newC.students=newC.students||[];
+      const staleIdx=(oldClassName===student.className && oldNameKo!=null)?newC.students.indexOf(oldNameKo):-1;
+      if(staleIdx>=0) newC.students[staleIdx]=student.nameKo;
+      else if(!newC.students.includes(student.nameKo)) newC.students.push(student.nameKo);
+      newC.count=newC.students.length; newC.updatedAt=Date.now();
     }
   });
 }
@@ -5315,14 +5385,25 @@ document.getElementById('xlsBtn').onclick=()=>{
 /* ---------- 렌더 ---------- */
 function render(keepOpen){
   const openKeys = keepOpen ? [...document.querySelectorAll('.ccard.open .chead')].map(h=>h.dataset.toggle) : [];
-  ensureAssign();
-  refreshLoginSel();
-  buildTabs();
+  try{ ensureAssign(); }catch(e){ console.error('ensureAssign 오류', e); }
+  try{ refreshLoginSel(); }catch(e){ console.error('refreshLoginSel 오류', e); }
+  try{
+    buildTabs();
+  }catch(tabErr){
+    // 탭바 자체를 만드는 중 오류가 나면, 최소한 설정 탭으로는 항상 들어갈 수 있도록 안전판 역할의 탭바를 직접 그려준다
+    console.error('buildTabs 오류 — 안전 탭바로 대체', tabErr);
+    const nav=document.getElementById('tabsnav');
+    if(nav){
+      nav.innerHTML='<button class="tab" data-tab="set">⚠ 설정(안전모드)</button>';
+      nav.querySelector('[data-tab="set"]').onclick=()=>{ state.tab='set'; render(); };
+    }
+  }
   const simpleHome = !!loginTeacher() && state.tab==='today';
   const sr=document.querySelector('.searchrow'); if(sr) sr.style.display = simpleHome?'none':'';
   const fl=document.getElementById('filters'); fl.style.display = simpleHome?'none':'';
-  buildFilters();
-  const list=filtered(); const v=document.getElementById('view');
+  try{ buildFilters(); }catch(e){ console.error('buildFilters 오류', e); }
+  let list=[]; try{ list=filtered(); }catch(e){ console.error('filtered 오류', e); }
+  const v=document.getElementById('view');
   try{
   if(state.tab==='dash'){
     v.innerHTML = (state.sub==='class'?renderClass(list):state.sub==='book'?renderBook(list):renderStudent(list));
@@ -5371,11 +5452,14 @@ function render(keepOpen){
   if(st){ const cnt=a=>list.filter(c=>c.academy===a).reduce((n,c)=>n+(c.count||0),0);
     st.innerHTML=academies().map(a=>`${AC[a].label} <b>${list.filter(c=>c.academy===a).length}반 / ${cnt(a)}명</b>`).join(' · ');
   }
-  const srcs=[]; if(state.tab!=='yearly'&&state.tab!=='set') classesFor(state.month).forEach(c=>{ if(c._src!==state.month){ const tag=AC[c.academy].label+'|'+c._src; if(!srcs.includes(tag)) srcs.push(tag);} });
-  document.getElementById('srcnote').textContent = (loginTeacher()||!srcs.length)? '' : srcs.length? '※ 선택한 달의 교재 자료가 없어 최근 자료를 표시 중: '+srcs.map(s=>{const[l,m]=s.split('|');return l+' '+mLabel(m)+' 자료';}).join(' / ') : '';
-  const un=classesFor(state.month).filter(c=>!(store.assign[state.month]&&store.assign[state.month][ckey(c)]!=null)).length;
-  const pd=document.getElementById('pending');
-  pd.style.display=un?'':'none'; pd.textContent=un;
+  try{
+    const srcs=[]; if(state.tab!=='yearly'&&state.tab!=='set') classesFor(state.month).forEach(c=>{ if(c._src!==state.month){ const tag=AC[c.academy].label+'|'+c._src; if(!srcs.includes(tag)) srcs.push(tag);} });
+    const srcEl=document.getElementById('srcnote');
+    if(srcEl) srcEl.textContent = (loginTeacher()||!srcs.length)? '' : srcs.length? '※ 선택한 달의 교재 자료가 없어 최근 자료를 표시 중: '+srcs.map(s=>{const[l,m]=s.split('|');return l+' '+mLabel(m)+' 자료';}).join(' / ') : '';
+    const un=classesFor(state.month).filter(c=>!(store.assign[state.month]&&store.assign[state.month][ckey(c)]!=null)).length;
+    const pd=document.getElementById('pending');
+    if(pd){ pd.style.display=un?'':'none'; pd.textContent=un; }
+  }catch(tailErr){ console.error('렌더 마무리 단계 오류', tailErr); }
   bindSubmit();
   mountAI();
   renderBell();
