@@ -1522,7 +1522,7 @@ function renderTimetableWeek(list){
   if(!times.length){
     grid='<div class="empty">시간이 입력된 반·과목이 없습니다. 반 편집에서 시간을 입력해주세요.</div>';
   } else {
-    grid=`<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;min-width:${(showDays.length+1)*130}px">
+    grid=`<div style="overflow:auto;max-height:74vh;border:1px solid var(--line);border-radius:10px"><table style="border-collapse:collapse;width:100%;min-width:${(showDays.length+1)*130}px">
       <thead><tr>
         <th style="border:1px solid var(--line);padding:6px 10px;background:#f6f8fc;position:sticky;top:0;left:0;z-index:3">시간</th>
         ${showDays.map(d=>`<th style="border:1px solid var(--line);padding:6px 10px;background:#f6f8fc;position:sticky;top:0;z-index:2">${d}요일</th>`).join('')}
