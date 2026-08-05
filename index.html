@@ -2984,7 +2984,14 @@ function attStatusAgg(c, wd, sname, atForDate){
 }
 function wordDutyForDay(c,wd){
   if(c.wordDutyByDay && c.wordDutyByDay[wd]!=null && c.wordDutyByDay[wd]!=='') return c.wordDutyByDay[wd];
-  return (c.wordDuty!=null && c.wordDuty!=='') ? c.wordDuty : null;
+  if(c.wordDuty!=null && c.wordDuty!=='') return c.wordDuty;
+  // 합반된 반은 보통 단어시험 담당을 따로 지정하지 않으므로, 합반 상대 반의 담당을 그대로 따라간다
+  const mp=mergedCounterpart(c);
+  if(mp){
+    if(mp.wordDutyByDay && mp.wordDutyByDay[wd]!=null && mp.wordDutyByDay[wd]!=='') return mp.wordDutyByDay[wd];
+    if(mp.wordDuty!=null && mp.wordDuty!=='') return mp.wordDuty;
+  }
+  return null;
 }
 // 저장된 담당값(선생님 id, 또는 예전 데이터의 인덱스)으로부터 실제 선생님을 찾는다.
 function teacherByDutyVal(academy, val){
