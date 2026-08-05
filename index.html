@@ -1265,6 +1265,19 @@ function mergedPartnerClass(c){
   const arr=editArr(c.academy, c._src||state.month);
   return arr.find(x=>x._id===c.mergedWith)||null;
 }
+function mergedMainClass(c){
+  // c가 다른 반의 합반 상대(파트너)로 지정되어 있다면, 합반을 설정한 쪽(메인) 반을 반대 방향으로 찾아준다
+  const arr=editArr(c.academy, c._src||state.month);
+  return arr.find(x=>{
+    if(!x.mergedWith || x.name===c.name) return false;
+    const p=arr.find(y=>y._id===x.mergedWith);
+    return p && p.name===c.name;
+  })||null;
+}
+function mergedCounterpart(c){
+  // 방향에 상관없이 c와 합반으로 묶인 상대 반을 찾아준다 (메인이든 파트너든)
+  return mergedPartnerClass(c) || mergedMainClass(c);
+}
 function classCard(c, admin, dayFilter, dupCount){
   const a=AC[c.academy];
   const id=c._id; // admin 모드에서만 존재 (classesFor에서 미리 materialize 함)
@@ -1465,9 +1478,14 @@ function renderTimetableWeek(list){
   list.forEach(c=>{
     const classDays=cdays(c).split(',').map(x=>x.trim()).filter(Boolean);
     const subs=(c.subjects&&c.subjects.length)?c.subjects:[null];
+    const mp=mergedCounterpart(c); // 합반 상대 반 — 시간이 비어있으면 여기서 따라온다
     subs.forEach(s=>{
       const subjDays=(s&&s.day)?s.day.split(',').map(x=>x.trim()).filter(Boolean).filter(d=>!classDays.length||classDays.includes(d)):classDays;
-      const timeStr=(s&&s.time)||c.time||'';
+      let timeStr=(s&&s.time)||c.time||'';
+      if(!timeStr && mp){
+        const matchSub=(s&&s.subject&&mp.subjects)?mp.subjects.find(x=>x.subject===s.subject&&x.time):null;
+        timeStr=(matchSub&&matchSub.time)||timeOf(mp)||'';
+      }
       const r=parseRange(timeStr);
       (subjDays.length?subjDays:['']).forEach(d=>{ if(d) occ.push({c,s,d,r}); });
     });
@@ -1565,7 +1583,8 @@ function bindClassEdit(){
     const tr=sel.closest('tr');
     const sSel=tr.querySelector('.bulk-time[data-part="s"]'), eSel=tr.querySelector('.bulk-time[data-part="e"]');
     const sv=sSel?sSel.value:'', ev=eSel?eSel.value:'';
-    const combined = (sv&&ev) ? `${sv}-${ev}` : '';
+    // 시작·끝을 둘 다 골라야만 저장되던 문제 수정 — 하나만 먼저 골라도 그 값이 유지되고, 재렌더링 후 나머지를 이어서 고를 수 있게 한다
+    const combined = (sv||ev) ? `${sv}-${ev}` : '';
     updateSubjectField(tr.dataset.a, tr.dataset.m, tr.dataset.id, Number(tr.dataset.idx), 'time', combined);
   });
   v.querySelectorAll('[data-ttjump]').forEach(b=>b.onclick=()=>{
@@ -1653,17 +1672,6 @@ function addStudentRecord(a){
   state.rosterOpen[id]=true;
   save(); render(true);
 }
-function removeStudentFromRosters(academy, nameKo){
-  // 퇴원·휴원 처리된 학생을 반 명단에서 자동으로 제외한다 (최신 달 + 현재 보고 있는 달)
-  targetSyncMonths(academy).forEach(month=>{
-    const arr=editArr(academy, month);
-    arr.forEach(c=>{
-      if(!c.students || !c.students.length) return;
-      const idx=c.students.indexOf(nameKo);
-      if(idx>=0){ c.students.splice(idx,1); c.count=c.students.length; c.updatedAt=Date.now(); }
-    });
-  });
-}
 function syncStudentClassRoster(student, oldClassName, oldNameKo){
   // 학생 명단(학생 쪽 className 필드)과 반·교재(반 쪽 students 이름 배열)는 서로 다른 곳에 저장되는 별개의 자료라서,
   // 학생 명단에서 반을 바꾸거나 이름을 바꿔도 반·교재 쪽에는 자동 반영이 안 됐음 — 최신 달 + 현재 보고 있는 달 기준으로 맞춰준다
@@ -1699,7 +1707,12 @@ function updateStudentField(id, field, value){
   const s=store.students.find(x=>x.id===id); if(!s) return;
   const oldClassName=s.className, oldNameKo=s.nameKo;
   s[field]=value; s.updatedAt=Date.now();
-  if(field==='status' && (value==='퇴원'||value==='휴원')) removeStudentFromRosters(s.academy, s.nameKo);
+  if(field==='status' && (value==='퇴원'||value==='휴원')){
+    // 반 배정을 취소한다 — 단, 지난 달들의 기록(출결·단어시험 등 히스토리)은 그대로 보이게 최신·현재 보는 달만 정리한다
+    // (휴원·퇴원 학생을 반 명단에서 완전히 지워버리면 지난 학습 기록을 볼 방법이 없어지므로, 삭제가 아니라 '현재 활성 배정만 취소'하는 개념)
+    removeStudentFromActiveRosters(s.academy, s.nameKo);
+    if(value==='퇴원') s.className=''; // 퇴원은 반 배정 자체를 비운다 (휴원은 나중에 같은 반으로 복귀할 수 있어 className은 유지)
+  }
   if(field==='className') syncStudentClassRoster(s, oldClassName, null);
   if(field==='nameKo' && oldNameKo!==value) syncStudentClassRoster(s, s.className, oldNameKo);
   if(field==='alertNote'){
@@ -1709,11 +1722,37 @@ function updateStudentField(id, field, value){
   if(field==='absFrom' && value && !s.absTo) s.absTo=value; // 끝나는 날짜를 안 적으면 하루만 결석으로 처리
   save(); render(true);
 }
+function removeStudentFromActiveRosters(academy, nameKo){
+  // 휴원·퇴원 시 "현재 활성" 배정만 취소한다 (최신 달 + 지금 보고 있는 달) — 지난 달 반 명단·기록은 그대로 남겨 히스토리를 보존한다
+  targetSyncMonths(academy).forEach(month=>{
+    const arr=editArr(academy, month);
+    arr.forEach(c=>{
+      if(!c.students || !c.students.length) return;
+      const idx=c.students.indexOf(nameKo);
+      if(idx>=0){ c.students.splice(idx,1); c.count=c.students.length; c.updatedAt=Date.now(); }
+    });
+  });
+}
+function purgeStudentFromAllRosters(academy, nameKo){
+  // 학생을 완전히 삭제할 때는, 남아있는 반 배정(더미 데이터)이 없도록 그 학원의 모든 달(月) 자료에서 이름을 지운다
+  // (removeStudentFromActiveRosters는 최신 달·현재 보는 달만 정리해서, 완전 삭제 시에는 부족할 수 있음)
+  monthsOf(academy).forEach(month=>{
+    const arr=editArr(academy, month);
+    arr.forEach(c=>{
+      if(!c.students || !c.students.length) return;
+      const idx=c.students.indexOf(nameKo);
+      if(idx>=0){ c.students.splice(idx,1); c.count=c.students.length; c.updatedAt=Date.now(); }
+    });
+  });
+}
 function removeStudentRecord(id){
-  if(!confirm('이 학생 기록을 삭제할까요?')) return;
+  if(!confirm('이 학생 기록을 삭제할까요?\n(모든 반 배정에서도 함께 제거됩니다)')) return;
   store.students.forEach(x=>{ if(x.siblings) x.siblings=x.siblings.filter(sid=>sid!==id); });
   const s=store.students.find(x=>x.id===id);
-  if(s){ s._deleted=true; s.updatedAt=Date.now(); }
+  if(s){
+    purgeStudentFromAllRosters(s.academy, s.nameKo);
+    s._deleted=true; s.updatedAt=Date.now();
+  }
   save(); render(true);
 }
 function resetStudentDB(){
@@ -1960,8 +1999,18 @@ function renderRoster(list){
   const admin=isAdminRole();
   const q=state.q.trim().toLowerCase();
   state.rosterStatus=state.rosterStatus||'재원';
+
+  // ✎ 편집 중인 학생은 상태·검색·반별 필터와 상관없이 항상 상단에 고정 표시한다 —
+  // 상태를 바꾸거나(예: 휴원) 반을 바꾸는 중에 '편집 종료'를 누르기 전까지 화면에서 사라지지 않게 하기 위함
+  const openIds=new Set(Object.keys(state.rosterOpen||{}).filter(id=>state.rosterOpen[id]));
+  const editingNow = admin ? store.students.filter(s=>!s._deleted && openIds.has(s.id) && (state.ac==='all'||s.academy===state.ac)) : [];
+  const editingSection = editingNow.length ? `<div class="ysec" style="margin-bottom:14px;border-top:4px solid #6366f1;background:#f5f6ff">
+    <h3>✎ 편집 중 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">'편집 종료'를 누르기 전까지 여기 계속 표시됩니다</span></h3>
+    <div style="padding:0 16px 14px"><div class="grid">${editingNow.map(s=>studentCard(s,admin)).join('')}</div></div></div>` : '';
+
   let rows=store.students.filter(s=>{
     if(s._deleted) return false;
+    if(openIds.has(s.id)) return false; // 위 '편집 중' 섹션에서 이미 보여주므로 아래 목록에서는 제외 (중복 방지)
     if(state.ac!=='all' && s.academy!==state.ac) return false;
     if(state.rosterStatus!=='전체' && s.status!==state.rosterStatus) return false;
     if(!q) return true;
@@ -1980,7 +2029,7 @@ function renderRoster(list){
       <span style="font-size:.78rem;color:var(--sub);align-self:center">카드의 [✎ 편집]을 눌러 정보·상태·형제자매를 관리할 수 있어요</span>
     </div>`;
   }
-  if(!rows.length) return statusSel+toolbar+`<div class="empty">${state.rosterStatus==='전체'?'등록된':state.rosterStatus} 학생이 없습니다.</div>`;
+  if(!rows.length) return editingSection+statusSel+toolbar+(editingNow.length?'':`<div class="empty">${state.rosterStatus==='전체'?'등록된':state.rosterStatus} 학생이 없습니다.</div>`);
   state.rosterView=state.rosterView||'all';
   const viewChips=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
     <button class="chip ${state.rosterView==='all'?'on':''}" data-rosterview="all">전체</button>
@@ -1988,7 +2037,7 @@ function renderRoster(list){
     <button class="chip ${state.rosterView==='stats'?'on':''}" data-rosterview="stats">📊 학생 통계</button>
   </div>`;
   if(state.rosterView==='stats'){
-    return statusSel+viewChips+toolbar+renderRosterStats();
+    return editingSection+statusSel+viewChips+toolbar+renderRosterStats();
   }
   if(state.rosterView==='class'){
     const groups={};
@@ -1997,7 +2046,7 @@ function renderRoster(list){
       if(a==='미배정') return 1; if(b==='미배정') return -1;
       return a.localeCompare(b,'ko',{numeric:true});
     });
-    if(!keys.length) return statusSel+viewChips+toolbar+'<div class="empty">조건에 맞는 반이 없습니다.</div>';
+    if(!keys.length) return editingSection+statusSel+viewChips+toolbar+(editingNow.length?'':'<div class="empty">조건에 맞는 반이 없습니다.</div>');
     if(!state.rosterClass || !keys.includes(state.rosterClass)) state.rosterClass=keys[0];
     const classSel=`<div style="margin-bottom:12px">
       <select data-rosterclass style="padding:8px 12px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-weight:700">
@@ -2015,10 +2064,10 @@ function renderRoster(list){
     </div>`:'';
     const body=`<div class="ysec"><h3>${esc(state.rosterClass)} <span style="font-size:.74rem;font-weight:400;color:var(--sub)">${students.length}명</span></h3>
       <div style="padding:0 16px 14px"><div class="grid">${students.map(s=>studentCard(s,admin)).join('')}</div></div></div>`;
-    return statusSel+viewChips+toolbar+classSel+bulkBar+body;
+    return editingSection+statusSel+viewChips+toolbar+classSel+bulkBar+body;
   }
   rows.sort((a,b)=>(a.nameKo||'').localeCompare(b.nameKo||'','ko'));
-  return statusSel+viewChips+toolbar+'<div class="grid">'+rows.map(s=>studentCard(s,admin)).join('')+'</div>';
+  return editingSection+statusSel+viewChips+toolbar+'<div class="grid">'+rows.map(s=>studentCard(s,admin)).join('')+'</div>';
 }
 function bindRoster(){
   const v=document.getElementById('view');
@@ -2721,6 +2770,8 @@ function renderMyConsult(list){
     ${body}</div>`;
 }
 function renderConsult(list){
+  // 인원수 0인 반(명단이 비어있는 반)은 상담 대상에서 제외한다
+  list=list.filter(c=>c.students && c.students.length>0);
   const _lt=loginTeacher();
   if(_lt){ state.tf={a:_lt.a,i:_lt.i}; return renderMyConsult(list); }
   if(state.tf) return renderMyConsult(list);
@@ -2815,8 +2866,21 @@ function autoSpanFromSubjects(c, wd){
   const end=Math.max(...ranges.map(r=>r[1]));
   return fmtH24(start)+'-'+fmtH24(end);
 }
-function timeOf(c){ return autoSpanFromSubjects(c) || store.timeedit[ckey(c)] || c.time || ''; }
-function timeOfDay(c, wd){ return autoSpanFromSubjects(c, wd) || timeOf(c); }
+function timeOf(c){
+  const own=autoSpanFromSubjects(c) || store.timeedit[ckey(c)] || c.time || '';
+  if(own) return own;
+  // 합반된 반은 보통 시간을 따로 입력하지 않으므로, 합반 상대 반의 시간을 그대로 따라간다
+  const mp=mergedCounterpart(c);
+  if(mp){ const mOwn=autoSpanFromSubjects(mp) || store.timeedit[ckey(mp)] || mp.time || ''; if(mOwn) return mOwn; }
+  return '';
+}
+function timeOfDay(c, wd){
+  const own=autoSpanFromSubjects(c, wd);
+  if(own) return own;
+  const mp=mergedCounterpart(c);
+  if(mp){ const mOwn=autoSpanFromSubjects(mp, wd); if(mOwn) return mOwn; }
+  return timeOf(c);
+}
 function parseRange(s){
   if(!s) return null;
   s=String(s).replace(/\s/g,'');
@@ -3118,18 +3182,51 @@ function renderToday(list){
     <div style="padding:0 16px 14px">${renderWordTest()}</div></div>`;
   if(!cls.length) return h+'<div class="empty">이 요일에 수업하는 반이 없습니다.'+(lt&&state.myOnly?' ("내 수업만 보기"를 꺼보세요 — 담당 표기가 없는 반은 걸러집니다)':'')+'</div>'+wtSection;
   const at=atFor(state.date), hw=hwFor(state.date), stay=stayFor(state.date);
-  // 미리 등록해둔 "결석 예정"(여행 등) 기간에 오늘이 포함되면, 아직 출결 체크가 안 된 과목은 자동으로 결석 처리해둔다
+  // 미리 등록해둔 "결석 예정"(여행 등) 기간에 오늘이 포함되면, 아직 출결 체크가 안 된 과목은 자동으로 결석 처리하고 사유도 같이 연동해둔다
   let absAutoChanged=false;
-  cls.forEach(c=>{
-    const allKeys=attKeysFor(c, wd);
-    (c.students||[]).forEach(sname=>{
-      const st=matchStudentByRosterName(c.academy, sname);
+  const applyRosterAbsence=(cl)=>{
+    const allKeys=attKeysFor(cl, wd);
+    const k=ckey(cl);
+    (cl.students||[]).forEach(sname=>{
+      const st=matchStudentByRosterName(cl.academy, sname);
       if(!st || !st.absFrom) return;
       const to=st.absTo||st.absFrom;
       if(!(state.date>=st.absFrom && state.date<=to)) return;
       allKeys.forEach(({key})=>{ at[key]=at[key]||{}; if(!at[key][sname]){ at[key][sname]='결'; absAutoChanged=true; } });
+      // 학생명단에 미리 입력해둔 결석 사유를 오늘 기록에도 자동으로 연동한다 (오늘 기록에 이미 사유가 있으면 덮어쓰지 않음)
+      if(st.absReason){
+        hw[k]=hw[k]||{}; hw[k][sname]=hw[k][sname]||{};
+        if(!hw[k][sname].absReasonToday){ hw[k][sname].absReasonToday=st.absReason; absAutoChanged=true; }
+      }
     });
+  };
+  cls.forEach(c=>{
+    applyRosterAbsence(c);
+    const partner=mergedPartnerClass(c);
+    if(partner && classMeets(partner, wd) && partner.students && partner.students.length) applyRosterAbsence(partner);
   });
+  // 오늘, 모든 과목에서 결석 처리된 학생은 단어시험도 자동으로 "미응시"로 처리해둔다 (단어 범위표에도 같이 반영됨)
+  if(state.date===todayISO()){
+    const markWordTestAbsent=(cl)=>{
+      const allKeys=attKeysFor(cl, wd);
+      if(!allKeys.length) return;
+      (cl.students||[]).forEach(sname=>{
+        const allAbsentToday=allKeys.every(({key})=>((at[key]||{})[sname])==='결');
+        if(!allAbsentToday) return;
+        const st=matchStudentByRosterName(cl.academy, sname);
+        if(!st) return;
+        if(store.wordTests.some(x=>x.studentId===st.id && x.date===state.date)) return; // 이미 기록이 있으면(직접 입력했거나 이전 자동 처리) 건드리지 않음
+        const prev=prevWordTestFor(st.id, state.date);
+        store.wordTests.push({id:genStudentId(), studentId:st.id, academy:cl.academy, date:state.date, wordbook:(prev&&prev.wordbook)||'', range:'', lang:(prev&&prev.lang)||'', retestNeeded:false, retestCompleted:false, retestCompletedDate:'', absent:true, accumulate:false, createdAt:todayISO(), updatedAt:Date.now()});
+        absAutoChanged=true;
+      });
+    };
+    cls.forEach(c=>{
+      markWordTestAbsent(c);
+      const partner=mergedPartnerClass(c);
+      if(partner && classMeets(partner, wd) && partner.students && partner.students.length) markWordTestAbsent(partner);
+    });
+  }
   if(absAutoChanged) save();
   cls.forEach(c=>{
     const k=ckey(c);
@@ -3290,16 +3387,22 @@ function renderToday(list){
     <div style="padding:0 16px 14px">
       ${stayList.length?stayList.map(x=>`<div class="rowitem" style="align-items:center"><span class="key">${esc(x.student)} ${MODE==='all'?bdg(x.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(x.className)}</span></span><span class="val">${x.memo?esc(x.memo):'<span style="color:#c3c9d6">메모 없음</span>'} ${x.isRetest?`<button class="btn small" data-wtdone="${x.wtId}">✔ 재시험 완료</button>`:`<button class="btn small" data-staydone="${esc(x.k)}|${esc(x.s)}">✔ 완료</button>`}</span></div>`).join(''):'<div style="font-size:.82rem;color:#8b93a7">오늘 남는 학생이 없습니다.</div>'}
     </div></div>`:'';
-// 🚨 오늘 결석생 — 오늘 결석 처리된 학생을 한 곳에 모아 사유 입력·숙제 카톡 전송 여부를 관리 (모든 선생님에게 표시)
+// 🚨 오늘 결석생 — 오늘 결석 처리된 학생을 한 곳에 모아 사유 입력·과목별 숙제 카톡 전송 여부를 관리 (모든 선생님에게 표시)
   const absentHwList=[]; const seenAbsent=new Set();
   const collectAbsent=(cl)=>{
     const k=ckey(cl);
+    // 과목마다 담당 선생님이 다를 수 있어, 카톡 전송 여부는 과목별로 따로 체크한다 (한 분이 체크해도 다른 과목까지 완료로 보이지 않게)
+    const daySubjNames=[...new Set((cl.subjects||[]).filter(s=>subjOnDay(s,wd)&&!isWordTestSubject(s)).map(s=>s.subject).filter(Boolean))];
     (cl.students||[]).forEach(sname=>{
       if(attStatusAgg(cl,wd,sname,at)!=='결') return;
       const studentKey=k+'|'+sname;
       if(seenAbsent.has(studentKey)) return;
       seenAbsent.add(studentKey);
       const hrecTop=(hw[k]||{})[sname]||{};
+      const bySubj=hrecTop.bySubject||{};
+      const subjects=daySubjNames.length
+        ? daySubjNames.map(subj=>({subj, kakaoSent:!!(bySubj[subj]&&bySubj[subj].kakaoSent)}))
+        : [{subj:null, kakaoSent:!!hrecTop.hwKakaoSent}]; // 과목 정보가 없는 반은 예전처럼 학생당 하나로 처리
       absentHwList.push({
         className: cl.name,
         academy: cl.academy,
@@ -3307,7 +3410,7 @@ function renderToday(list){
         k: k,
         s: sname,
         absReasonToday: hrecTop.absReasonToday || '',
-        hwKakaoSent: !!hrecTop.hwKakaoSent // 💬 숙제 카톡 전송 여부
+        subjects
       });
     });
   };
@@ -3328,12 +3431,14 @@ function renderToday(list){
             <b style="font-size:.92rem;color:#c0392b">${esc(x.student)}</b>
             <span style="font-size:.78rem;font-weight:600;color:var(--sub)">[${esc(x.className)}] ${MODE==='all'?bdg(x.academy):''}</span>
             ${reasonMissing?'<span style="font-size:.72rem;color:#c0392b;font-weight:700">⚠ 사유 미입력</span>':''}
-            <label class="hwlab" style="margin-left:auto;color:${x.hwKakaoSent?'#27ae60':'#b45309'};font-weight:800;background:#fff;padding:3px 8px;border:1px solid ${x.hwKakaoSent?'#27ae60':'#f5c6cb'};border-radius:6px">
-              <input type="checkbox" class="hwkakaochk" data-k="${esc(x.k)}" data-s="${esc(x.s)}" ${x.hwKakaoSent?'checked':''}> 💬 담당 과목이시면 카톡으로 숙제 전송
-            </label>
           </div>
           <div style="display:flex;gap:8px;align-items:center">
             <input type="text" class="absreasoninput" data-k="${esc(x.k)}" data-s="${esc(x.s)}" placeholder="결석 사유를 입력하세요 (예: 병원, 여행 등)" value="${esc(x.absReasonToday)}" style="flex:1;border:1.5px solid ${reasonMissing?'#e7b3ab':'#f5c6cb'};border-radius:8px;padding:6px 10px;font-family:inherit;font-size:.82rem;background:${reasonMissing?'#fff8f8':'#fff'}">
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            ${x.subjects.map(sj=>`<label class="hwlab" style="color:${sj.kakaoSent?'#27ae60':'#b45309'};font-weight:800;background:#fff;padding:3px 8px;border:1px solid ${sj.kakaoSent?'#27ae60':'#f5c6cb'};border-radius:6px">
+              <input type="checkbox" class="hwkakaochk" data-k="${esc(x.k)}" data-s="${esc(x.s)}" data-subj="${esc(sj.subj||'')}" ${sj.kakaoSent?'checked':''}> 💬 ${sj.subj?esc(sj.subj)+' - ':''}카톡 숙제 전송
+            </label>`).join('')}
           </div>
         </div>`;
       }).join(''):'<div style="font-size:.82rem;color:#8b93a7">오늘 결석 처리된 학생이 없습니다.</div>'}
@@ -3430,14 +3535,21 @@ function bindToday(){
     save(); render(true);
   });
   v.querySelectorAll('.hwkakaochk').forEach(cb=>cb.onchange=()=>{
-    const k=cb.dataset.k, s=cb.dataset.s, hw2=hwFor(state.date);
+    const k=cb.dataset.k, s=cb.dataset.s, subj=cb.dataset.subj, hw2=hwFor(state.date);
     hw2[k]=hw2[k]||{}; hw2[k][s]=hw2[k][s]||{};
-    hw2[k][s].hwKakaoSent=cb.checked;
+    if(subj){
+      // 과목별로 따로 저장 — 다른 과목 담당 선생님 체크에 영향받지 않는다
+      hw2[k][s].bySubject=hw2[k][s].bySubject||{};
+      hw2[k][s].bySubject[subj]=hw2[k][s].bySubject[subj]||{};
+      hw2[k][s].bySubject[subj].kakaoSent=cb.checked;
+    } else {
+      hw2[k][s].hwKakaoSent=cb.checked; // 과목 정보가 없는 반(예전 방식)
+    }
     const lt=loginTeacher();
     if(cb.checked && lt){
       const who=whoKey(lt);
       const e=wlGet(who, state.date);
-      const label=`${s} 결석 숙제 카톡 전송 완료`;
+      const label=`${s}${subj?'('+subj+')':''} 결석 숙제 카톡 전송 완료`;
       if(!e.today.some(x=>x.t===label)){
         const emptyIdx=e.today.findIndex(x=>!x.t);
         if(emptyIdx>=0) e.today[emptyIdx]={t:label,d:'',r:'완료'}; else e.today.push({t:label,d:'',r:'완료'});
@@ -4783,6 +4895,31 @@ function findDuplicateClasses(){
   }
   return groups;
 }
+function findGhostRosterEntries(){
+  // 반 명단(students 이름 배열)에는 있지만, 학생명단(store.students)에 실제로 존재하지 않는(완전히 삭제됐거나 오타인)
+  // "더미" 이름을 모든 학원·모든 달에서 찾아준다. 휴원·퇴원 학생은 일정 기간 반 명단에 남아있는 게 정상이므로 여기서 제외한다.
+  const out=[];
+  academies().forEach(a=>{
+    monthsOf(a).forEach(month=>{
+      const arr=editArr(a, month);
+      arr.forEach(c=>{
+        if(c._deleted) return;
+        (c.students||[]).forEach(sname=>{
+          const st=matchStudentByRosterName(a, sname);
+          if(!st){ out.push({academy:a, month, classId:c._id, className:c.name, sname, reason:'학생명단에 없는 이름(완전 삭제됐거나 오타)'}); }
+        });
+      });
+    });
+  });
+  return out;
+}
+function removeGhostRosterEntry(academy, month, classId, sname){
+  const arr=editArr(academy, month);
+  const c=arr.find(x=>x._id===classId); if(!c || !c.students) return;
+  const idx=c.students.indexOf(sname);
+  if(idx>=0){ c.students.splice(idx,1); c.count=c.students.length; c.updatedAt=Date.now(); }
+  save(); render(true);
+}
 function renderSet(){
   let h='';
   const isTeacher=!!loginTeacher() && !isMgr();
@@ -4797,6 +4934,16 @@ function renderSet(){
           <span class="key" style="font-weight:400;font-size:.8rem">학생 ${c.count!=null?c.count:(c.students||[]).length}명 · 과목 ${(c.subjects||[]).length}개${c.updatedAt?' · 수정 '+new Date(c.updatedAt).toLocaleString('ko'):''}</span>
           <span class="val"><button class="btn small" style="color:#c0392b;border-color:#e7b3ab" data-dupdel="${g.academy}|${g.month}|${esc(c._id||'')}">🗑 이 반 삭제</button></span></div>`).join('')}
       </div>`).join(''):'<div style="font-size:.82rem;color:#8b93a7">중복된 반이 없습니다.</div>'}
+    </div>`;
+  }
+  // 👻 유령(더미) 학생 정리 — 학생명단에서 완전히 삭제됐는데 반 카드에 이름만 남아있는 경우 (관리자·실장만) — 휴원·퇴원은 대상에서 제외
+  if(!isTeacher){
+    const ghosts=findGhostRosterEntries();
+    h+=`<div class="setsec" style="border:2px solid #c0392b"><h3>👻 유령(더미) 학생 정리 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">(${ghosts.length}건)</span></h3>
+      <div class="desc">학생명단에서 완전히 삭제됐는데 반 카드에는 이름이 그대로 남아 오늘 기록·단어시험 등에 더미로 뜨는 경우를 찾아줍니다. (휴원·퇴원 학생은 일정 기간 반 명단에 남아있는 게 정상이라 여기 표시되지 않습니다) 확인 후 지워주세요.</div>
+      ${ghosts.length?ghosts.map(g=>`<div class="rowitem" style="align-items:center">
+        <span class="key">${esc(g.sname)} <span style="font-weight:400;color:var(--sub);font-size:.78rem">[${AC[g.academy].label} · ${mLabel(g.month)} · ${esc(g.className)}] · ${esc(g.reason)}</span></span>
+        <span class="val"><button class="btn small" style="color:#c0392b;border-color:#e7b3ab" data-ghostdel="${g.academy}|${g.month}|${esc(g.classId||'')}|${esc(g.sname)}">🗑 이 반에서 제거</button></span></div>`).join(''):'<div style="font-size:.82rem;color:#8b93a7">더미로 남은 학생이 없습니다.</div>'}
     </div>`;
   }
   // 데이터 마스터 (관리자만)
@@ -5021,6 +5168,11 @@ function bindSet(){
     if(!isAdminRole())return;
     const [a,m,id]=b.dataset.dupdel.split('|');
     deleteClassAction(a,m,id);
+  });
+  v.querySelectorAll('[data-ghostdel]').forEach(b=>b.onclick=()=>{
+    if(!isAdminRole())return;
+    const [a,m,id,sname]=b.dataset.ghostdel.split('|');
+    removeGhostRosterEntry(a,m,id,sname);
   });
   const ae=v.querySelector('#adminEmail'); if(ae) ae.onchange=()=>{ store.adminEmail=ae.value.trim(); save(); };
   const ap=v.querySelector('#adminPw'); if(ap) ap.onchange=()=>{ store.adminPw=ap.value; save(); };
