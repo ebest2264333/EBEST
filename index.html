@@ -3467,8 +3467,6 @@ function renderToday(list){
   const absentHwList=[]; const seenAbsent=new Set();
   const collectAbsent=(cl)=>{
     const k=ckey(cl);
-    // 과목마다 담당 선생님이 다를 수 있어, 카톡 전송 여부는 과목별로 따로 체크한다 (한 분이 체크해도 다른 과목까지 완료로 보이지 않게)
-    // 합반 상대 반은 보통 자기 과목을 따로 등록해두지 않으므로, 없으면 합반 상대(메인) 반의 과목명을 따라간다
     let daySubjNames=[...new Set((cl.subjects||[]).filter(s=>subjOnDay(s,wd)&&!isWordTestSubject(s)).map(s=>s.subject).filter(Boolean))];
     if(!daySubjNames.length){
       const mp=mergedCounterpart(cl);
@@ -3483,8 +3481,11 @@ function renderToday(list){
       const bySubj=hrecTop.bySubject||{};
       const subjects=daySubjNames.length
         ? daySubjNames.map(subj=>({subj, kakaoSent:!!(bySubj[subj]&&bySubj[subj].kakaoSent)}))
-        : [{subj:null, kakaoSent:!!hrecTop.hwKakaoSent}]; // 과목 정보가 없는 반은 예전처럼 학생당 하나로 처리
+        : [{subj:null, kakaoSent:!!hrecTop.hwKakaoSent}]; 
+      
+      // ▼ 부서(dept) 정보를 추가 수집
       absentHwList.push({
+        dept: cl.dept || '기타', 
         className: cl.name,
         academy: cl.academy,
         student: sname,
@@ -3497,46 +3498,65 @@ function renderToday(list){
   };
   cls.forEach(c=>{
     collectAbsent(c);
-    // 🔗 합반 상대(파트너) 반 학생도 메인 카드에 같이 표시되므로, 결석생 목록에도 같이 모은다
     const partner=mergedPartnerClass(c);
     if(partner && classMeets(partner, wd) && partner.students && partner.students.length) collectAbsent(partner);
   });
 
+  // ▼ 부서별(초등/중등/고등)로 그룹화하여 접고 펼치는 HTML 생성
+  const depts = ['초등', '중등', '고등', '기타'];
+  let absentGroupsHTML = '';
+  
+  if (absentHwList.length) {
+    depts.forEach(deptName => {
+      const deptStudents = absentHwList.filter(x => x.dept === deptName);
+      if(deptStudents.length === 0) return; // 해당 부서에 결석생이 없으면 패스
+      
+      absentGroupsHTML += `
+      <details open style="margin-bottom:10px; border:1px solid #f5c6cb; border-radius:8px; padding:8px 12px; background:#fff;">
+        <summary style="cursor:pointer; font-weight:800; color:#c0392b; font-size:.95rem;">
+          ${deptName} (${deptStudents.length}명)
+        </summary>
+        <div style="margin-top:10px;">
+          ${deptStudents.map(x=>{
+            const reasonMissing=!x.absReasonToday;
+            const hrecTop=(hw[x.k]||{})[x.s]||{};
+            const bySubj=hrecTop.bySubject||{};
+            return \`<div style="padding:10px 0;border-bottom:1px solid #f1f3f8;display:flex;flex-direction:column;gap:6px">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <b style="font-size:.92rem;color:#c0392b">\${esc(x.student)}</b>
+                <span style="font-size:.78rem;font-weight:600;color:var(--sub)">[\${esc(x.className)}] \${MODE==='all'?bdg(x.academy):''}</span>
+                \${reasonMissing?'<span style="font-size:.72rem;color:#c0392b;font-weight:700">⚠ 사유 미입력</span>':''}
+              </div>
+              <div style="display:flex;gap:8px;align-items:center">
+                <input type="text" class="absreasoninput" data-k="\${esc(x.k)}" data-s="\${esc(x.s)}" placeholder="결석 사유를 입력하세요 (예: 병원, 여행 등)" value="\${esc(x.absReasonToday)}" style="flex:1;border:1.5px solid \${reasonMissing?'#e7b3ab':'#f1f3f8'};border-radius:8px;padding:6px 10px;font-family:inherit;font-size:.82rem;background:\${reasonMissing?'#fff8f8':'#fbfcfe'}">
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px">
+                \${x.subjects.map(sj=>{
+                  const subjMemo = (sj.subj ? (bySubj[sj.subj] && bySubj[sj.subj].kakaoMemo) : hrecTop.kakaoMemo) || '';
+                  return \`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                    <label class="hwlab" style="color:\${sj.kakaoSent?'#27ae60':'#b45309'};font-weight:800;background:#fff;padding:3px 8px;border:1px solid \${sj.kakaoSent?'#27ae60':'#f5c6cb'};border-radius:6px;min-width:140px;text-align:center">
+                      <input type="checkbox" class="hwkakaochk" data-k="\${esc(x.k)}" data-s="\${esc(x.s)}" data-subj="\${esc(sj.subj||'')}" \${sj.kakaoSent?'checked':''}> 💬 \${sj.subj?esc(sj.subj)+' - ':''}카톡 전송
+                    </label>
+                    <input type="text" class="hwkakaomemo" data-k="\${esc(x.k)}" data-s="\${esc(x.s)}" data-subj="\${esc(sj.subj||'')}" placeholder="전송할 숙제/진도 내용 입력" value="\${esc(subjMemo)}" style="flex:1;min-width:180px;border:1px solid #dcdde1;border-radius:6px;padding:4px 8px;font-family:inherit;font-size:.8rem;">
+                  </div>\`;
+                }).join('')}
+              </div>
+            </div>\`;
+          }).join('')}
+        </div>
+      </details>`;
+    });
+  } else {
+    absentGroupsHTML = '<div style="font-size:.82rem;color:#8b93a7">오늘 결석 처리된 학생이 없습니다.</div>';
+  }
+
   const absentTodaySection=`<div class="ysec" id="absentTodaySec" style="margin-top:16px;border-top:4px solid #c0392b;background:#fff8f8">
     <h3>🚨 오늘 결석생 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">${state.date} 전체 반 기준 (${absentHwList.length}명)</span></h3>
     <div style="padding:0 16px 14px">
-      ${absentHwList.length?absentHwList.map(x=>{
-        const reasonMissing=!x.absReasonToday;
-        const hrecTop=(hw[x.k]||{})[x.s]||{};
-        const bySubj=hrecTop.bySubject||{};
-        return `<div style="padding:10px 0;border-bottom:1px solid #f5c6cb;display:flex;flex-direction:column;gap:6px">
-          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-            <b style="font-size:.92rem;color:#c0392b">${esc(x.student)}</b>
-            <span style="font-size:.78rem;font-weight:600;color:var(--sub)">[${esc(x.className)}] ${MODE==='all'?bdg(x.academy):''}</span>
-            ${reasonMissing?'<span style="font-size:.72rem;color:#c0392b;font-weight:700">⚠ 사유 미입력</span>':''}
-          </div>
-          <div style="display:flex;gap:8px;align-items:center">
-            <input type="text" class="absreasoninput" data-k="${esc(x.k)}" data-s="${esc(x.s)}" placeholder="결석 사유를 입력하세요 (예: 병원, 여행 등)" value="${esc(x.absReasonToday)}" style="flex:1;border:1.5px solid ${reasonMissing?'#e7b3ab':'#f5c6cb'};border-radius:8px;padding:6px 10px;font-family:inherit;font-size:.82rem;background:${reasonMissing?'#fff8f8':'#fff'}">
-          </div>
-          <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px">
-            ${x.subjects.map(sj=>{
-              // 저장된 과목별 숙제 메모 가져오기
-              const subjMemo = (sj.subj ? (bySubj[sj.subj] && bySubj[sj.subj].kakaoMemo) : hrecTop.kakaoMemo) || '';
-              return `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-                <label class="hwlab" style="color:${sj.kakaoSent?'#27ae60':'#b45309'};font-weight:800;background:#fff;padding:3px 8px;border:1px solid ${sj.kakaoSent?'#27ae60':'#f5c6cb'};border-radius:6px;min-width:140px;text-align:center">
-                  <input type="checkbox" class="hwkakaochk" data-k="${esc(x.k)}" data-s="${esc(x.s)}" data-subj="${esc(sj.subj||'')}" ${sj.kakaoSent?'checked':''}> 💬 ${sj.subj?esc(sj.subj)+' - ':''}카톡 전송
-                </label>
-                <!-- ▼ 추가된 숙제 메모 입력칸 ▼ -->
-                <input type="text" class="hwkakaomemo" data-k="${esc(x.k)}" data-s="${esc(x.s)}" data-subj="${esc(sj.subj||'')}" placeholder="전송할 숙제/진도 내용 입력" value="${esc(subjMemo)}" style="flex:1;min-width:180px;border:1px solid #dcdde1;border-radius:6px;padding:4px 8px;font-family:inherit;font-size:.8rem;">
-              </div>`;
-            }).join('')}
-          </div>
-        </div>`;
-      }).join(''):'<div style="font-size:.82rem;color:#8b93a7">오늘 결석 처리된 학생이 없습니다.</div>'}
+      ${absentGroupsHTML}
     </div></div>`;
   return alertSection+h+staySection+absentTodaySection+wtSection;
 }
-
 function bindToday(){
   const v=document.getElementById('view');
   bindWordTest();
