@@ -3106,12 +3106,19 @@ function renderToday(list){
   cls.forEach(c=>{
     const k=ckey(c);
     const mine = lt && teacherTeaches(c,lt);
-    const daySubjects=(c.subjects||[]).filter(s=>subjOnDay(s,wd)&&!isWordTestSubject(s));
-    const teas=[...new Set(daySubjects.map(s=>s.teacher).filter(Boolean))];
-    const subjNames=[...new Set(daySubjects.map(s=>s.subject).filter(Boolean))];
+    let daySubjects=(c.subjects||[]).filter(s=>subjOnDay(s,wd)&&!isWordTestSubject(s));
     let attKeys=attKeysFor(c, wd);
     const mySubjSet=mySubjectKeys(c, wd, lt);
-    if(mySubjSet){ const filtered=attKeys.filter(x=>x.subject==null || mySubjSet.has(x.subject)); if(filtered.length) attKeys=filtered; }
+
+    if (state.myOnly) {
+        if (mySubjSet) {
+            const filtered=attKeys.filter(x=>x.subject==null || mySubjSet.has(x.subject)); 
+            if(filtered.length) attKeys=filtered; 
+            daySubjects = daySubjects.filter(s => s.subject == null || mySubjSet.has(s.subject));
+        }
+    }
+    const teas=[...new Set(daySubjects.map(s=>s.teacher).filter(Boolean))];
+    const subjNames=[...new Set(daySubjects.map(s=>s.subject).filter(Boolean))];
     const attMulti=attKeys.length>1;
     const present=(c.students||[]).filter(s=>attStatusAgg(c,wd,s,at)==='출').length;
     const hwdone=(c.students||[]).filter(s=>hw[k]&&hw[k][s]&&hw[k][s].done).length;
