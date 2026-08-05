@@ -2954,18 +2954,37 @@ function matchStudentByRosterName(academy, sname){
 function todayClasses(list){
   const wd=wdOf(state.date);
   let cls=list.filter(c=>classMeets(c,wd));
+
+  // 🔗 합반: 합반 상대(파트너) 반은 메인 카드 안에 같이 표시되므로, 별도 카드로 중복 표시되지 않게 걸러낸다
+  const absorbedKeys=new Set();
+  cls.forEach(c=>{
+    if(!c.mergedWith) return;
+    const partner=mergedPartnerClass(c);
+    if(!partner) return;
+    if(absorbedKeys.has(ckey(c))) return; // 양쪽이 서로를 합반 상대로 지정한 경우, 한쪽만 흡수시킨다
+    absorbedKeys.add(ckey(partner));
+  });
+  if(absorbedKeys.size) cls=cls.filter(c=>!absorbedKeys.has(ckey(c)));
+
   const lt=loginTeacher();
-  
   if(lt && state.myOnly) {
     cls = cls.filter(c => {
-      // 1. 우선 전체 요일 기준으로 내 담당 반이 맞는지 1차 확인 (기존 로직)
-      if (!teacherTeaches(c, lt)) return false;
-      
-      // 2. 핵심 추가: 담당 반이더라도, '오늘' 내 수업이 0개면 카드를 아예 날려버림!
-      // 아까 우리가 만든 '__NONE__' (수업 없음) 판별 장치를 여기서 활용합니다.
-      const keys = mySubjectKeys(c, wd, lt);
-      if (keys && keys.has('__NONE__')) return false; 
-      
+      const partner=mergedPartnerClass(c);
+      // 1. 메인 반 또는 합반 상대(파트너) 반 중 하나라도 내 담당이면 카드를 보여준다
+      const teachesMain=teacherTeaches(c, lt);
+      const teachesPartner=partner ? teacherTeaches(partner, lt) : false;
+      if(!teachesMain && !teachesPartner) return false;
+
+      // 2. '오늘' 내 수업이 0개인지 확인 (메인·파트너 둘 다 오늘 내 과목이 없을 때만 카드를 숨긴다)
+      const keys=mySubjectKeys(c, wd, lt);
+      const mainHasNone = !!(keys && keys.has('__NONE__'));
+      let partnerHasNone = true;
+      if(partner && classMeets(partner, wd)){
+        const pKeys=mySubjectKeys(partner, wd, lt);
+        partnerHasNone = !!(pKeys && pKeys.has('__NONE__'));
+      }
+      if(mainHasNone && partnerHasNone) return false;
+
       return true;
     });
   }
@@ -2986,6 +3005,15 @@ function absentReasonMissingCount(academy, dateISO){
     });
   });
   return n;
+}
+function goToAbsentToday(){
+  // 사유를 바로 입력할 수 있도록 "내 수업만 보기"를 끄고 [오늘 결석생] 영역으로 이동
+  state.date=todayISO(); state.todaySub='day'; state.myOnly=false;
+  render();
+  setTimeout(()=>{
+    const el=document.getElementById('absentTodaySec');
+    if(el) el.scrollIntoView({behavior:'smooth', block:'start'});
+  }, 60);
 }
 function todoCard(list){
   const lt=loginTeacher(); if(!lt) return '';
@@ -3022,7 +3050,7 @@ function todoCard(list){
       h2+=`<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid #f1f3f8;background:#fff5f5;margin:0 -2px">
         <span style="font-size:1rem">🚨</span>
         <span style="font-size:.86rem;font-weight:700;color:#c0392b">오늘 결석 사유 미입력 ${missingN}명</span>
-        <button class="btn small" onclick="window.scrollTo({top: 600, behavior: 'smooth'})" style="margin-left:auto">오늘 기록에서 확인 →</button></div>`;
+        <button class="btn small" onclick="goToAbsentToday()" style="margin-left:auto">오늘 결석생 확인 →</button></div>`;
     }
   }
   h2+='</div>';
@@ -3262,21 +3290,19 @@ function renderToday(list){
     <div style="padding:0 16px 14px">
       ${stayList.length?stayList.map(x=>`<div class="rowitem" style="align-items:center"><span class="key">${esc(x.student)} ${MODE==='all'?bdg(x.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(x.className)}</span></span><span class="val">${x.memo?esc(x.memo):'<span style="color:#c3c9d6">메모 없음</span>'} ${x.isRetest?`<button class="btn small" data-wtdone="${x.wtId}">✔ 재시험 완료</button>`:`<button class="btn small" data-staydone="${esc(x.k)}|${esc(x.s)}">✔ 완료</button>`}</span></div>`).join(''):'<div style="font-size:.82rem;color:#8b93a7">오늘 남는 학생이 없습니다.</div>'}
     </div></div>`:'';
-// 🚨 [최종 통합] 오늘 결석생 사유 및 숙제·카톡 관리 (이름을 absentHwList로 통일하여 에러 방지)
+// 🚨 오늘 결석생 — 오늘 결석 처리된 학생을 한 곳에 모아 사유 입력·숙제 카톡 전송 여부를 관리 (모든 선생님에게 표시)
   const absentHwList=[]; const seenAbsent=new Set();
-  cls.forEach(c=>{
-    const k=ckey(c);
-    const recs=at[k]||{};
-    (c.students||[]).forEach(sname=>{
-      if(recs[sname]!=='결') return;
+  const collectAbsent=(cl)=>{
+    const k=ckey(cl);
+    (cl.students||[]).forEach(sname=>{
+      if(attStatusAgg(cl,wd,sname,at)!=='결') return;
       const studentKey=k+'|'+sname;
       if(seenAbsent.has(studentKey)) return;
       seenAbsent.add(studentKey);
-      
       const hrecTop=(hw[k]||{})[sname]||{};
       absentHwList.push({
-        className: c.name,
-        academy: c.academy,
+        className: cl.name,
+        academy: cl.academy,
         student: sname,
         k: k,
         s: sname,
@@ -3284,60 +3310,35 @@ function renderToday(list){
         hwKakaoSent: !!hrecTop.hwKakaoSent // 💬 숙제 카톡 전송 여부
       });
     });
+  };
+  cls.forEach(c=>{
+    collectAbsent(c);
+    // 🔗 합반 상대(파트너) 반 학생도 메인 카드에 같이 표시되므로, 결석생 목록에도 같이 모은다
+    const partner=mergedPartnerClass(c);
+    if(partner && classMeets(partner, wd) && partner.students && partner.students.length) collectAbsent(partner);
   });
 
-  const absentManageSection = absentHwList.length ? `<div class="ysec" style="margin-top:16px;border-top:4px solid #c0392b;background:#fff8f8">
-    <h3>🚨 오늘 결석생 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">(${absentHwList.length}명)</span></h3>
+  const absentTodaySection=`<div class="ysec" id="absentTodaySec" style="margin-top:16px;border-top:4px solid #c0392b;background:#fff8f8">
+    <h3>🚨 오늘 결석생 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">${state.date} 전체 반 기준 (${absentHwList.length}명)</span></h3>
     <div style="padding:0 16px 14px">
-      ${absentHwList.map(x=>`
-        <div style="padding:10px 0;border-bottom:1px solid #f5c6cb;display:flex;flex-direction:column;gap:6px">
+      ${absentHwList.length?absentHwList.map(x=>{
+        const reasonMissing=!x.absReasonToday;
+        return `<div style="padding:10px 0;border-bottom:1px solid #f5c6cb;display:flex;flex-direction:column;gap:6px">
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
             <b style="font-size:.92rem;color:#c0392b">${esc(x.student)}</b>
-            <span style="font-size:.78rem;font-weight:600;color:var(--sub)">[${esc(x.className)}]</span>
-            
-            <!-- 담당 과목이시면 카톡으로 숙제 전송 체크박스 -->
+            <span style="font-size:.78rem;font-weight:600;color:var(--sub)">[${esc(x.className)}] ${MODE==='all'?bdg(x.academy):''}</span>
+            ${reasonMissing?'<span style="font-size:.72rem;color:#c0392b;font-weight:700">⚠ 사유 미입력</span>':''}
             <label class="hwlab" style="margin-left:auto;color:${x.hwKakaoSent?'#27ae60':'#b45309'};font-weight:800;background:#fff;padding:3px 8px;border:1px solid ${x.hwKakaoSent?'#27ae60':'#f5c6cb'};border-radius:6px">
-              <input type="checkbox" class="absnothwkakao" data-k="${esc(x.k)}" data-s="${esc(x.s)}" ${x.hwKakaoSent?'checked':''}> 💬 담당 과목이시면 카톡으로 숙제 전송
+              <input type="checkbox" class="hwkakaochk" data-k="${esc(x.k)}" data-s="${esc(x.s)}" ${x.hwKakaoSent?'checked':''}> 💬 담당 과목이시면 카톡으로 숙제 전송
             </label>
           </div>
           <div style="display:flex;gap:8px;align-items:center">
-            <input type="text" class="absreasoninput" data-k="${esc(x.k)}" data-s="${esc(x.s)}" placeholder="결석 사유를 입력하세요 (예: 병원, 여행 등)" value="${esc(x.absReasonToday)}" style="flex:1;border:1.5px solid #f5c6cb;border-radius:8px;padding:6px 10px;font-family:inherit;font-size:.82rem;background:#fff">
+            <input type="text" class="absreasoninput" data-k="${esc(x.k)}" data-s="${esc(x.s)}" placeholder="결석 사유를 입력하세요 (예: 병원, 여행 등)" value="${esc(x.absReasonToday)}" style="flex:1;border:1.5px solid ${reasonMissing?'#e7b3ab':'#f5c6cb'};border-radius:8px;padding:6px 10px;font-family:inherit;font-size:.82rem;background:${reasonMissing?'#fff8f8':'#fff'}">
           </div>
-        </div>
-      `).join('')}
-    </div></div>` : '';
-
-  // 🚨 업무보고 / 업무일지 영역 연동 (체크된 학생 이름 우측 표시)
-  const sentHwAbsents = absentHwList.filter(x => x.hwKakaoSent).map(x => x.student);
-  const workReportAbsentSection = sentHwAbsents.length > 0 ? `
-    <div style="margin-top:8px;padding:8px 12px;background:#eefdf3;border:1px solid #27ae60;border-radius:8px;display:flex;align-items:center;gap:8px">
-      <b style="font-size:.82rem;color:#27ae60">📌 결석생 숙제 카톡 전송:</b>
-      <span style="font-size:.82rem;font-weight:700;color:#2c3e50">${esc(sentHwAbsents.join(', '))}</span>
-    </div>` : '';
-
-  // 💡 renderToday 함수의 최종 리턴 직전에 아래와 같이 섹션이 화면에 출력되도록 추가되어 있는지 확인해주세요!
-  // (보통 return h + ... 형태로 끝나는 곳에 absSection 등을 붙이는 위치입니다)
-  const absentHwSection=`<div class="ysec" style="margin-top:16px;border-top:4px solid #c0392b"><h3>📕 오늘 결석생 숙제 확인 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">${state.date} 전체 반 기준 (${absentHwList.length}건 · 과목별로 표시됩니다)</span></h3>
-    <div style="padding:0 16px 14px">
-      ${absentHwList.length?absentHwList.map(x=>{
-        const rk=esc(x.k)+'|'+esc(x.s)+'|'+esc(x.subject);
-        const reasonMissing=!x.absReasonToday;
-        const reasonRow=x.first?`<div class="rowitem" style="align-items:center;background:${reasonMissing?'#fff5f5':'transparent'};border-radius:8px">
-          <span class="key" style="min-width:140px">${esc(x.student)} ${MODE==='all'?bdg(x.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(x.className)}</span></span>
-          <span class="val" style="display:flex;gap:6px;align-items:center;flex:1">
-            <input type="text" class="absreasoninput" data-absreason="${esc(x.k)}|${esc(x.s)}" value="${esc(x.absReasonToday)}" placeholder="결석 사유 (예: 감기, 가족여행)" style="flex:1;min-width:160px;border:1.5px solid ${reasonMissing?'#e7b3ab':'var(--line)'};border-radius:8px;padding:6px 9px;font-family:inherit;font-size:.83rem;background:${reasonMissing?'#fff8f8':'#fff'}">
-            ${reasonMissing?'<span style="font-size:.72rem;color:#c0392b;font-weight:700;white-space:nowrap">⚠ 사유 미입력</span>':''}
-          </span></div>`:'';
-        return reasonRow+`<div class="rowitem" style="align-items:flex-start;flex-wrap:wrap;gap:6px">
-          <span class="key" style="min-width:140px">${esc(x.student)} ${MODE==='all'?bdg(x.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(x.className)} · ${esc(x.subject)}</span></span>
-          <span class="val" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;flex:1">
-            <input type="text" class="absenthwnote" data-absenthw="${rk}" value="${esc(x.note)}" placeholder="이 과목 결석 숙제 메모" style="flex:1;min-width:160px;border:1.5px solid var(--line);border-radius:8px;padding:6px 9px;font-family:inherit;font-size:.83rem">
-            <label class="hwlab"><input type="checkbox" data-absentdone="${rk}" ${x.done?'checked':''}>완료</label>
-            <label class="hwlab" style="color:${x.kakaoSent?'#3a9a3a':'var(--sub)'}"><input type="checkbox" data-kakaosent="${rk}" ${x.kakaoSent?'checked':''}>💬 카톡 전송</label>
-          </span></div>`;
+        </div>`;
       }).join(''):'<div style="font-size:.82rem;color:#8b93a7">오늘 결석 처리된 학생이 없습니다.</div>'}
     </div></div>`;
-  return alertSection+h+staySection+absentHwSection+wtSection;
+  return alertSection+h+staySection+absentTodaySection+wtSection;
 }
 function bindToday(){
   const v=document.getElementById('view');
@@ -3422,42 +3423,21 @@ function bindToday(){
     const st2=stayFor(state.date);
     st2[k]=st2[k]||{}; st2[k][st]=st2[k][st]||{}; st2[k][st].doneDate=todayISO(); save(); render(true);
   });
-  function parseAbsentKey(raw){
-    // 형식: 학원|반명|학생명|과목명 (반명 안에 '|'가 없다는 전제하에 뒤에서부터 과목·학생을 떼어내고 나머지를 반 key로 합친다)
-    const parts=raw.split('|'); const subj=parts.pop(); const stu=parts.pop(); const k=parts.join('|');
-    return {k, stu, subj};
-  }
-  v.querySelectorAll('[data-absenthw]').forEach(inp=>inp.onchange=()=>{
-    const {k,stu,subj}=parseAbsentKey(inp.dataset.absenthw);
-    const hw2=hwFor(state.date);
-    hw2[k]=hw2[k]||{}; hw2[k][stu]=hw2[k][stu]||{}; hw2[k][stu].bySubject=hw2[k][stu].bySubject||{};
-    hw2[k][stu].bySubject[subj]=hw2[k][stu].bySubject[subj]||{}; hw2[k][stu].bySubject[subj].note=inp.value;
-    save();
-  });
-  v.querySelectorAll('[data-absentdone]').forEach(cb=>cb.onchange=()=>{
-    const {k,stu,subj}=parseAbsentKey(cb.dataset.absentdone);
-    const hw2=hwFor(state.date);
-    hw2[k]=hw2[k]||{}; hw2[k][stu]=hw2[k][stu]||{}; hw2[k][stu].bySubject=hw2[k][stu].bySubject||{};
-    hw2[k][stu].bySubject[subj]=hw2[k][stu].bySubject[subj]||{}; hw2[k][stu].bySubject[subj].done=cb.checked;
+  v.querySelectorAll('.absreasoninput').forEach(inp=>inp.onchange=()=>{
+    const k=inp.dataset.k, s=inp.dataset.s, hw2=hwFor(state.date);
+    hw2[k]=hw2[k]||{}; hw2[k][s]=hw2[k][s]||{};
+    hw2[k][s].absReasonToday=inp.value;
     save(); render(true);
   });
-  v.querySelectorAll('[data-absreason]').forEach(inp=>inp.onchange=()=>{
-    const [k,stu]=inp.dataset.absreason.split('|');
-    const hw2=hwFor(state.date);
-    hw2[k]=hw2[k]||{}; hw2[k][stu]=hw2[k][stu]||{};
-    hw2[k][stu].absReasonToday=inp.value;
-    save(); render(true);
-  });
-  v.querySelectorAll('[data-kakaosent]').forEach(cb=>cb.onchange=()=>{
-    const {k,stu,subj}=parseAbsentKey(cb.dataset.kakaosent);
-    const hw2=hwFor(state.date);
-    hw2[k]=hw2[k]||{}; hw2[k][stu]=hw2[k][stu]||{}; hw2[k][stu].bySubject=hw2[k][stu].bySubject||{};
-    hw2[k][stu].bySubject[subj]=hw2[k][stu].bySubject[subj]||{}; hw2[k][stu].bySubject[subj].kakaoSent=cb.checked;
+  v.querySelectorAll('.hwkakaochk').forEach(cb=>cb.onchange=()=>{
+    const k=cb.dataset.k, s=cb.dataset.s, hw2=hwFor(state.date);
+    hw2[k]=hw2[k]||{}; hw2[k][s]=hw2[k][s]||{};
+    hw2[k][s].hwKakaoSent=cb.checked;
     const lt=loginTeacher();
     if(cb.checked && lt){
       const who=whoKey(lt);
       const e=wlGet(who, state.date);
-      const label=`${stu}(${subj}) 결석 숙제 카톡 전송 완료`;
+      const label=`${s} 결석 숙제 카톡 전송 완료`;
       if(!e.today.some(x=>x.t===label)){
         const emptyIdx=e.today.findIndex(x=>!x.t);
         if(emptyIdx>=0) e.today[emptyIdx]={t:label,d:'',r:'완료'}; else e.today.push({t:label,d:'',r:'완료'});
@@ -5609,20 +5589,6 @@ cleanupStaleJasup2608();
 cleanupWordTests();
 cleanupExpiredAlerts();
 if(!store.classRosterReconciled_v1){ reconcileClassRosters(); store.classRosterReconciled_v1=true; }
-  // 결석생 숙제 카톡 전송 체크박스 변경 감지 및 저장
-document.addEventListener('change', e => {
-  if(e.target.classList.contains('absnothwkakao')){
-    const k = e.target.dataset.k;
-    const s = e.target.dataset.s;
-    state.hw = state.hw || {};
-    state.hw[state.date] = state.hw[state.date] || {};
-    state.hw[state.date][k] = state.hw[state.date][k] || {};
-    state.hw[state.date][k][s] = state.hw[state.date][k][s] || {};
-    state.hw[state.date][k][s].hwKakaoSent = e.target.checked;
-    save();
-    render(true); // 화면 즉시 갱신 (업무일지 영역 반영)
-  }
-});
 render();
 </script>
 </body>
