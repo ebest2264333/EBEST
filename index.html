@@ -739,7 +739,7 @@ function addStudentAction(a,m,id,studentName){
   const c=findClassById(a,m,id); if(!c) return;
   studentName=(studentName||'').trim(); if(!studentName) return;
   c.students=c.students||[]; c.students.push(studentName); c.count=c.students.length; c.updatedAt=Date.now();
-  const matches=store.students.filter(x=>x.academy===a && x.nameKo===studentName);
+  const matches=store.students.filter(x=>x.academy===a && !x._deleted && x.nameKo===studentName);
   if(matches.length===1){
     matches[0].className=c.name; matches[0].updatedAt=Date.now(); // 명단에서 고른 학생이면 반 정보 자동 연결
   } else if(matches.length===0){
@@ -1315,7 +1315,7 @@ function classCard(c, admin, dayFilter, dupCount){
   if(!deptOpts.includes(c.dept)) deptOpts.push(c.dept||'');
   return `<article class="card ${a.cls}" style="border:2px solid ${a.cls==='eb'?'var(--ebest)':'var(--icon)'};grid-column:1/-1">
     ${teacherDatalist(c.academy)}
-    <datalist id="dl_roster_${c.academy}">${store.students.filter(x=>x.academy===c.academy).map(x=>`<option value="${esc(x.nameKo)}">`).join('')}</datalist>
+    <datalist id="dl_roster_${c.academy}">${store.students.filter(x=>x.academy===c.academy && !x._deleted && x.status==='재원').map(x=>`<option value="${esc(x.nameKo)}">`).join('')}</datalist>
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
       <input type="text" value="${esc(c.name)}" data-cfield="name" ${attrs} placeholder="반이름" style="flex:1;min-width:110px;font-weight:800;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
       <select data-cfield="dept" ${attrs} style="padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
@@ -1816,11 +1816,11 @@ function bulkRenameClass(oldName){
   const inp=document.getElementById('rsBulkClassName');
   const newName=(inp&&inp.value||'').trim();
   if(!newName){ alert('새 반 이름을 입력하세요.'); return; }
-  const n=store.students.filter(s=>(s.className||'').trim()===oldName).length;
+  const n=store.students.filter(s=>!s._deleted && (s.className||'').trim()===oldName).length;
   if(!n){ alert('해당 반 학생을 찾을 수 없습니다.'); return; }
   if(!confirm(`"${oldName}" 반 학생 ${n}명을 전부 "${newName}"(으)로 반 이름을 바꿀까요?`)) return;
   store.students.forEach(s=>{
-    if((s.className||'').trim()===oldName){
+    if(!s._deleted && (s.className||'').trim()===oldName){
       s.className=newName; s.updatedAt=Date.now();
       syncStudentClassRoster(s, oldName, null); // 반·교재 쪽 명단도 같이 옮겨준다 (기존 이름에서 빼고 새 이름에 추가)
     }
@@ -1829,7 +1829,7 @@ function bulkRenameClass(oldName){
   save(); render(true);
 }
 function bulkBumpGrade(className){
-  const targets=store.students.filter(s=>(s.className||'').trim()===className);
+  const targets=store.students.filter(s=>!s._deleted && (s.className||'').trim()===className);
   if(!targets.length){ alert('해당 반 학생을 찾을 수 없습니다.'); return; }
   if(!confirm(`"${className}" 반 학생 ${targets.length}명의 학년을 전부 +1 할까요? (숫자로 된 학년만 적용됩니다)`)) return;
   targets.forEach(s=>{ const n=parseInt(s.grade,10); if(!isNaN(n)) s.grade=String(n+1); });
@@ -1883,7 +1883,7 @@ function studentCard(s, admin){
   const clsOpts=classNameOptions(s.academy);
   return `<article class="card ${AC[s.academy].cls}" style="border:2px solid ${AC[s.academy].cls==='eb'?'var(--ebest)':'var(--icon)'}">
     <datalist id="dl_cls_${s.academy}">${clsOpts.map(n=>`<option value="${esc(n)}">`).join('')}</datalist>
-    <datalist id="dl_allstudents">${store.students.filter(x=>x.id!==s.id).map(x=>`<option value="${esc(x.nameKo)}">`).join('')}</datalist>
+    <datalist id="dl_allstudents">${store.students.filter(x=>x.id!==s.id && !x._deleted).map(x=>`<option value="${esc(x.nameKo)}">`).join('')}</datalist>
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
       <input type="text" value="${esc(s.nameKo)}" placeholder="한글이름" data-rsfield="${s.id}|nameKo" style="width:110px;font-weight:800;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
       <input type="text" value="${esc(s.nameEn||'')}" placeholder="영어이름" data-rsfield="${s.id}|nameEn" style="width:110px;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
@@ -2019,6 +2019,7 @@ function renderRoster(list){
     return [s.nameKo,s.nameEn,s.className,s.school,s.parentPhone].some(v=>v&&String(v).toLowerCase().includes(q));
   });
   const statusSel=`<div style="margin-bottom:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <input type="search" id="rosterSearch" value="${esc(state.q)}" placeholder="🔍 이름 · 반 이름 · 학교 · 전화번호로 검색" style="flex:1;min-width:200px;max-width:320px;padding:7px 11px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.85rem">
     <select data-rosterstatus style="padding:7px 11px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-weight:700">
       ${['재원','휴원','퇴원','전체'].map(st=>`<option value="${st}" ${state.rosterStatus===st?'selected':''}>${st==='전체'?'전체 상태':st+' 학생만 보기'}</option>`).join('')}
     </select>
@@ -2073,6 +2074,15 @@ function renderRoster(list){
 }
 function bindRoster(){
   const v=document.getElementById('view');
+  const rsSearch=v.querySelector('#rosterSearch');
+  if(rsSearch) rsSearch.oninput=()=>{
+    state.q=rsSearch.value;
+    const q2=document.getElementById('q'); if(q2) q2.value=rsSearch.value; // 상단 전체 검색창과도 값 맞춰둠
+    const pos=rsSearch.selectionStart;
+    render(true);
+    const el=document.getElementById('rosterSearch');
+    if(el){ el.focus(); try{ el.setSelectionRange(pos,pos); }catch(e){} }
+  };
   const rsSel=v.querySelector('[data-rosterstatus]');
   if(rsSel) rsSel.onchange=()=>{ state.rosterStatus=rsSel.value; state.rosterClass=null; render(true); };
   v.querySelectorAll('[data-rosterview]').forEach(b=>b.onclick=()=>{ state.rosterView=b.dataset.rosterview; render(true); });
@@ -2267,10 +2277,10 @@ function renderWordTestToday(){
       return `<div class="empty">오늘(${wd}요일)은 담당으로 배정된 반이 없습니다. (배정은 [시간표]에서 관리자·실장이 설정합니다)</div>`;
     }
     const classNames=new Set(todaysDutyClasses.map(c=>c.name));
-    studentsList=store.students.filter(s=>s.academy===lt.a && s.status==='재원' && classNames.has(s.className));
+    studentsList=store.students.filter(s=>!s._deleted && s.academy===lt.a && s.status==='재원' && classNames.has(s.className));
   } else if(admin){
     // 특정 선생님이 아닌 순수 관리자(원장) 로그인 — 전체 재원생 표시
-    studentsList=store.students.filter(s=>s.status==='재원' && (state.ac==='all'||s.academy===state.ac));
+    studentsList=store.students.filter(s=>!s._deleted && s.status==='재원' && (state.ac==='all'||s.academy===state.ac));
   } else {
     return '<div class="empty">로그인 후 이용해주세요.</div>';
   }
