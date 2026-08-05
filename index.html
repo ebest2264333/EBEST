@@ -3016,13 +3016,13 @@ function todoCard(list){
     <span style="font-size:.86rem;font-weight:700">${mLabel(state.month)} 내 상담: <b style="color:${lt.t.color}">${d}/${tot}명</b> 완료</span>
     <span class="tbar" style="width:110px"><i style="width:${pct}%;background:${lt.t.color}"></i></span>
     ${tot&&d<tot?`<button class="btn small todogo" data-tab="consult" style="margin-left:auto">상담 기록 →</button>`:''}</div>`;
-  if(isMgr()){
+ if(isMgr() || lt){
     const missingN=absentReasonMissingCount(lt.a, today);
     if(missingN>0){
       h2+=`<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid #f1f3f8;background:#fff5f5;margin:0 -2px">
         <span style="font-size:1rem">🚨</span>
         <span style="font-size:.86rem;font-weight:700;color:#c0392b">오늘 결석 사유 미입력 ${missingN}명</span>
-        <button class="btn small todogo" data-tab="today" style="margin-left:auto">확인하기 →</button></div>`;
+        <button class="btn small" onclick="window.scrollTo({top: 600, behavior: 'smooth'})" style="margin-left:auto">오늘 기록에서 확인 →</button></div>`;
     }
   }
   h2+='</div>';
@@ -3262,29 +3262,51 @@ function renderToday(list){
     <div style="padding:0 16px 14px">
       ${stayList.length?stayList.map(x=>`<div class="rowitem" style="align-items:center"><span class="key">${esc(x.student)} ${MODE==='all'?bdg(x.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(x.className)}</span></span><span class="val">${x.memo?esc(x.memo):'<span style="color:#c3c9d6">메모 없음</span>'} ${x.isRetest?`<button class="btn small" data-wtdone="${x.wtId}">✔ 재시험 완료</button>`:`<button class="btn small" data-staydone="${esc(x.k)}|${esc(x.s)}">✔ 완료</button>`}</span></div>`).join(''):'<div style="font-size:.82rem;color:#8b93a7">오늘 남는 학생이 없습니다.</div>'}
     </div></div>`:'';
-  // 결석생 숙제 확인 — 실장·관리자 전용 요약 (담당 선생님이 입력한 숙제/메모를 한 곳에서 확인)
-  const absentHwList=[]; const seenAbsent=new Set(); const seenAbsentStudent=new Set();
+  // 🚨 오늘 결석생 통합 관리 (모든 선생님이 오늘 기록에서 확인 가능)
+  const absentManageList=[]; const seenAbsManager=new Set();
   cls.forEach(c=>{
     const k=ckey(c);
     const recs=at[k]||{};
-    const daySubjects=(c.subjects||[]).filter(s=>subjOnDay(s,wd)&&!isWordTestSubject(s));
-    const subjNames=daySubjects.length?[...new Set(daySubjects.map(s=>s.subject||'-'))]:['-'];
     (c.students||[]).forEach(sname=>{
       if(recs[sname]!=='결') return;
       const studentKey=k+'|'+sname;
-      const first=!seenAbsentStudent.has(studentKey);
-      seenAbsentStudent.add(studentKey);
+      if(seenAbsManager.has(studentKey)) return;
+      seenAbsManager.add(studentKey);
+      
       const hrecTop=(hw[k]||{})[sname]||{};
-      subjNames.forEach((subjName,si)=>{
-        const dedupKey=k+'|'+sname+'|'+subjName;
-        if(seenAbsent.has(dedupKey)) return;
-        seenAbsent.add(dedupKey);
-        const hrec=(hw[k]||{})[sname]||{};
-        const bs=(hrec.bySubject||{})[subjName]||{};
-        absentHwList.push({className:c.name, academy:c.academy, student:sname, subject:subjName, note:bs.note||'', done:!!bs.done, kakaoSent:!!bs.kakaoSent, k, s:sname, first:first&&si===0, absReasonToday:hrecTop.absReasonToday||''});
+      absentManageList.push({
+        className: c.name,
+        academy: c.academy,
+        student: sname,
+        k: k,
+        s: sname,
+        absReasonToday: hrecTop.absReasonToday || '',
+        kakaoSent: !!hrecTop.kakaoSent
       });
     });
   });
+
+  const absentManageSection = absentManageList.length ? `<div class="ysec" style="margin-top:16px;border-top:4px solid #c0392b;background:#fff8f8">
+    <h3>🚨 오늘 결석생 사유 및 숙제·연락 관리 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">(${absentManageList.length}명)</span></h3>
+    <div style="padding:0 16px 14px">
+      ${absentManageList.map(x=>`
+        <div style="display:flex;flex-direction:column;gap:6px;padding:10px 0;border-bottom:1px solid #f5c6cb">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <b style="font-size:.9rem;color:#c0392b">${esc(x.student)}</b>
+            <span style="font-size:.78rem;font-weight:600;color:var(--sub)">[${esc(x.className)}]</span>
+            <label class="hwlab" style="margin-left:auto;color:${x.kakaoSent?'#27ae60':'var(--sub)'};font-weight:800">
+              <input type="checkbox" class="abskakaochk" data-k="${esc(x.k)}" data-s="${esc(x.s)}" ${x.kakaoSent?'checked':''}> 💬 결석 안내 카톡 전송 완료
+            </label>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="text" class="absreasoninput" data-k="${esc(x.k)}" data-s="${esc(x.s)}" placeholder="결석 사유를 입력하세요 (예: 병원, 여행 등)" value="${esc(x.absReasonToday)}" style="flex:1;border:1.5px solid #f5c6cb;border-radius:8px;padding:6px 10px;font-family:inherit;font-size:.82rem;background:#fff">
+          </div>
+        </div>
+      `).join('')}
+    </div></div>` : '';
+
+  // 💡 renderToday 함수의 최종 리턴 직전에 아래와 같이 섹션이 화면에 출력되도록 추가되어 있는지 확인해주세요!
+  // (보통 return h + ... 형태로 끝나는 곳에 absSection 등을 붙이는 위치입니다)
   const absentHwSection=`<div class="ysec" style="margin-top:16px;border-top:4px solid #c0392b"><h3>📕 오늘 결석생 숙제 확인 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">${state.date} 전체 반 기준 (${absentHwList.length}건 · 과목별로 표시됩니다)</span></h3>
     <div style="padding:0 16px 14px">
       ${absentHwList.length?absentHwList.map(x=>{
