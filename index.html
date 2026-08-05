@@ -2889,10 +2889,16 @@ function bindConsult(){
     if(e.target.closest('select')) return;
     h.parentElement.classList.toggle('open');
   }));
+
+  // [수정 완료] 드롭다운으로 담당 선생님 배정할 때 실시간 동기화 적용
   v.querySelectorAll('.tsel').forEach(s=>s.onchange= async ()=>{
-    const k=s.dataset.k; if(s.value==='') delete mAssign()[k]; else mAssign()[k]=Number(s.value);
-    await saveAndSync(); render(true);
+    const k=s.dataset.k; 
+    if(s.value==='') delete mAssign()[k]; 
+    else mAssign()[k]=Number(s.value);
+    await saveAndSync(); 
+    render(true);
   });
+
   v.querySelectorAll('input[type=checkbox][data-s]').forEach(cb=>cb.onchange= async ()=>{
     const rec=mRecords(); const k=cb.dataset.k, s=cb.dataset.s;
     rec[k]=rec[k]||{}; rec[k][s]=rec[k][s]||{};
@@ -2900,20 +2906,24 @@ function bindConsult(){
     if(cb.checked && !rec[k][s].date) rec[k][s].date=todayISO();
     await saveAndSync(); render(true);
   });
+
   v.querySelectorAll('input.dtin').forEach(d=>d.onchange= async ()=>{
     const rec=mRecords(); const k=d.dataset.k, s=d.dataset.s;
     rec[k]=rec[k]||{}; rec[k][s]=rec[k][s]||{}; rec[k][s].date=d.value; 
     await saveAndSync();
   });
+
   v.querySelectorAll('textarea[data-s]').forEach(t=>t.onchange= async ()=>{
     const rec=mRecords(); const k=t.dataset.k, s=t.dataset.s;
     rec[k]=rec[k]||{}; rec[k][s]=rec[k][s]||{}; rec[k][s].memo=t.value; 
     await saveAndSync();
   });
+
   v.querySelectorAll('.cmemo').forEach(t=>t.onchange= async ()=>{ 
     mCmemo()[t.dataset.k]=t.value; 
     await saveAndSync(); 
   });
+
   v.querySelectorAll('[data-nsadd]').forEach(b=>b.onclick=()=>addNewStudentAction(b.dataset.nsadd));
   v.querySelectorAll('[data-nsdel]').forEach(b=>b.onclick=()=>removeNewStudentAction(b.dataset.nsdel));
   v.querySelectorAll('[data-nsdone]').forEach(cb=>cb.onchange= async ()=>{
@@ -2928,6 +2938,8 @@ function bindConsult(){
     updateNewStudentField(t.dataset.nsmemo,'memo',t.value);
     await saveAndSync();
   });
+
+  // [수정 완료] 담당 자동 배정 버튼 누를 때도 실시간 동기화 적용
   const auto=document.getElementById('autoAssign');
   if(auto) auto.onclick= async ()=>{
     for(const a of academies()){
@@ -2938,7 +2950,8 @@ function bindConsult(){
         const i=load.indexOf(Math.min(...load)); mAssign()[ckey(c)]=i; load[i]++;
       });
     }
-    await saveAndSync(); render(true);
+    await saveAndSync(); 
+    render(true);
   };
 }
 
