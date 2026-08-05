@@ -4101,10 +4101,42 @@ function weekPlanForm(who, days, readOnly){
 function bindWeekPlan(who, days, readOnly){
   const v=document.getElementById('view'); const wp=wpGet(who,days[0],days);
   if(readOnly) return; // 조회 전용 — 편집 이벤트 바인딩하지 않음
+  
   v.querySelectorAll('.wp-c').forEach(inp=>inp.onchange=()=>{
-    wp.rows[Number(inp.dataset.i)][inp.dataset.f]=inp.value; save();
-    if(inp.dataset.f==='date') render(true);
+    const idx = Number(inp.dataset.i); // 몇 번째 줄인지
+    const field = inp.dataset.f; // 어떤 칸을 수정했는지 (cls, book, hw, prog 등)
+    const val = inp.value; // 수정한 내용
+    
+    // 1. 주간진도계획표 데이터 정상 업데이트
+    wp.rows[idx][field] = val; 
+    
+    // 2. 업무 보고서(일간 업무일지) 자동 연동
+    const rDate = wp.rows[idx].date;
+    const rCls = wp.rows[idx].cls;
+    
+    // 날짜와 반 이름이 존재하고, 수정한 칸이 '교재(book)', '과제(hw)', '진도(prog)' 중 하나일 때만 실행
+    if(rDate && rCls && (field === 'book' || field === 'hw' || field === 'prog')){
+        try {
+            // 해당 날짜의 업무일지 데이터(wlGet)를 가져옵니다.
+            const e = wlGet(who, rDate); 
+            
+            // 업무일지의 수업목록(e.lessons) 중에서 이름이 같은 반을 찾습니다.
+            const targetLesson = e.lessons.find(L => L.cls === rCls); 
+            
+            // 같은 반이 존재한다면 값을 똑같이 넣어줍니다.
+            if(targetLesson){
+                targetLesson[field] = val; 
+                e.updatedAt = Date.now(); // 업무일지 업데이트 시간 갱신
+            }
+        } catch(err) {
+            console.log("업무일지 연동 중 에러 발생:", err);
+        }
+    }
+
+    save(); // 전체 저장
+    if(field === 'date') render(true);
   });
+  
   v.querySelectorAll('.wp-del').forEach(b=>b.onclick=()=>{ wp.rows.splice(Number(b.dataset.i),1); save(); render(true); });
   const ad=v.querySelector('#wpAdd'); if(ad) ad.onclick=()=>{
     const last=wp.rows[wp.rows.length-1];
