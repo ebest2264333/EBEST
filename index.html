@@ -3507,6 +3507,8 @@ function renderToday(list){
     <div style="padding:0 16px 14px">
       ${absentHwList.length?absentHwList.map(x=>{
         const reasonMissing=!x.absReasonToday;
+        const hrecTop=(hw[x.k]||{})[x.s]||{};
+        const bySubj=hrecTop.bySubject||{};
         return `<div style="padding:10px 0;border-bottom:1px solid #f5c6cb;display:flex;flex-direction:column;gap:6px">
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
             <b style="font-size:.92rem;color:#c0392b">${esc(x.student)}</b>
@@ -3516,16 +3518,25 @@ function renderToday(list){
           <div style="display:flex;gap:8px;align-items:center">
             <input type="text" class="absreasoninput" data-k="${esc(x.k)}" data-s="${esc(x.s)}" placeholder="결석 사유를 입력하세요 (예: 병원, 여행 등)" value="${esc(x.absReasonToday)}" style="flex:1;border:1.5px solid ${reasonMissing?'#e7b3ab':'#f5c6cb'};border-radius:8px;padding:6px 10px;font-family:inherit;font-size:.82rem;background:${reasonMissing?'#fff8f8':'#fff'}">
           </div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap">
-            ${x.subjects.map(sj=>`<label class="hwlab" style="color:${sj.kakaoSent?'#27ae60':'#b45309'};font-weight:800;background:#fff;padding:3px 8px;border:1px solid ${sj.kakaoSent?'#27ae60':'#f5c6cb'};border-radius:6px">
-              <input type="checkbox" class="hwkakaochk" data-k="${esc(x.k)}" data-s="${esc(x.s)}" data-subj="${esc(sj.subj||'')}" ${sj.kakaoSent?'checked':''}> 💬 ${sj.subj?esc(sj.subj)+' - ':''}카톡 숙제 전송
-            </label>`).join('')}
+          <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px">
+            ${x.subjects.map(sj=>{
+              // 저장된 과목별 숙제 메모 가져오기
+              const subjMemo = (sj.subj ? (bySubj[sj.subj] && bySubj[sj.subj].kakaoMemo) : hrecTop.kakaoMemo) || '';
+              return `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                <label class="hwlab" style="color:${sj.kakaoSent?'#27ae60':'#b45309'};font-weight:800;background:#fff;padding:3px 8px;border:1px solid ${sj.kakaoSent?'#27ae60':'#f5c6cb'};border-radius:6px;min-width:140px;text-align:center">
+                  <input type="checkbox" class="hwkakaochk" data-k="${esc(x.k)}" data-s="${esc(x.s)}" data-subj="${esc(sj.subj||'')}" ${sj.kakaoSent?'checked':''}> 💬 ${sj.subj?esc(sj.subj)+' - ':''}카톡 전송
+                </label>
+                <!-- ▼ 추가된 숙제 메모 입력칸 ▼ -->
+                <input type="text" class="hwkakaomemo" data-k="${esc(x.k)}" data-s="${esc(x.s)}" data-subj="${esc(sj.subj||'')}" placeholder="전송할 숙제/진도 내용 입력" value="${esc(subjMemo)}" style="flex:1;min-width:180px;border:1px solid #dcdde1;border-radius:6px;padding:4px 8px;font-family:inherit;font-size:.8rem;">
+              </div>`;
+            }).join('')}
           </div>
         </div>`;
       }).join(''):'<div style="font-size:.82rem;color:#8b93a7">오늘 결석 처리된 학생이 없습니다.</div>'}
     </div></div>`;
   return alertSection+h+staySection+absentTodaySection+wtSection;
 }
+
 function bindToday(){
   const v=document.getElementById('view');
   bindWordTest();
@@ -3638,6 +3649,21 @@ function bindToday(){
       e.updatedAt=Date.now();
     }
     save(); render(true);
+  });
+  
+  // ▼ 추가된 부분: 결석생 카톡 숙제 메모 저장 기능 ▼
+  v.querySelectorAll('.hwkakaomemo').forEach(inp=>inp.onchange=()=>{
+    const k=inp.dataset.k, s=inp.dataset.s, subj=inp.dataset.subj, hw2=hwFor(state.date);
+    hw2[k]=hw2[k]||{}; hw2[k][s]=hw2[k][s]||{};
+    
+    if(subj){
+      hw2[k][s].bySubject=hw2[k][s].bySubject||{};
+      hw2[k][s].bySubject[subj]=hw2[k][s].bySubject[subj]||{};
+      hw2[k][s].bySubject[subj].kakaoMemo=inp.value;
+    } else {
+      hw2[k][s].kakaoMemo=inp.value; 
+    }
+    save(); 
   });
 }
 
