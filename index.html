@@ -2862,33 +2862,21 @@ function attKeysFor(c, wd){
 // 로그인한 선생님(실장 포함)이 그 반에서 실제로 맡은 과목만 골라준다.
 // 과목마다 담당(teacher)이 명시돼 있으면 그 이름과 일치하는 과목만; 명시된 담당이 하나도 없는 반(예: 전체 담당 배정)이면 제한하지 않고 전부 보여준다.
 function mySubjectKeys(c, wd, lt){
+  // ✨ 추가 1: "내 수업만 보기" 체크가 꺼져있으면 전체 표시!
+  if(!state.myOnly) return null; 
+
   if(!lt) return null; // 순수 관리자(원장) 로그인이면 제한 없이 전체 표시
   const daySubjs=(c.subjects||[]).filter(s=>subjOnDay(s,wd));
   const nm=norm(lt.t.name);
   const hasAnyNamedTeacher=daySubjs.some(s=>s.teacher);
-  if(!hasAnyNamedTeacher) return null; // 이 반에 과목별 담당 표기가 아예 없으면(전체 담당 방식) 제한하지 않음
-  // 내 과목이거나, 담당이 아직 안 정해진 과목만 보여준다. 다른 사람 이름이 명시된 과목은 제외한다
-  // (예: IBT는 Matilda 담당이라 표시되지만, 담당 미지정인 Writing은 대체로 보여줌)
-  function mySubjectKeys(c, wd, lt){
-
-  if(!lt) return null; // 순수 관리자(원장) 로그인이면 제한 없이 전체 표시
-
-  const daySubjs=(c.subjects||[]).filter(s=>subjOnDay(s,wd));
-
-  const nm=norm(lt.t.name);
-
-  const hasAnyNamedTeacher=daySubjs.some(s=>s.teacher);
-
-  if(!hasAnyNamedTeacher) return null; // 이 반에 과목별 담당 표기가 아예 없으면(전체 담당 방식) 제한하지 않음
-
-  // 내 과목이거나, 담당이 아직 안 정해진 과목만 보여준다. 다른 사람 이름이 명시된 과목은 제외한다
-
-  // (예: IBT는 Matilda 담당이라 표시되지만, 담당 미지정인 Writing은 대체로 보여줌)
-
+  if(!hasAnyNamedTeacher) return null; // 이 반에 과목별 담당 표기가 아예 없으면 제한하지 않음
+  
   const mine=daySubjs.filter(s=>!s.teacher || norm(s.teacher)===nm);
+  
+  // ✨ 추가 2: 앨리스 선생님(담당과목 0개) 프리패스 완벽 차단!
+  if(mine.length === 0) return new Set(['__NONE__']);
 
   return new Set(mine.map(s=>s.subject||'-'));
-
 }
   function cascadeEarlyLeave(k, sname, date){
   // 어떤 과목에서 조퇴 처리되면, 그 뒤 시간에 있는 과목들 중 아직 출결 체크가 안 된 것만 자동으로 결석 처리한다
