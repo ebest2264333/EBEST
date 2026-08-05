@@ -1627,14 +1627,22 @@ function bindClassEdit(){
     const [idx,field]=el.dataset.sfield.split('|');
     updateSubjectField(el.dataset.a,el.dataset.src,el.dataset.id,Number(idx),field,el.value);
   });
-  v.querySelectorAll('[data-stime]').forEach(el=>el.onchange=()=>{
-    const [idx]=el.dataset.stime.split('|');
-    const tr=el.closest('tr');
-    const sSel=tr.querySelector(`[data-stime="${idx}|s"]`), eSel=tr.querySelector(`[data-stime="${idx}|e"]`);
-    const sv=sSel?sSel.value:'', ev=eSel?eSel.value:'';
-    const combined = (sv&&ev) ? `${sv}-${ev}` : '';
-    updateSubjectField(el.dataset.a,el.dataset.src,el.dataset.id,Number(idx),'time',combined);
-  });
+  v.querySelectorAll('[data-stime]').forEach(el => el.onchange = () => {
+    const [idx] = el.dataset.stime.split('|');
+    const tr = el.closest('tr');
+    
+    const sSel = tr.querySelector(`[data-stime="${idx}|s"]`);
+    const eSel = tr.querySelector(`[data-stime="${idx}|e"]`);
+    
+    const sv = sSel ? sSel.value : '';
+    const ev = eSel ? eSel.value : '';
+    
+    // 🚨 수정한 부분: 둘 다 비어있을 때만 빈칸('')으로 날리고, 
+    // 하나라도 값이 있으면 '3:00-' 또는 '-3:40' 형태로라도 살려둠!
+    const combined = (sv || ev) ? `${sv}-${ev}` : '';
+    
+    updateSubjectField(el.dataset.a, el.dataset.src, el.dataset.id, Number(idx), 'time', combined);
+});
 }
 /* ---------- 학생 명단 (관리자·실장 관리, 선생님은 조회+코멘트) ---------- */
 function genStudentId(){ return 's'+Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
