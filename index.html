@@ -2955,7 +2955,20 @@ function todayClasses(list){
   const wd=wdOf(state.date);
   let cls=list.filter(c=>classMeets(c,wd));
   const lt=loginTeacher();
-  if(lt && state.myOnly) cls=cls.filter(c=>teacherTeaches(c,lt));
+  
+  if(lt && state.myOnly) {
+    cls = cls.filter(c => {
+      // 1. 우선 전체 요일 기준으로 내 담당 반이 맞는지 1차 확인 (기존 로직)
+      if (!teacherTeaches(c, lt)) return false;
+      
+      // 2. 핵심 추가: 담당 반이더라도, '오늘' 내 수업이 0개면 카드를 아예 날려버림!
+      // 아까 우리가 만든 '__NONE__' (수업 없음) 판별 장치를 여기서 활용합니다.
+      const keys = mySubjectKeys(c, wd, lt);
+      if (keys && keys.has('__NONE__')) return false; 
+      
+      return true;
+    });
+  }
   return cls;
 }
 function absentReasonMissingCount(academy, dateISO){
