@@ -3367,24 +3367,34 @@ function renderToday(list){
       </div>`;
 
       if(rowMulti){
-        return `<div style="padding:7px 0;border-bottom:1px solid #f1f3f8">
-          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-            <span class="sn" style="min-width:96px;font-weight:800">${hl(s)}</span>
-            <label class="hwlab"><input type="checkbox" class="hwchk" data-k="${esc(ownerK)}" data-s="${esc(s)}" ${hrec.done?'checked':''}>숙제</label>
-            <input type="text" class="hwnote" data-k="${esc(ownerK)}" data-s="${esc(s)}" placeholder="숙제 확인 · 수정 지시 · 수업 메모…" value="${esc(hrec.note||'')}" style="flex:1;min-width:160px;border:1px solid var(--line);border-radius:7px;padding:5px 9px;font-family:inherit;font-size:.83rem">
-          </div>
-          <div class="atg" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px">${atGroups}${allAbsentChk}</div>
-          ${absReasonRow}
-        </div>${stayRow}`;
-      }
-      return `<div class="trow2">
-        <span class="sn">${hl(s)}</span>
-        <span class="atg" style="display:flex;flex-wrap:wrap;align-items:center;gap:4px">${atGroups}${allAbsentChk}</span>
-        <label class="hwlab"><input type="checkbox" class="hwchk" data-k="${esc(ownerK)}" data-s="${esc(s)}" ${hrec.done?'checked':''}>숙제</label>
-        <input type="text" class="hwnote" data-k="${esc(ownerK)}" data-s="${esc(s)}" placeholder="숙제 확인 · 수정 지시 · 수업 메모…" value="${esc(hrec.note||'')}"></div>
+      return `<div style="padding:7px 0;border-bottom:1px solid #f1f3f8">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span class="sn" style="min-width:96px;font-weight:800">${hl(s)}</span>
+          
+          <!-- 숙제 체크와 메모칸 숨김 처리 -->
+          <label class="hwlab" style="display:none;"><input type="checkbox" class="hwchk" data-k="${esc(ownerK)}" data-s="${esc(s)}" ${hrec.done?'checked':''}>숙제</label>
+          <input type="text" class="hwnote" data-k="${esc(ownerK)}" data-s="${esc(s)}" placeholder="숙제 확인 · 수정 지시 · 수업 메모…" value="${esc(hrec.note||'')}" style="display:none; flex:1;min-width:160px;border:1px solid var(--line);border-radius:7px;padding:5px 9px;font-family:inherit;font-size:.83rem">
+        </div>
+        
+        <!-- ▼ 출/지/결/조 한 줄로 나오게 수정 (flex-wrap: nowrap 으로 변경) ▼ -->
+        <div class="atg" style="display:flex;flex-wrap:nowrap;align-items:center;gap:6px;margin-top:6px">${atGroups}${allAbsentChk}</div>
+        
         ${absReasonRow}
-      ${stayRow}`;
-    };
+      </div>${stayRow}`;
+    }
+    return `<div class="trow2">
+      <span class="sn">${hl(s)}</span>
+      
+      <!-- ▼ 출/지/결/조 한 줄로 나오게 수정 (flex-wrap: nowrap 으로 변경) ▼ -->
+      <span class="atg" style="display:flex;flex-wrap:nowrap;align-items:center;gap:4px">${atGroups}${allAbsentChk}</span>
+      
+      <!-- 숙제 체크와 메모칸 숨김 처리 -->
+      <label class="hwlab" style="display:none;"><input type="checkbox" class="hwchk" data-k="${esc(ownerK)}" data-s="${esc(s)}" ${hrec.done?'checked':''}>숙제</label>
+      <input type="text" class="hwnote" data-k="${esc(ownerK)}" data-s="${esc(s)}" placeholder="숙제 확인 · 수정 지시 · 수업 메모…" value="${esc(hrec.note||'')}" style="display:none;"></div>
+      
+      ${absReasonRow}
+    ${stayRow}`;
+  };
     let body='';
     if(cStudents.length){
       body=asgBox+cStudents.map(s=>studentAttRow(s,k,attKeys)).join('');
