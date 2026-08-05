@@ -3131,7 +3131,7 @@ function renderToday(list){
       </div>
       ${ref?`<div style="font-size:.72rem;color:#8b93a7;margin-top:4px">과제표 참고 — ${ref}</div>`:''}
     </div>`;
-    const studentAttRow=(s, ownerK, ownerAttKeys)=>{
+   const studentAttRow=(s, ownerK, ownerAttKeys)=>{
       const hrec=(hw[ownerK]||{})[s]||{};
       const srec=(stay[ownerK]||{})[s]||{};
       const rowMulti=ownerAttKeys.length>1;
@@ -3143,14 +3143,21 @@ function renderToday(list){
               ${['출','지','결','조퇴'].map(v=>`<button class="atb ${a===v?'on'+v:''}" data-k="${esc(key)}" data-s="${esc(s)}" data-v="${v}">${v}</button>`).join('')}
             </span>`;
           }).join('')
-        : (()=>{ const key=ownerAttKeys[0].key; const a=(at[key]||{})[s]||'';
+        : (()=>{ const key=ownerAttKeys[0].key; const a=(at[key]||{})[s]||';';
             return ['출','지','결','조퇴'].map(v=>`<button class="atb ${a===v?'on'+v:''}" data-k="${esc(key)}" data-s="${esc(s)}" data-v="${v}">${v}</button>`).join('');
           })();
-      // 전체결석: 과목이 "여러 개"인 경우에만 보여준다. 과목이 하나뿐이면 결 버튼 자체가 전체결석과 똑같은 뜻이라
-      // 체크박스를 따로 두면 같은 상태를 두 군데서 건드리게 되어, 하나 껐다 켰다 하면서 다른 쪽도 같이 바뀌는 것처럼 혼동을 준다
+      
       const allKeysStr=ownerAttKeys.map(x=>x.key).join(',');
       const allAbsent=ownerAttKeys.length>0 && ownerAttKeys.every(({key})=>((at[key]||{})[s])==='결');
       const allAbsentChk=(ownerAttKeys.length>1 && isAdminRole())?`<label class="hwlab" style="color:${allAbsent?'#c0392b':'var(--sub)'}"><input type="checkbox" class="allabsentchk" data-keys="${esc(allKeysStr)}" data-s="${esc(s)}" ${allAbsent?'checked':''}>전체결석</label>`:'';
+      
+      // ✨ [추가] 이 학생이 하나라도 '결' 상태면 오늘 결석 사유 입력칸을 보여줌!
+      const isAbsentAny = ownerAttKeys.some(({key})=>((at[key]||{})[s])==='결');
+      const absReasonRow = isAbsentAny ? `<div style="display:flex;gap:6px;align-items:center;margin-top:4px;padding-left:2px">
+        <span style="font-size:.74rem;font-weight:800;color:#c0392b">🚨 결석 사유:</span>
+        <input type="text" class="absreasoninput" data-k="${esc(ownerK)}" data-s="${esc(s)}" placeholder="결석 사유를 입력하세요 (예: 병원, 여행 등)" value="${esc(hrec.absReasonToday||'')}" style="flex:1;max-width:320px;border:1px solid #f5c6cb;border-radius:7px;padding:4px 9px;font-family:inherit;font-size:.76rem;background:#fff8f8">
+      </div>` : '';
+
       const stayRow = rowMulti
         ? `<div style="padding:1px 0 7px 2px">
             <label class="hwlab" style="color:${srec.stay?'#b45309':'var(--sub)'}"><input type="checkbox" class="staychk" data-k="${esc(ownerK)}" data-s="${esc(s)}" ${srec.stay?'checked':''}>🙋 오늘 남기</label>
@@ -3168,9 +3175,8 @@ function renderToday(list){
         <label class="hwlab" style="color:${srec.stay?'#b45309':'var(--sub)'}"><input type="checkbox" class="staychk" data-k="${esc(ownerK)}" data-s="${esc(s)}" ${srec.stay?'checked':''}>🙋 오늘 남기</label>
         <input type="text" class="staynote" data-k="${esc(ownerK)}" data-s="${esc(s)}" placeholder="남는 이유 메모" value="${esc(srec.memo||'')}" style="flex:1;max-width:280px;border:1px solid var(--line);border-radius:7px;padding:4px 9px;font-family:inherit;font-size:.78rem;background:#fbfcfe">
       </div>`;
+
       if(rowMulti){
-        // 과목이 여러 개면 고정폭 격자(.trow2)에 억지로 욱여넣으면 줄바꿈되며 다른 요소와 겹치므로,
-        // 이름·숙제·메모 한 줄 + 그 아래 과목별 출결 버튼들을 별도의 자유 줄로 분리해서 겹치지 않게 한다
         return `<div style="padding:7px 0;border-bottom:1px solid #f1f3f8">
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
             <span class="sn" style="min-width:96px;font-weight:800">${hl(s)}</span>
@@ -3178,6 +3184,7 @@ function renderToday(list){
             <input type="text" class="hwnote" data-k="${esc(ownerK)}" data-s="${esc(s)}" placeholder="숙제 확인 · 수정 지시 · 수업 메모…" value="${esc(hrec.note||'')}" style="flex:1;min-width:160px;border:1px solid var(--line);border-radius:7px;padding:5px 9px;font-family:inherit;font-size:.83rem">
           </div>
           <div class="atg" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px">${atGroups}${allAbsentChk}</div>
+          ${absReasonRow}
         </div>${stayRow}`;
       }
       return `<div class="trow2">
@@ -3185,6 +3192,7 @@ function renderToday(list){
         <span class="atg" style="display:flex;flex-wrap:wrap;align-items:center;gap:4px">${atGroups}${allAbsentChk}</span>
         <label class="hwlab"><input type="checkbox" class="hwchk" data-k="${esc(ownerK)}" data-s="${esc(s)}" ${hrec.done?'checked':''}>숙제</label>
         <input type="text" class="hwnote" data-k="${esc(ownerK)}" data-s="${esc(s)}" placeholder="숙제 확인 · 수정 지시 · 수업 메모…" value="${esc(hrec.note||'')}"></div>
+        ${absReasonRow}
       ${stayRow}`;
     };
     let body='';
