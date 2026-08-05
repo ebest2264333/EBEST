@@ -830,18 +830,15 @@ function bookGiveBadge(c, s){
 const TIME_SLOTS=['1:40','2:20','3:00','3:40','4:20','4:25','5:05','5:20','6:00','6:05','6:45','7:25','7:40','8:20','9:00','9:40','10:00'];
 
 function timeSlotOptions(val){
+  // 혹시 데이터에 공백이 있거나 "03:00" 처럼 0이 붙어있을 경우를 대비한 방어 로직
+  let safeVal = String(val || '').trim();
+  if (safeVal.startsWith('0')) {
+      safeVal = safeVal.substring(1); // "03:00" -> "3:00"
+  }
+
   return `<option value="">--</option>` + TIME_SLOTS.map(t => {
-    // 1. 시간과 분을 쪼개서 24시간제로 변환 (예: 3:00 -> 15:00)
-    let [hour, minute] = t.split(':');
-    let h = parseInt(hour);
-    if (h < 12) h += 12; // 오후로 간주하여 12 더하기
-    let value24 = `${h}:${minute}`;
-
-    // 2. 선택(selected) 상태 유지 로직
-    let isSelected = (val === t || val === value24) ? 'selected' : '';
-
-    // 3. 24시간제 value 값 적용
-    return `<option value="${value24}" ${isSelected}>${t}</option>`;
+    // 텍스트가 정확히 일치할 때만 selected 처리
+    return `<option value="${t}" ${safeVal === t ? 'selected' : ''}>${t}</option>`;
   }).join('');
 }
 function teacherColorByName(academy, name){
