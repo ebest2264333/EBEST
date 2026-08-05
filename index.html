@@ -3262,45 +3262,59 @@ function renderToday(list){
     <div style="padding:0 16px 14px">
       ${stayList.length?stayList.map(x=>`<div class="rowitem" style="align-items:center"><span class="key">${esc(x.student)} ${MODE==='all'?bdg(x.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(x.className)}</span></span><span class="val">${x.memo?esc(x.memo):'<span style="color:#c3c9d6">메모 없음</span>'} ${x.isRetest?`<button class="btn small" data-wtdone="${x.wtId}">✔ 재시험 완료</button>`:`<button class="btn small" data-staydone="${esc(x.k)}|${esc(x.s)}">✔ 완료</button>`}</span></div>`).join(''):'<div style="font-size:.82rem;color:#8b93a7">오늘 남는 학생이 없습니다.</div>'}
     </div></div>`:'';
-  // 🚨 오늘 결석생 통합 관리 (모든 선생님이 오늘 기록에서 확인 가능)
-  const absentManageList=[]; const seenAbsManager=new Set();
+// 🚨 [2단계 통합] 오늘 결석생 사유 및 숙제·카톡 관리 (모든 선생님 열람 가능)
+  const absentHwList=[]; const seenAbsent=new Set(); const seenAbsentStudent=new Set();
   cls.forEach(c=>{
     const k=ckey(c);
     const recs=at[k]||{};
+    const daySubjects=(c.subjects||[]).filter(s=>subjOnDay(s,wd)&&!isWordTestSubject(s));
+    const subjNames=daySubjects.length?[...new Set(daySubjects.map(s=>s.subject||'-'))]:['-'];
     (c.students||[]).forEach(sname=>{
       if(recs[sname]!=='결') return;
       const studentKey=k+'|'+sname;
-      if(seenAbsManager.has(studentKey)) return;
-      seenAbsManager.add(studentKey);
-      
+      const first=!seenAbsentStudent.has(studentKey);
+      seenAbsentStudent.add(studentKey);
       const hrecTop=(hw[k]||{})[sname]||{};
-      absentManageList.push({
-        className: c.name,
-        academy: c.academy,
-        student: sname,
-        k: k,
-        s: sname,
-        absReasonToday: hrecTop.absReasonToday || '',
-        kakaoSent: !!hrecTop.kakaoSent
+      subjNames.forEach((subjName,si)=>{
+        const dedupKey=k+'|'+sname+'|'+subjName;
+        if(seenAbsent.has(dedupKey)) return;
+        seenAbsent.add(dedupKey);
+        const hrec=(hw[k]||{})[sname]||{};
+        const bs=(hrec.bySubject||{})[subjName]||{};
+        absentHwList.push({
+          className: c.name, 
+          academy: c.academy, 
+          student: sname, 
+          subject: subjName, 
+          note: bs.note||'', 
+          done: !!bs.done, 
+          kakaoSent: !!hrecTop.kakaoSent, // 💬 결석 카톡 전송 여부
+          k, 
+          s: sname, 
+          first: first&&si===0, 
+          absReasonToday: hrecTop.absReasonToday||'' // 🚨 오늘 결석 사유
+        });
       });
     });
   });
 
-  const absentManageSection = absentManageList.length ? `<div class="ysec" style="margin-top:16px;border-top:4px solid #c0392b;background:#fff8f8">
-    <h3>🚨 오늘 결석생 사유 및 숙제·연락 관리 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">(${absentManageList.length}명)</span></h3>
+  const absentManageSection = absentHwList.length ? `<div class="ysec" style="margin-top:16px;border-top:4px solid #c0392b;background:#fff8f8">
+    <h3>🚨 오늘 결석생 사유 및 숙제·카톡 관리 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">(${absentHwList.length}건)</span></h3>
     <div style="padding:0 16px 14px">
-      ${absentManageList.map(x=>`
-        <div style="display:flex;flex-direction:column;gap:6px;padding:10px 0;border-bottom:1px solid #f5c6cb">
-          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-            <b style="font-size:.9rem;color:#c0392b">${esc(x.student)}</b>
-            <span style="font-size:.78rem;font-weight:600;color:var(--sub)">[${esc(x.className)}]</span>
+      ${absentHwList.map(x=>`
+        <div style="padding:8px 0;border-bottom:1px solid #f5c6cb;display:flex;flex-direction:column;gap:4px">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <b style="font-size:.88rem;color:#c0392b">${esc(x.student)}</b>
+            <span style="font-size:.76rem;color:var(--sub)">[${esc(x.className)}]</span>
+            <span style="font-size:.76rem;font-weight:700;background:#fff;padding:2px 6px;border:1px solid #f5c6cb;border-radius:4px">${esc(x.subject)}</span>
             <label class="hwlab" style="margin-left:auto;color:${x.kakaoSent?'#27ae60':'var(--sub)'};font-weight:800">
-              <input type="checkbox" class="abskakaochk" data-k="${esc(x.k)}" data-s="${esc(x.s)}" ${x.kakaoSent?'checked':''}> 💬 결석 안내 카톡 전송 완료
+              <input type="checkbox" class="abskakaochk" data-k="${esc(x.k)}" data-s="${esc(x.s)}" ${x.kakaoSent?'checked':''}> 💬 결석 카톡 전송 완료
             </label>
           </div>
           <div style="display:flex;gap:8px;align-items:center">
-            <input type="text" class="absreasoninput" data-k="${esc(x.k)}" data-s="${esc(x.s)}" placeholder="결석 사유를 입력하세요 (예: 병원, 여행 등)" value="${esc(x.absReasonToday)}" style="flex:1;border:1.5px solid #f5c6cb;border-radius:8px;padding:6px 10px;font-family:inherit;font-size:.82rem;background:#fff">
+            <input type="text" class="absreasoninput" data-k="${esc(x.k)}" data-s="${esc(x.s)}" placeholder="결석 사유 입력 (예: 병원, 여행 등)" value="${esc(x.absReasonToday)}" style="flex:1;border:1.5px solid #f5c6cb;border-radius:6px;padding:4px 8px;font-size:.78rem;background:#fff">
           </div>
+          ${x.note ? `<div style="font-size:.76rem;color:#7f8c8d;margin-top:2px">담당 메모/숙제: ${esc(x.note)}</div>` : ''}
         </div>
       `).join('')}
     </div></div>` : '';
