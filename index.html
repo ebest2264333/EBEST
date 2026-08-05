@@ -828,8 +828,21 @@ function bookGiveBadge(c, s){
   return ` <span style="font-size:.66rem;font-weight:800;color:${done===total?'var(--ok)':'var(--warn)'};background:${done===total?'#e6f6ef':'#fdf3e3'};border-radius:6px;padding:1px 5px;margin-left:3px">\uD83D\uDCE6 ${done}/${total}</span>`;
 }
 const TIME_SLOTS=['1:40','2:20','3:00','3:40','4:20','4:25','5:05','5:20','6:00','6:05','6:45','7:25','7:40','8:20','9:00','9:40','10:00'];
+
 function timeSlotOptions(val){
-  return `<option value="">--</option>` + TIME_SLOTS.map(t=>`<option value="${t}" ${val===t?'selected':''}>${t}</option>`).join('');
+  return `<option value="">--</option>` + TIME_SLOTS.map(t => {
+    // 1. 시간과 분을 쪼개서 24시간제로 변환 (예: 3:00 -> 15:00)
+    let [hour, minute] = t.split(':');
+    let h = parseInt(hour);
+    if (h < 12) h += 12; // 오후로 간주하여 12 더하기
+    let value24 = `${h}:${minute}`;
+
+    // 2. 선택(selected) 상태 유지 로직
+    let isSelected = (val === t || val === value24) ? 'selected' : '';
+
+    // 3. 24시간제 value 값 적용
+    return `<option value="${value24}" ${isSelected}>${t}</option>`;
+  }).join('');
 }
 function teacherColorByName(academy, name){
   if(!name) return null;
