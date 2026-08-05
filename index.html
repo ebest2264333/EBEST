@@ -2788,6 +2788,23 @@ function renderNewStudentAdmin(){
     ${rows||'<div style="font-size:.8rem;color:#8b93a7">등록된 신입생이 없습니다.</div>'}
   </div>`;
 }
+// [추가] 파이어베이스 동기화가 포함된 공통 저장 함수
+async function saveAndSync() {
+  if (typeof save === 'function') {
+    save(); // 기존 로컬 저장 실행
+  }
+  try {
+    if (window.db && window.academyId) {
+      await window.db.collection('academies').doc(window.academyId).set({
+        store: store,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    }
+  } catch (err) {
+    console.error("파이어베이스 동기화 실패:", err);
+  }
+}
+
 function renderNewStudentMine(a,i){
   const mine=store.newStudents.filter(ns=>!ns._deleted && ns.academy===a && subjectTeachersForClass(a, ns.className).includes(i));
   if(!mine.length) return '';
@@ -2803,6 +2820,7 @@ function renderNewStudentMine(a,i){
   </div>`).join('');
   return `<div class="mypanel" style="border-top-color:#2e5fb7"><h2>🆕 신입생 상담 (${mine.length}명)</h2>${rows}</div>`;
 }
+
 function renderMyConsult(list){
   const {a,i}=state.tf; const t=store.teachers[a][i];
   if(!t){ state.tf=null; return renderConsult(list); }
@@ -2825,8 +2843,8 @@ function renderMyConsult(list){
     <div class="sub">배정 ${cls.length}개 반 · ${d}/${tot}명 완료</div>
     ${body}</div>`;
 }
+
 function renderConsult(list){
-  // 인원수 0인 반(명단이 비어있는 반)은 상담 대상에서 제외한다
   list=list.filter(c=>c.students && c.students.length>0);
   const _lt=loginTeacher();
   if(_lt){ state.tf={a:_lt.a,i:_lt.i}; return renderMyConsult(list); }
@@ -2853,6 +2871,7 @@ function renderConsult(list){
   }).join('');
   return renderConsultRequestAdmin()+renderNewStudentAdmin()+teacherCards(list)+bar+(cards||'<div class="empty">조건에 맞는 반이 없습니다.</div>');
 }
+
 function bindConsult(){
   const v=document.getElementById('view');
   v.querySelectorAll('[data-cradd]').forEach(b=>b.onclick=()=>addConsultRequestAction(b.dataset.cradd));
@@ -2870,33 +2889,47 @@ function bindConsult(){
     if(e.target.closest('select')) return;
     h.parentElement.classList.toggle('open');
   }));
-  v.querySelectorAll('.tsel').forEach(s=>s.onchange=()=>{
+  v.querySelectorAll('.tsel').forEach(s=>s.onchange= async ()=>{
     const k=s.dataset.k; if(s.value==='') delete mAssign()[k]; else mAssign()[k]=Number(s.value);
-    save(); render(true);
+    await saveAndSync(); render(true);
   });
-  v.querySelectorAll('input[type=checkbox][data-s]').forEach(cb=>cb.onchange=()=>{
+  v.querySelectorAll('input[type=checkbox][data-s]').forEach(cb=>cb.onchange= async ()=>{
     const rec=mRecords(); const k=cb.dataset.k, s=cb.dataset.s;
     rec[k]=rec[k]||{}; rec[k][s]=rec[k][s]||{};
     rec[k][s].done=cb.checked;
     if(cb.checked && !rec[k][s].date) rec[k][s].date=todayISO();
-    save(); render(true);
+    await saveAndSync(); render(true);
   });
-  v.querySelectorAll('input.dtin').forEach(d=>d.onchange=()=>{
+  v.querySelectorAll('input.dtin').forEach(d=>d.onchange= async ()=>{
     const rec=mRecords(); const k=d.dataset.k, s=d.dataset.s;
-    rec[k]=rec[k]||{}; rec[k][s]=rec[k][s]||{}; rec[k][s].date=d.value; save();
+    rec[k]=rec[k]||{}; rec[k][s]=rec[k][s]||{}; rec[k][s].date=d.value; 
+    await saveAndSync();
   });
-  v.querySelectorAll('textarea[data-s]').forEach(t=>t.onchange=()=>{
+  v.querySelectorAll('textarea[data-s]').forEach(t=>t.onchange= async ()=>{
     const rec=mRecords(); const k=t.dataset.k, s=t.dataset.s;
-    rec[k]=rec[k]||{}; rec[k][s]=rec[k][s]||{}; rec[k][s].memo=t.value; save();
+    rec[k]=rec[k]||{}; rec[k][s]=rec[k][s]||{}; rec[k][s].memo=t.value; 
+    await saveAndSync();
   });
-  v.querySelectorAll('.cmemo').forEach(t=>t.onchange=()=>{ mCmemo()[t.dataset.k]=t.value; save(); });
+  v.querySelectorAll('.cmemo').forEach(t=>t.onchange= async ()=>{ 
+    mCmemo()[t.dataset.k]=t.value; 
+    await saveAndSync(); 
+  });
   v.querySelectorAll('[data-nsadd]').forEach(b=>b.onclick=()=>addNewStudentAction(b.dataset.nsadd));
   v.querySelectorAll('[data-nsdel]').forEach(b=>b.onclick=()=>removeNewStudentAction(b.dataset.nsdel));
-  v.querySelectorAll('[data-nsdone]').forEach(cb=>cb.onchange=()=>updateNewStudentField(cb.dataset.nsdone,'done',cb.checked));
-  v.querySelectorAll('[data-nsdate]').forEach(d=>d.onchange=()=>updateNewStudentField(d.dataset.nsdate,'date',d.value));
-  v.querySelectorAll('[data-nsmemo]').forEach(t=>t.onchange=()=>updateNewStudentField(t.dataset.nsmemo,'memo',t.value));
+  v.querySelectorAll('[data-nsdone]').forEach(cb=>cb.onchange= async ()=>{
+    updateNewStudentField(cb.dataset.nsdone,'done',cb.checked);
+    await saveAndSync();
+  });
+  v.querySelectorAll('[data-nsdate]').forEach(d=>d.onchange= async ()=>{
+    updateNewStudentField(d.dataset.nsdate,'date',d.value);
+    await saveAndSync();
+  });
+  v.querySelectorAll('[data-nsmemo]').forEach(t=>t.onchange= async ()=>{
+    updateNewStudentField(t.dataset.nsmemo,'memo',t.value);
+    await saveAndSync();
+  });
   const auto=document.getElementById('autoAssign');
-  if(auto) auto.onclick=()=>{
+  if(auto) auto.onclick= async ()=>{
     for(const a of academies()){
       const ts=store.teachers[a]; if(!ts.length) continue;
       const cls=filtered().filter(c=>c.academy===a);
@@ -2905,7 +2938,7 @@ function bindConsult(){
         const i=load.indexOf(Math.min(...load)); mAssign()[ckey(c)]=i; load[i]++;
       });
     }
-    save(); render(true);
+    await saveAndSync(); render(true);
   };
 }
 
