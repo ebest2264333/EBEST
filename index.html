@@ -3262,38 +3262,34 @@ function renderToday(list){
     <div style="padding:0 16px 14px">
       ${stayList.length?stayList.map(x=>`<div class="rowitem" style="align-items:center"><span class="key">${esc(x.student)} ${MODE==='all'?bdg(x.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(x.className)}</span></span><span class="val">${x.memo?esc(x.memo):'<span style="color:#c3c9d6">메모 없음</span>'} ${x.isRetest?`<button class="btn small" data-wtdone="${x.wtId}">✔ 재시험 완료</button>`:`<button class="btn small" data-staydone="${esc(x.k)}|${esc(x.s)}">✔ 완료</button>`}</span></div>`).join(''):'<div style="font-size:.82rem;color:#8b93a7">오늘 남는 학생이 없습니다.</div>'}
     </div></div>`:'';
-/// 🚨 1. 오늘 결석생 목록 수집 (학생 단위로 중복 없이 결석생 전부 추출)
-  const absentStudentMap = new Map();
-  cls.forEach(c => {
-    const k = ckey(c);
-    const recs = at[k] || {};
-    (c.students || []).forEach(sname => {
-      // 해당 반에서 '결' 처리가 된 학생인 경우
-      if (recs[sname] === '결') {
-        const studentKey = c.academy + '|' + sname;
-        if (!absentStudentMap.has(studentKey)) {
-          const hrecTop = (hw[k] || {})[sname] || {};
-          absentStudentMap.set(studentKey, {
-            academy: c.academy,
-            className: c.name,
-            student: sname,
-            k: k,
-            s: sname,
-            absReasonToday: hrecTop.absReasonToday || '',
-            hwKakaoSent: !!hrecTop.hwKakaoSent // 숙제 카톡 전송 여부
-          });
-        }
-      }
+// 🚨 [최종 통합] 오늘 결석생 사유 및 숙제·카톡 관리 (이름을 absentHwList로 통일하여 에러 방지)
+  const absentHwList=[]; const seenAbsent=new Set();
+  cls.forEach(c=>{
+    const k=ckey(c);
+    const recs=at[k]||{};
+    (c.students||[]).forEach(sname=>{
+      if(recs[sname]!=='결') return;
+      const studentKey=k+'|'+sname;
+      if(seenAbsent.has(studentKey)) return;
+      seenAbsent.add(studentKey);
+      
+      const hrecTop=(hw[k]||{})[sname]||{};
+      absentHwList.push({
+        className: c.name,
+        academy: c.academy,
+        student: sname,
+        k: k,
+        s: sname,
+        absReasonToday: hrecTop.absReasonToday || '',
+        hwKakaoSent: !!hrecTop.hwKakaoSent // 💬 숙제 카톡 전송 여부
+      });
     });
   });
 
-  const absentList = Array.from(absentStudentMap.values());
-
-  // 🚨 2. '오늘 결석생' 관리 섹션 HTML 생성 (하단 배치)
-  const absentManageSection = `<div class="ysec" style="margin-top:16px;border-top:4px solid #c0392b;background:#fff8f8">
-    <h3>🚨 오늘 결석생 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">(${absentList.length}명)</span></h3>
+  const absentManageSection = absentHwList.length ? `<div class="ysec" style="margin-top:16px;border-top:4px solid #c0392b;background:#fff8f8">
+    <h3>🚨 오늘 결석생 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">(${absentHwList.length}명)</span></h3>
     <div style="padding:0 16px 14px">
-      ${absentList.length ? absentList.map(x => `
+      ${absentHwList.map(x=>`
         <div style="padding:10px 0;border-bottom:1px solid #f5c6cb;display:flex;flex-direction:column;gap:6px">
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
             <b style="font-size:.92rem;color:#c0392b">${esc(x.student)}</b>
@@ -3308,11 +3304,11 @@ function renderToday(list){
             <input type="text" class="absreasoninput" data-k="${esc(x.k)}" data-s="${esc(x.s)}" placeholder="결석 사유를 입력하세요 (예: 병원, 여행 등)" value="${esc(x.absReasonToday)}" style="flex:1;border:1.5px solid #f5c6cb;border-radius:8px;padding:6px 10px;font-family:inherit;font-size:.82rem;background:#fff">
           </div>
         </div>
-      `).join('') : '<div style="font-size:.82rem;color:#8b93a7;padding:6px 0">오늘 결석한 학생이 없습니다.</div>'}
-    </div></div>`;
+      `).join('')}
+    </div></div>` : '';
 
-  // 🚨 3. 업무보고 / 업무일지 영역 연동 (체크된 학생 이름 우측 표시)
-  const sentHwAbsents = absentList.filter(x => x.hwKakaoSent).map(x => x.student);
+  // 🚨 업무보고 / 업무일지 영역 연동 (체크된 학생 이름 우측 표시)
+  const sentHwAbsents = absentHwList.filter(x => x.hwKakaoSent).map(x => x.student);
   const workReportAbsentSection = sentHwAbsents.length > 0 ? `
     <div style="margin-top:8px;padding:8px 12px;background:#eefdf3;border:1px solid #27ae60;border-radius:8px;display:flex;align-items:center;gap:8px">
       <b style="font-size:.82rem;color:#27ae60">📌 결석생 숙제 카톡 전송:</b>
