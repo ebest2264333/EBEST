@@ -3432,7 +3432,7 @@ function renderTimeline(list){
   const wd=wdOf(state.date);
   const nm=norm(lt.t.name);
   const mine=list.filter(c=>classMeets(c,wd)&&teacherTeaches(c,lt));
-  const timed=[], untimed=[];
+  const rawTimed=[], untimed=[];
   mine.forEach(c=>{
     // 반 전체 시간이 아니라, 오늘 이 반에서 "내가" 실제로 맡은 과목의 시간만 사용
     const daySubs=(c.subjects||[]).filter(s=>subjOnDay(s,wd));
@@ -3445,13 +3445,25 @@ function renderTimeline(list){
       withTime.forEach(s=>{ (groups[s.time]=groups[s.time]||[]).push(s.subject); });
       Object.keys(groups).forEach(timeStr=>{
         const r=parseRange(timeStr);
-        if(r) timed.push({c, r, subs:[...new Set(groups[timeStr].filter(Boolean))]});
+        if(r) rawTimed.push({c, r, subs:[...new Set(groups[timeStr].filter(Boolean))]});
       });
     } else {
       // 과목별 개별 시간이 없으면 반 기본 시간(기존 방식)을 그대로 사용
       const r=parseRange(timeOfDay(c,wd));
-      if(r) timed.push({c, r, subs:[...new Set(useSubs.map(s=>s.subject).filter(Boolean))]});
+      if(r) rawTimed.push({c, r, subs:[...new Set(useSubs.map(s=>s.subject).filter(Boolean))]});
       else untimed.push(c);
+    }
+  });
+  // IBT는 같은 시간대에 여러 반이 동시에 진행되는 경우가 많으므로, 시간이 같으면 반을 묶어서 한 줄로 보여준다
+  const timed=[]; const ibtGroups={};
+  rawTimed.forEach(x=>{
+    const isPureIBT=x.subs.length===1 && x.subs[0] && x.subs[0].trim().toUpperCase()==='IBT';
+    if(isPureIBT){
+      const tkey=x.r[0].toFixed(4)+'-'+x.r[1].toFixed(4);
+      if(!ibtGroups[tkey]){ ibtGroups[tkey]={r:x.r, isIBT:true, classes:[]}; timed.push(ibtGroups[tkey]); }
+      ibtGroups[tkey].classes.push(x.c);
+    } else {
+      timed.push({r:x.r, isIBT:false, classes:[x.c], subs:x.subs});
     }
   });
   timed.sort((x,y)=>x.r[0]-y.r[0]);
@@ -3460,10 +3472,23 @@ function renderTimeline(list){
     <div class="tlb gap">공강 · ${fmtDur(to-from)}</div></div>`;
   timed.forEach(x=>{
     if(x.r[0]-cur>=0.24) rows+=gapRow(cur, x.r[0]);
+    let cn2Html, sbHtml, tlk;
+    if(x.isIBT){
+      const names=x.classes.map(c=>c.name);
+      const totalCount=x.classes.reduce((n,c)=>n+(c.count||0),0);
+      cn2Html=`IBT <span style="font-weight:400;color:var(--sub)">(${names.length}개 반)</span>`;
+      sbHtml=`${names.join(', ')}${totalCount?' · '+totalCount+'명':''}`;
+      tlk='';
+    } else {
+      const c=x.classes[0];
+      cn2Html=`${esc(c.name)} ${bdg(c.academy)}`;
+      sbHtml=`${x.subs.length?x.subs.join(' · ')+' · ':''}${c.count?c.count+'명':''}`;
+      tlk=` data-tlk="${esc(ckey(c))}"`;
+    }
     rows+=`<div class="tlrow"><div class="tlt">${fmtH(x.r[0])}<br><span class="tltime">~ ${fmtH(x.r[1])}</span></div>
-      <div class="tlb" style="border-left:5px solid ${lt.t.color}" data-tlk="${esc(ckey(x.c))}">
-        <div class="cn2">${esc(x.c.name)} ${bdg(x.c.academy)}</div>
-        <div class="sb">${x.subs.length?x.subs.join(' · ')+' · ':''}${x.c.count?x.c.count+'명':''}</div></div></div>`;
+      <div class="tlb" style="border-left:5px solid ${lt.t.color}"${tlk}>
+        <div class="cn2">${cn2Html}</div>
+        <div class="sb">${sbHtml}</div></div></div>`;
     cur=Math.max(cur, x.r[1]);
   });
   if(timed.length && wk.e-cur>=0.24) rows+=gapRow(cur, wk.e);
