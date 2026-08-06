@@ -285,6 +285,7 @@ footer{max-width:1180px;margin:0 auto;padding:0 20px 40px;font-size:.73rem;color
     <div class="head-top">
       <h1 id="title"></h1>
       <span style="margin-left:auto;display:flex;align-items:center;gap:8px">
+      <span id="syncBadge" style="display:none;align-items:center;font-size:.7rem;font-weight:800;padding:4px 9px;border-radius:8px;cursor:pointer;white-space:nowrap"></span>
       <span id="bellWrap" style="position:relative">
         <button id="bellBtn" style="border:none;background:none;color:#fff;font-size:1.05rem;cursor:pointer;position:relative;padding:4px;line-height:1">🔔<span id="bellBadge" style="display:none;position:absolute;top:-3px;right:-4px;background:#e11d48;color:#fff;border-radius:9px;font-size:.62rem;font-weight:800;padding:1px 5px;line-height:1.3"></span></button>
         <div id="bellPanel" style="display:none;position:absolute;right:0;top:130%;background:#fff;color:var(--ink);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 24px rgba(28,39,64,.25);width:320px;max-height:400px;overflow:auto;z-index:100;padding:0"></div>
@@ -452,6 +453,20 @@ function save(){
 
 /* ---------- 실시간 동기화 (Firebase Realtime Database REST) ---------- */
 function syncOn(){ return !!(store.sync && store.sync.on && store.sync.url && store.sync.code); }
+function updateSyncBadge(){
+  const b=document.getElementById('syncBadge'); if(!b) return;
+  b.style.display='inline-flex';
+  if(!syncOn()){
+    b.style.background='#4b3a1a'; b.style.color='#f5c26b';
+    b.textContent='⚠ 로컬 전용'; b.title='실시간 동기화가 꺼져 있습니다 — 이 기기에만 저장되고 다른 선생님 화면에는 반영되지 않습니다. 눌러서 설정으로 이동하세요.';
+  } else if(lastSyncError){
+    b.style.background='#4b1a1a'; b.style.color='#ff9b9b';
+    b.textContent='⚠ 동기화 오류'; b.title='최근 서버 전송/수신이 실패했습니다: '+lastSyncError+' — 눌러서 설정에서 확인하세요.';
+  } else {
+    b.style.background='#123a2a'; b.style.color='#7be0b0';
+    b.textContent='☁ 동기화중'; b.title=lastSyncOkAt?('마지막 전송 성공: '+new Date(lastSyncOkAt).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})):'실시간 동기화가 켜져 있습니다.';
+  }
+}
 function syncBase(){
   let u=store.sync.url.trim().replace(/\/+$/,'');
   if(!/^https:\/\//.test(u)) u='https://'+u;
@@ -465,6 +480,7 @@ function toast(msg){ const el=document.getElementById('saved'); el.textContent=m
 
 let UPFILTER=null; // 학원별 마스터 업로드 시 해당 학원 시트만 반영
 let pushTimer=null, syncBusy=false;
+let lastSyncError=null, lastSyncOkAt=0;
 function schedulePushShared(){
   if(!syncOn()) return;
   clearTimeout(pushTimer);
@@ -536,9 +552,10 @@ async function pushShared(){
     await fbPut('/shared', pack);
     store.sharedAt=pack.updatedAt;
     localStorage.setItem(KEY, JSON.stringify(store));
+    lastSyncError=null; lastSyncOkAt=Date.now();
     toast('☁ 학원 자료 전송됨 ✓');
-  }catch(e){ console.warn('sync push 실패', e); toast('⚠ 전송 실패: '+e.message); }
-  finally{ syncBusy=false; }
+  }catch(e){ console.warn('sync push 실패', e); lastSyncError=e.message; toast('⚠ 전송 실패: '+e.message); }
+  finally{ syncBusy=false; updateSyncBadge(); }
 }
 async function forcePushShared(){
   // 비상 복구용 — 서버(원격) 자료를 받아와 병합하지 않고, 이 기기에 있는 자료로 서버를 통째로 덮어쓴다.
@@ -597,7 +614,8 @@ async function pullShared(silent){
       refreshMonthSel(); refreshLoginSel(); render(true);
       if(!silent) toast('☁ 학원 자료 자동 적용됨');
     }
-  }catch(e){ console.warn('sync pull 실패', e); toast('⚠ 수신 실패: '+e.message); }
+  }catch(e){ console.warn('sync pull 실패', e); lastSyncError=e.message; toast('⚠ 수신 실패: '+e.message); }
+  updateSyncBadge();
 }
 async function pushSubmission(pack){
   if(!syncOn()) return false;
@@ -883,6 +901,7 @@ function refreshLoginSel(){
   lo.style.display = store.login? '':'none';
   if(lt){ dot.style.display='inline-block'; dot.style.background=lt.t.color; }
   else dot.style.display='none';
+  updateSyncBadge();
   // ④ 선생님에게 월 선택 숨김 (상담 등은 이번 달 기준으로 자동)
   msel.style.display = lt? 'none':'';
   if(lt) state.month = allDataMonths().slice(-1)[0]||state.month;
@@ -926,6 +945,7 @@ document.getElementById('logoutBtn').onclick=()=>{
   refreshLoginSel(); mountLogin(); render();
   if(syncOn()) pullShared(true);
 };
+document.getElementById('syncBadge').onclick=()=>{ goTab('set'); };
 
 function tabDefs(){
   const lt=loginTeacher();
@@ -4006,12 +4026,18 @@ function autoLessons(who, date){
   const rows=[];
   cls.forEach(c=>{
     const nm=norm(w.t.name);
-    const mySubs=(c.subjects||[]).filter(s=>s.teacher&&norm(s.teacher)===nm&&!isWordTestSubject(s)&&subjOnDay(s,wd));
-    let subs=mySubs;
-    if(!subs.length){
+    const daySubs=(c.subjects||[]).filter(s=>subjOnDay(s,wd)&&!isWordTestSubject(s));
+    const hasAnyNamedTeacher=daySubs.some(s=>s.teacher);
+    let subs;
+    if(hasAnyNamedTeacher){
+      // 과목별 담당이 명시돼 있으면, 내 이름이 붙은 과목만 (다른 선생님 과목은 절대 섞이지 않음)
+      subs=daySubs.filter(s=>s.teacher&&norm(s.teacher)===nm);
+    } else {
+      // 과목별 담당 표기가 아예 없는 반만, 상담 담당으로 배정된 경우에 한해 전부 보여줌
       const asn=(store.assign[month]||{})[ckey(c)];
-      if(asn===w.i) subs=(c.subjects||[]).filter(s=>(s.subject||s.book)&&!isWordTestSubject(s)&&subjOnDay(s,wd));
+      subs=(asn===w.i) ? daySubs.filter(s=>(s.subject||s.book)) : [];
     }
+    subs=subs.filter(s=>String(s.subject||'').trim().toUpperCase()!=='IBT'); // IBT는 수업내용·진도 자동 채움 대상에서 제외
     if(!subs.length) return;
     const asg=((((store.homework[date]||{})[ckey(c)])||{})['_assign']||{}).note||'';
     subs.forEach(s=>rows.push({cls:c.name,time:timeOfDay(c,wd),book:s.book||'',lesson:s.subject||'',hw:asg||s.hw||'',prog:s.progress||''}));
@@ -4657,7 +4683,26 @@ function submitDoc(kind, who, ref){
   } else if(kind==='consult'){
     const asn=store.assign[ref]||{}; const rec=store.records[ref]||{}; const cm=(store.cmemo[ref]||{});
     const recs={}, cms={}; let n=0;
-    for(const k in asn){ if(asn[k]===w.i && k.startsWith(w.a+'|')){ if(rec[k]){recs[k]=rec[k]; n+=Object.keys(rec[k]).length;} if(cm[k]) cms[k]=cm[k]; } }
+    const byDate={}; // 상담 완료 날짜별로 어떤 반을 상담했는지 모아서, 그날 업무일지에 자동 기록
+    for(const k in asn){ if(asn[k]===w.i && k.startsWith(w.a+'|')){
+      if(rec[k]){
+        recs[k]=rec[k]; n+=Object.keys(rec[k]).length;
+        const className=k.slice(w.a.length+1);
+        for(const sname in rec[k]){
+          const r=rec[k][sname];
+          if(r && r.done && r.date){ (byDate[r.date]=byDate[r.date]||new Set()).add(className); }
+        }
+      }
+      if(cm[k]) cms[k]=cm[k];
+    } }
+    // 상담 완료 학생의 반명을 그 날짜 업무일지 Today(업무계획·상세내용) 항목에 자동 기록 (중복 방지)
+    Object.keys(byDate).forEach(d=>{
+      const e=wlGet(who,d);
+      byDate[d].forEach(className=>{
+        const already=e.today.some(x=>x.t==='전화 상담' && x.d===className);
+        if(!already){ e.today.push({t:'전화 상담', d:className, r:'완료'}); e.updatedAt=Date.now(); }
+      });
+    });
     payload={records:recs, cmemo:cms};
     label=`상담 기록 ${mLabel(ref)}`;
     summary=`상담 기록 ${n}명분`;
@@ -4988,10 +5033,11 @@ function archData(){
     const w=whoTeacher(who); if(!w) continue;
     for(const d in store.worklog[who]){
       if(state.arMonth && !d.startsWith(state.arMonth)) continue;
-      const e=store.worklog[who][d];
-      const filled=e.today.filter(x=>x.t).length+e.monthly.filter(x=>x.t).length+e.weekly.filter(x=>x.t).length;
-      if(!filled && !e.lessons.length) continue;
-      journals.push({who,w,d,today:e.today.filter(x=>x.t).length,done:e.today.filter(x=>['완료','O'].includes(x.r)).length,lessons:e.lessons.filter(L=>L.cls).length});
+      const e=store.worklog[who][d]; if(!e) continue;
+      const eToday=e.today||[], eMonthly=e.monthly||[], eWeekly=e.weekly||[], eLessons=e.lessons||[];
+      const filled=eToday.filter(x=>x.t).length+eMonthly.filter(x=>x.t).length+eWeekly.filter(x=>x.t).length;
+      if(!filled && !eLessons.length) continue;
+      journals.push({who,w,d,today:eToday.filter(x=>x.t).length,done:eToday.filter(x=>['완료','O'].includes(x.r)).length,lessons:eLessons.filter(L=>L.cls).length});
     }
   }
   journals.sort((x,y)=>y.d.localeCompare(x.d));
@@ -5002,7 +5048,8 @@ function archData(){
     const w=whoTeacher(who); if(!w) continue;
     for(const wk in store.weekplan[who]){
       if(state.arMonth && !wk.startsWith(state.arMonth)) continue;
-      const rows=store.weekplan[who][wk].rows.filter(r=>r.cls);
+      const wp=store.weekplan[who][wk]; if(!wp) continue;
+      const rows=(wp.rows||[]).filter(r=>r.cls);
       if(rows.length) plans.push({who,w,wk,n:rows.length});
     }
   }
@@ -5019,7 +5066,7 @@ function archData(){
       const who=(ti!=null)?a+'|'+ti:null;
       if(state.arWho && who!==state.arWho) continue;
       for(const s in store.records[mo][k]){
-        const r=store.records[mo][k][s];
+        const r=store.records[mo][k][s]; if(!r) continue;
         if(r.done||r.memo) consults.push({mo,a,name,s,t,date:r.date||'',memo:r.memo||''});
       }
     }
@@ -5183,6 +5230,184 @@ function removeGhostRosterEntry(academy, month, classId, sname){
   if(idx>=0){ c.students.splice(idx,1); c.count=c.students.length; c.updatedAt=Date.now(); }
   save(); render(true);
 }
+/* ---------- 그리드 시간표 엑셀 업로드 (ExcelJS로 셀 배경색까지 읽어 담당 선생님 자동 인식) ---------- */
+const TTG_DAYS=['월','화','수','목','금','토','일'];
+let TTG_LIB_PROMISE=null;
+function ttgLoadLib(){
+  if(window.ExcelJS) return Promise.resolve(window.ExcelJS);
+  if(TTG_LIB_PROMISE) return TTG_LIB_PROMISE;
+  TTG_LIB_PROMISE=new Promise((resolve,reject)=>{
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
+    s.onload=()=>window.ExcelJS?resolve(window.ExcelJS):reject(new Error('ExcelJS 로드 실패'));
+    s.onerror=()=>reject(new Error('ExcelJS 로드 실패 (네트워크 확인)'));
+    document.head.appendChild(s);
+  });
+  return TTG_LIB_PROMISE;
+}
+function ttgTimeRange(text){
+  const m=String(text||'').match(/(\d{1,2}:\d{2})\s*~\s*(\d{1,2}:\d{2})/);
+  return m?{start:m[1],end:m[2]}:null;
+}
+function ttgParseCell(text){
+  text=String(text||'').trim();
+  if(!text||text==='RECESS'||text==='어학실') return null;
+  const m=text.match(/^(.*)\(([^)]+)\)\s*$/);
+  if(!m) return {subject:text, room:'', code:null};
+  const base=m[1].trim(), paren=m[2].trim();
+  if(/^\d+$/.test(base) && /^[A-Za-z가-힣]+$/.test(paren)) return {subject:'단어시험', room:base, code:paren, isWordTest:true};
+  if(/^\d+$/.test(paren)) return {subject:base, room:paren, code:null};
+  return {subject:base, room:'', code:paren};
+}
+function ttgColorKey(fill){
+  if(!fill||fill.type!=='pattern') return null;
+  const c=fill.fgColor&&fill.fgColor.argb;
+  if(!c||c==='00000000') return null;
+  return c.toUpperCase();
+}
+function ttgFindZones(ws, headerRow, maxCol){
+  const markers=[];
+  for(let c=1;c<=maxCol;c++){ if(String(ws.getCell(headerRow,c).value||'').trim()==='반명') markers.push(c); }
+  const starts=[1, ...markers];
+  return starts.map((timeCol,i)=>({
+    timeCol,
+    classStart: timeCol+(i===0?2:1),
+    classEnd: (i+1<starts.length? starts[i+1]-1 : maxCol)
+  }));
+}
+function ttgParseWorkbook(ws, colorMap, codeMap){
+  const maxRow=ws.rowCount, maxCol=ws.columnCount;
+  const results=[], unresolved=[];
+  const isDayHeader=(row)=>{
+    const cell=ws.getCell(row,1);
+    const v=String(cell.value||'').trim();
+    const echo=cell.isMerged && cell.master && cell.master.row!==row;
+    return TTG_DAYS.includes(v) && !echo;
+  };
+  let r=1;
+  while(r<=maxRow){
+    if(isDayHeader(r)){
+      const day=String(ws.getCell(r,1).value||'').trim();
+      const headerRow=r;
+      const zones=ttgFindZones(ws, headerRow, maxCol);
+      const classNameOf={};
+      zones.forEach(z=>{ for(let c=z.classStart;c<=z.classEnd;c++){ const v=String(ws.getCell(headerRow,c).value||'').trim(); if(v) classNameOf[c]=v; } });
+      let r2=r+1; while(r2<=maxRow && !isDayHeader(r2)) r2++;
+      const blockEnd=r2-1;
+      const running={};
+      const flush=(col)=>{ const run=running[col]; if(run){ results.push({day, className:classNameOf[col], subject:run.subject, room:run.room, teacher:run.teacher, time:run.startTime+'-'+run.endTime, isWordTest:!!run.isWordTest}); delete running[col]; } };
+      for(let rr=headerRow+1; rr<=blockEnd; rr++){
+        for(const z of zones){
+          const tr=ttgTimeRange(ws.getCell(rr,z.timeCol).value);
+          if(!tr){ for(let c=z.classStart;c<=z.classEnd;c++) flush(c); continue; }
+          for(let c=z.classStart;c<=z.classEnd;c++){
+            if(!classNameOf[c]) continue;
+            const cell=ws.getCell(rr,c);
+            const parsed=ttgParseCell(cell.value);
+            if(!parsed){ flush(c); continue; }
+            let teacher=null;
+            if(parsed.code){
+              teacher=codeMap[parsed.code.toUpperCase()]||null;
+              if(!teacher) unresolved.push({day,className:classNameOf[c],reason:'code',code:parsed.code,text:cell.value});
+            } else if(!parsed.isWordTest){
+              const ck=ttgColorKey(cell.fill);
+              if(ck){ teacher=colorMap[ck]||null; if(!teacher) unresolved.push({day,className:classNameOf[c],reason:'color',color:ck,text:cell.value}); }
+            }
+            const run=running[c];
+            if(run && run.subject===parsed.subject && run.room===parsed.room && run.teacher===teacher){ run.endTime=tr.end; }
+            else{ flush(c); running[c]={subject:parsed.subject, room:parsed.room, teacher, startTime:tr.start, endTime:tr.end, isWordTest:parsed.isWordTest}; }
+          }
+        }
+      }
+      Object.keys(running).forEach(c=>flush(Number(c)));
+      r=r2;
+    } else r++;
+  }
+  return {results, unresolved};
+}
+async function handleTtGridFile(file, academy){
+  const statusEl=document.getElementById('ttgStatus');
+  if(statusEl) statusEl.textContent='엑셀 라이브러리 불러오는 중…';
+  try{
+    const ExcelJSLib=await ttgLoadLib();
+    if(statusEl) statusEl.textContent='파일 분석 중…';
+    const buf=await file.arrayBuffer();
+    const wb=new ExcelJSLib.Workbook();
+    await wb.xlsx.load(buf);
+    const ws=wb.worksheets[0];
+    const colorMap={}, codeMap={};
+    store.teachers[academy].forEach(t=>{
+      if(t.ttColor) colorMap[t.ttColor.replace('#','FF').toUpperCase()]=t.name;
+      if(t.ttCode) codeMap[t.ttCode.trim().toUpperCase()]=t.name;
+    });
+    const {results, unresolved}=ttgParseWorkbook(ws, colorMap, codeMap);
+    if(!results.length){ if(statusEl) statusEl.textContent='시간표 형식을 인식하지 못했습니다.'; return; }
+    // 반명 자동 매칭 (해당 학원 · 이번 달 기존 반과 이름이 정확히 같으면 자동 연결)
+    const existing=classesFor(state.month).filter(c=>c.academy===academy);
+    const rawNames=[...new Set(results.map(x=>x.className))];
+    const classMap={};
+    rawNames.forEach(nm=>{ const hit=existing.find(c=>c.name.trim()===nm.trim()); classMap[nm]=hit?hit.name:''; });
+    state.ttGrid={academy, results, unresolved, classMap};
+    if(statusEl) statusEl.textContent=`분석 완료 — ${results.length}개 항목, 반 ${rawNames.length}개 (아래에서 확인 후 적용하세요)`;
+    render(true);
+  }catch(e){
+    if(statusEl) statusEl.textContent='오류: '+e.message;
+    console.error(e);
+  }
+}
+function renderTtGridPreview(){
+  const g=state.ttGrid; if(!g) return '';
+  const existing=classesFor(state.month).filter(c=>c.academy===g.academy);
+  const byClass={};
+  g.results.forEach(x=>{ (byClass[x.className]=byClass[x.className]||[]).push(x); });
+  const rawNames=Object.keys(byClass).sort((a,b)=>a.localeCompare(b,'ko'));
+  const matchedN=rawNames.filter(n=>g.classMap[n]).length;
+  let h=`<div class="setsec" style="border:2px solid #6366f1;background:#f5f6ff"><h3>📋 그리드 시간표 미리보기 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">${AC[g.academy].label} · 반 ${rawNames.length}개 (매칭됨 ${matchedN}) · 항목 ${g.results.length}개</span></h3>
+    <div class="desc">각 반마다 <b>적용할 기존 반</b>을 선택하세요 (이름이 정확히 같으면 자동으로 선택돼 있습니다). "적용 안 함"을 고르면 그 반은 건너뜁니다. 적용을 누르면 선택된 반들의 <b>요일별 과목·시간·강의실·담당</b>만 갱신되고, 학생 명단·교재·진도·과제는 그대로 유지됩니다.</div>`;
+  if(g.unresolved.length){
+    h+=`<div style="margin-bottom:10px;padding:8px 10px;background:#fff8ec;border-radius:10px">
+      <div style="font-size:.8rem;font-weight:800;color:#b45309;margin-bottom:4px">⚠ 담당 선생님을 자동으로 못 찾은 항목 ${g.unresolved.length}건 (색상·코드 설정을 확인하거나, 적용 후 직접 지정하세요)</div>
+      <div style="font-size:.76rem;color:var(--sub);max-height:120px;overflow:auto">${g.unresolved.slice(0,30).map(u=>`${esc(u.day)} · ${esc(u.className)} · "${esc(u.text)}" (${u.reason==='code'?'코드 '+esc(u.code):'색상 '+esc(u.color)})`).join('<br>')}${g.unresolved.length>30?'<br>… 외 '+(g.unresolved.length-30)+'건':''}</div>
+    </div>`;
+  }
+  rawNames.forEach(nm=>{
+    const rows=byClass[nm];
+    const sel=`<select class="ttgClsSel" data-raw="${esc(nm)}" style="padding:6px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.83rem">
+      <option value="">— 적용 안 함 —</option>
+      ${existing.map(c=>`<option value="${esc(c.name)}" ${g.classMap[nm]===c.name?'selected':''}>${esc(c.name)}</option>`).join('')}
+    </select>`;
+    h+=`<div style="margin-bottom:10px;padding:8px 10px;background:#fff;border:1px solid var(--line);border-radius:10px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><b style="font-size:.86rem">${esc(nm)}</b> → ${sel} <span style="font-size:.74rem;color:#8b93a7">${rows.length}개 항목</span></div>
+      <div style="font-size:.78rem;color:var(--sub);max-height:110px;overflow:auto">${rows.map(x=>`${esc(x.day)} · ${esc(x.subject)} · ${esc(x.time)}${x.room?' · 🚪'+esc(x.room):''}${x.teacher?' · 👤'+esc(x.teacher):' · <span style="color:#c0392b">담당 미지정</span>'}`).join('<br>')}</div>
+    </div>`;
+  });
+  h+=`<div class="cbtns"><button class="btn primary" id="ttgApply">✅ 선택한 반에 적용</button><button class="btn" id="ttgCancel">취소</button></div></div>`;
+  return h;
+}
+function applyTtGridUpdate(){
+  const g=state.ttGrid; if(!g) return;
+  const existing=classesFor(state.month).filter(c=>c.academy===g.academy);
+  let clsN=0, subN=0;
+  const byClass={};
+  g.results.forEach(x=>{ (byClass[x.className]=byClass[x.className]||[]).push(x); });
+  Object.keys(byClass).forEach(raw=>{
+    const target=g.classMap[raw]; if(!target) return;
+    const c=existing.find(x=>x.name===target); if(!c) return;
+    c.subjects=c.subjects||[];
+    clsN++;
+    byClass[raw].forEach(x=>{
+      let s=c.subjects.find(sub=>(sub.subject||'')===x.subject && (sub.day||'')===x.day);
+      if(!s){ s={subject:x.subject, day:x.day, book:'', hw:'', progress:'', note:''}; c.subjects.push(s); }
+      s.time=x.time; s.room=x.room||''; s.teacher=x.teacher||'';
+      subN++;
+    });
+    c.updatedAt=Date.now();
+  });
+  save();
+  state.ttGrid=null;
+  render();
+  alert(`반영 완료! 반 ${clsN}개, 과목 항목 ${subN}개가 갱신됐습니다.`);
+}
 function renderSet(){
   let h='';
   const isTeacher=!!loginTeacher() && !isMgr();
@@ -5234,18 +5459,32 @@ function renderSet(){
       :'<div style="font-size:.8rem;color:#8b93a7">아직 업로드한 자료가 없습니다.</div>'}
   </div>`;
   else h+=`<input type="file" id="upFile" accept=".xlsx,.xls" style="display:none">`;
+  // 🕒 그리드 시간표 엑셀 업로드 (관리자·실장만) — 요일×시간 격자 형식 시간표를 읽어 과목·시간·강의실·담당을 자동 반영
+  if(!isTeacher){
+    h+=`<div class="setsec" style="border:2px solid #6366f1"><h3>🕒 그리드 시간표 엑셀 업로드</h3>
+      <div class="desc">요일별로 시간×반이 격자로 그려진 시간표 엑셀(수기로 만드시는 그 형식)을 그대로 올리면, 과목·시간·강의실·담당 선생님을 자동으로 읽어 반영합니다. 학생 명단·교재·진도 등 다른 자료는 건드리지 않습니다. 담당 선생님은 위 "${AC[academies()[0]].label} 선생님" 표에서 설정한 <b>시간표 코드·색상</b>으로 인식합니다 — 먼저 설정해두세요.</div>
+      <div class="cbtns">
+        <select id="ttgAcSel" style="padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${academies().map(a=>`<option value="${a}">${AC[a].label}</option>`).join('')}</select>
+        <button class="btn primary" id="ttgBtn">🕒 그리드 시간표 엑셀 업로드</button><input type="file" id="ttgFile" accept=".xlsx,.xls" style="display:none">
+        <span id="ttgStatus" style="font-size:.8rem;color:var(--sub)"></span>
+      </div>
+    </div>`;
+    if(state.ttGrid) h+=renderTtGridPreview();
+  }
   // 선생님 (관리자·실장만 편집 가능, 일반 선생님은 이름·색상만 조회)
   const canEditTeachers = isAdminRole();
   for(const a of academies()){
     const ts=store.teachers[a];
     if(canEditTeachers){
       h+=`<div class="setsec"><h3>${AC[a].label} 선생님 (${ts.length}/10)</h3>
-        <div class="desc">이름과 색깔로 상담 담당을 구분합니다. 최대 10명.</div>
+        <div class="desc">이름과 색깔로 상담 담당을 구분합니다. 최대 10명. <b>시간표 코드·색상</b>은 그리드 형식 시간표 엑셀 업로드 시 담당 선생님을 자동으로 인식하는 데 사용됩니다 (선택사항).</div>
         ${ts.map((t,i)=>`<div class="trow">
           <input type="text" value="${esc(t.name)}" data-a="${a}" data-i="${i}" class="tname">
           <input type="password" value="${esc(t.pw||'')}" placeholder="비밀번호" data-a="${a}" data-i="${i}" class="tpw" style="width:110px;padding:8px 11px;border:1.5px solid var(--line);border-radius:9px;font-family:inherit">
           <button class="trole ${t.role==='실장'?'':''}" data-a="${a}" data-i="${i}" style="border:1.5px solid ${t.role==='실장'?'var(--ebest)':'var(--line)'};background:${t.role==='실장'?'var(--ebest-bg)':'#fff'};color:${t.role==='실장'?'var(--ebest)':'var(--sub)'};border-radius:8px;padding:6px 11px;font-size:.78rem;font-weight:800;cursor:pointer;font-family:inherit">${t.role==='실장'?'👑 실장':'실장 지정'}</button>
           ${PALETTE.map(c=>`<span class="sw ${t.color===c?'on':''}" style="background:${c}" data-a="${a}" data-i="${i}" data-c="${c}"></span>`).join('')}
+          <input type="text" value="${esc(t.ttCode||'')}" placeholder="시간표 코드" title="시간표 엑셀 괄호 안에 쓰는 축약코드 (예: MAT)" data-a="${a}" data-i="${i}" class="tttcode" style="width:84px;padding:8px 9px;border:1.5px solid var(--line);border-radius:9px;font-family:inherit;font-size:.8rem">
+          <input type="color" value="${t.ttColor||'#cccccc'}" title="시간표 엑셀 셀 색상" data-a="${a}" data-i="${i}" class="tttcolor" style="width:34px;height:34px;padding:0;border:1.5px solid var(--line);border-radius:8px;cursor:pointer">
           <button class="del" data-a="${a}" data-i="${i}">삭제</button></div>`).join('')}
         ${ts.length<10?`<div style="margin-top:10px"><button class="btn" data-add="${a}">+ 선생님 추가</button></div>`:''}
       </div>`;
@@ -5436,6 +5675,21 @@ function parseWorkbook(wb){
   return {found, yearly, skipped};
 }
 function bindSet(){
+  const ttgBtn=document.getElementById('ttgBtn'), ttgFile=document.getElementById('ttgFile');
+  if(ttgBtn) ttgBtn.onclick=()=>ttgFile.click();
+  if(ttgFile) ttgFile.onchange=()=>{
+    const f=ttgFile.files[0]; if(!f) return;
+    const ac=document.getElementById('ttgAcSel');
+    handleTtGridFile(f, ac?ac.value:academies()[0]);
+  };
+  document.querySelectorAll('.ttgClsSel').forEach(sel=>sel.onchange=()=>{
+    if(state.ttGrid) state.ttGrid.classMap[sel.dataset.raw]=sel.value;
+  });
+  const ttgApply=document.getElementById('ttgApply'); if(ttgApply) ttgApply.onclick=()=>{
+    if(!confirm('선택한 반들의 요일별 과목·시간·강의실·담당을 갱신할까요? (학생 명단·교재·진도는 그대로 유지됩니다)')) return;
+    applyTtGridUpdate();
+  };
+  const ttgCancel=document.getElementById('ttgCancel'); if(ttgCancel) ttgCancel.onclick=()=>{ state.ttGrid=null; render(true); };
   const v=document.getElementById('view');
   v.querySelectorAll('[data-dupdel]').forEach(b=>b.onclick=()=>{
     if(!isAdminRole())return;
@@ -5554,6 +5808,8 @@ function bindSet(){
     save(); render(true);
   });
   v.querySelectorAll('.sw').forEach(s=>s.onclick=()=>{ if(!isAdminRole())return; const t=store.teachers[s.dataset.a][s.dataset.i]; t.color=s.dataset.c; t.updatedAt=Date.now(); save(); render(true); });
+  v.querySelectorAll('.tttcode').forEach(inp=>inp.onchange=()=>{ if(!isAdminRole())return; const t=store.teachers[inp.dataset.a][inp.dataset.i]; t.ttCode=inp.value.trim(); t.updatedAt=Date.now(); save(); });
+  v.querySelectorAll('.tttcolor').forEach(inp=>inp.onchange=()=>{ if(!isAdminRole())return; const t=store.teachers[inp.dataset.a][inp.dataset.i]; t.ttColor=inp.value; t.updatedAt=Date.now(); save(); });
   v.querySelectorAll('.del[data-a]').forEach(b=>b.onclick=()=>{
     if(!isAdminRole())return;
     const a=b.dataset.a, i=Number(b.dataset.i);
