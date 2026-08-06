@@ -2539,7 +2539,9 @@ function giveBlock(c, k, type, label, selected, options){
     ${selRow}
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
       <span style="font-size:.76rem;font-weight:800;color:${done===total&&total?'var(--ok)':'var(--sub)'}">배부 ${done}/${total}</span>
-      <button class="btn small" data-bgapply="${esc(k)}|${esc(subj)}" style="margin-left:auto">✔ 체크된 학생 배부 처리</button>
+      <button class="btn small" data-bgall="${esc(k)}|${esc(subj)}" style="margin-left:auto">☑ 반 전체 선택</button>
+      <button class="btn small" data-bgnone="${esc(k)}|${esc(subj)}">☐ 전체 해제</button>
+      <button class="btn small" data-bgapply="${esc(k)}|${esc(subj)}">✔ 체크된 학생 배부 처리</button>
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:6px">
       ${(c.students||[]).map(stu=>`<label style="display:flex;align-items:center;gap:4px;font-size:.8rem;background:${g.students[stu]?'#e6f6ef':'#fff'};border:1px solid ${g.students[stu]?'var(--ok)':'var(--line)'};border-radius:7px;padding:4px 8px;cursor:pointer">
@@ -2553,7 +2555,7 @@ function renderBookGive(list){
   if(lt && state.myOnly) cls=cls.filter(c=>teacherTeaches(c,lt));
   let h=`<div class="todaybar"><span class="wd">📦 교재 배부</span>
     ${lt?`<span class="mytag" style="background:${lt.t.color}">👤 ${esc(lt.t.name)}</span><label class="hwlab"><input type="checkbox" id="bgMyOnly" ${state.myOnly?'checked':''}> 내 수업만 보기</label>`:''}
-    <span style="font-size:.76rem;color:var(--sub)">학생을 체크하고 [배부 처리]를 누르면 반교재·연간교재 탭에도 실시간으로 반영됩니다. 실장 이상 누구나 입력할 수 있어요.</span></div>`;
+    <span style="font-size:.76rem;color:var(--sub)">학생을 체크하고 [배부 처리]를 누르면 반교재·연간교재 탭에도 실시간으로 반영됩니다. 선생님 누구나 개별로 체크하거나, [반 전체 선택]으로 한 번에 배부 처리할 수 있어요.</span></div>`;
   if(!cls.length) return h+'<div class="empty">학생이 등록된 반이 없습니다.</div>';
   const wbOpts=(store.wordbookOptions&&store.wordbookOptions.length)?store.wordbookOptions:WORDBOOK_OPTIONS_DEFAULT;
   const tpOpts=(store.testPaperOptions&&store.testPaperOptions.length)?store.testPaperOptions:[];
@@ -2572,7 +2574,9 @@ function renderBookGive(list){
           <b style="font-size:.86rem">${esc(subj)}</b>
           <span style="font-size:.8rem;color:var(--sub)">${esc(s.book)}</span>
           <span style="font-size:.76rem;font-weight:800;color:${done===total&&total?'var(--ok)':'var(--sub)'}">배부 ${done}/${total}</span>
-          <button class="btn small" data-bgapply="${esc(k)}|${esc(subj)}" style="margin-left:auto">✔ 체크된 학생 배부 처리</button>
+          <button class="btn small" data-bgall="${esc(k)}|${esc(subj)}" style="margin-left:auto">☑ 반 전체 선택</button>
+          <button class="btn small" data-bgnone="${esc(k)}|${esc(subj)}">☐ 전체 해제</button>
+          <button class="btn small" data-bgapply="${esc(k)}|${esc(subj)}">✔ 체크된 학생 배부 처리</button>
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:6px">
           ${(c.students||[]).map(stu=>`<label style="display:flex;align-items:center;gap:4px;font-size:.8rem;background:${g.students[stu]?'#e6f6ef':'#fff'};border:1px solid ${g.students[stu]?'var(--ok)':'var(--line)'};border-radius:7px;padding:4px 8px;cursor:pointer">
@@ -2602,6 +2606,24 @@ function bindBookGive(){
     if(cb.checked) store.bookGiven[k][subj].students[stu]=true; else delete store.bookGiven[k][subj].students[stu];
     store.bookGiven[k][subj].updatedAt=Date.now();
     save(); render(true);
+  });
+  v.querySelectorAll('[data-bgall]').forEach(b=>b.onclick=()=>{
+    const parts=b.dataset.bgall.split('|'); const subj=parts.pop(); const k=parts.join('|');
+    const checks=[...v.querySelectorAll('.bgchk')].filter(cb=>cb.dataset.k===k && cb.dataset.subj===subj);
+    store.bookGiven[k]=store.bookGiven[k]||{};
+    store.bookGiven[k][subj]=store.bookGiven[k][subj]||{students:{}};
+    checks.forEach(cb=>{ store.bookGiven[k][subj].students[cb.dataset.stu]=true; });
+    store.bookGiven[k][subj].updatedAt=Date.now();
+    save(); render(true);
+    toast('☑ 반 전체 배부 처리 완료 · '+checks.length+'명');
+  });
+  v.querySelectorAll('[data-bgnone]').forEach(b=>b.onclick=()=>{
+    const parts=b.dataset.bgnone.split('|'); const subj=parts.pop(); const k=parts.join('|');
+    if(!store.bookGiven[k] || !store.bookGiven[k][subj]) return;
+    store.bookGiven[k][subj].students={};
+    store.bookGiven[k][subj].updatedAt=Date.now();
+    save(); render(true);
+    toast('☐ 반 전체 배부 해제됨');
   });
   v.querySelectorAll('[data-bgapply]').forEach(b=>b.onclick=()=>{
     const parts=b.dataset.bgapply.split('|'); const subj=parts.pop(); const k=parts.join('|');
@@ -3093,6 +3115,21 @@ function attKeysFor(c, wd){
   withOrder.sort((a,b)=>a.t-b.t);
   return withOrder.map(({subject,key})=>({subject,key}));
 }
+function attKeysWithOwner(subjClass, ownerKey, wd){
+  // 합반 상대(파트너) 반에 그날 자체 과목이 하나도 없을 때, 메인 반(subjClass)의 과목 구성을 그대로 빌려오되
+  // 출결 저장 키는 파트너 반 소유(ownerKey)로 따로 만들어서 두 반의 출결이 서로 섞이지 않게 한다
+  const names=daySubjectNames(subjClass, wd);
+  if(names.length<=1) return [{subject:names[0]||null, key:ownerKey}];
+  const daySubjects=(subjClass.subjects||[]).filter(s=>subjOnDay(s,wd)&&!isWordTestSubject(s));
+  const repTime={};
+  daySubjects.forEach(s=>{ const nm=s.subject||'-'; if(repTime[nm]==null && s.time) repTime[nm]=s.time; });
+  const withOrder=names.map((nm,idx)=>{
+    const r=repTime[nm]?parseRange(repTime[nm]):null;
+    return {subject:nm, key:ownerKey+'_'+nm, t:r?r[0]:(1000+idx)};
+  });
+  withOrder.sort((a,b)=>a.t-b.t);
+  return withOrder.map(({subject,key})=>({subject,key}));
+}
 // 로그인한 선생님(실장 포함)이 그 반에서 실제로 맡은 과목만 골라준다.
 // 과목마다 담당(teacher)이 명시돼 있으면 그 이름과 일치하는 과목만; 명시된 담당이 하나도 없는 반(예: 전체 담당 배정)이면 제한하지 않고 전부 보여준다.
 function mySubjectKeys(c, wd, lt){
@@ -3320,20 +3357,40 @@ function renderTimeline(list){
   const lt=loginTeacher(); if(!lt) return '';
   const wk=WORK[lt.a];
   const wd=wdOf(state.date);
+  const nm=norm(lt.t.name);
   const mine=list.filter(c=>classMeets(c,wd)&&teacherTeaches(c,lt));
   const timed=[], untimed=[];
-  mine.forEach(c=>{ const r=parseRange(timeOfDay(c,wd)); if(r) timed.push({c,r,t:timeOfDay(c,wd)}); else untimed.push(c); });
+  mine.forEach(c=>{
+    // 반 전체 시간이 아니라, 오늘 이 반에서 "내가" 실제로 맡은 과목의 시간만 사용
+    const daySubs=(c.subjects||[]).filter(s=>subjOnDay(s,wd));
+    const mySubs=daySubs.filter(s=>s.teacher&&norm(s.teacher)===nm);
+    const useSubs=mySubs.length?mySubs:daySubs; // 과목별 담당 표기가 아예 없는 반이면 기존처럼 반 전체를 사용
+    const withTime=useSubs.filter(s=>s.time&&parseRange(s.time));
+    if(withTime.length){
+      // 같은 시간대에 있는 과목끼리 묶어서, 시간대별로 한 줄씩 만든다
+      const groups={};
+      withTime.forEach(s=>{ (groups[s.time]=groups[s.time]||[]).push(s.subject); });
+      Object.keys(groups).forEach(timeStr=>{
+        const r=parseRange(timeStr);
+        if(r) timed.push({c, r, subs:[...new Set(groups[timeStr].filter(Boolean))]});
+      });
+    } else {
+      // 과목별 개별 시간이 없으면 반 기본 시간(기존 방식)을 그대로 사용
+      const r=parseRange(timeOfDay(c,wd));
+      if(r) timed.push({c, r, subs:[...new Set(useSubs.map(s=>s.subject).filter(Boolean))]});
+      else untimed.push(c);
+    }
+  });
   timed.sort((x,y)=>x.r[0]-y.r[0]);
   let rows='', cur=wk.s;
   const gapRow=(from,to)=>`<div class="tlrow"><div class="tlt"><span class="tltime">${fmtH(from)}</span></div>
     <div class="tlb gap">공강 · ${fmtDur(to-from)}</div></div>`;
   timed.forEach(x=>{
     if(x.r[0]-cur>=0.24) rows+=gapRow(cur, x.r[0]);
-    const subs=[...new Set((x.c.subjects||[]).filter(s=>s.teacher&&s.teacher.trim().toLowerCase()===lt.t.name.trim().toLowerCase()).map(s=>s.subject))];
     rows+=`<div class="tlrow"><div class="tlt">${fmtH(x.r[0])}<br><span class="tltime">~ ${fmtH(x.r[1])}</span></div>
       <div class="tlb" style="border-left:5px solid ${lt.t.color}" data-tlk="${esc(ckey(x.c))}">
         <div class="cn2">${esc(x.c.name)} ${bdg(x.c.academy)}</div>
-        <div class="sb">${subs.length?subs.join(' · ')+' · ':''}${x.c.count?x.c.count+'명':''}</div></div></div>`;
+        <div class="sb">${x.subs.length?x.subs.join(' · ')+' · ':''}${x.c.count?x.c.count+'명':''}</div></div></div>`;
     cur=Math.max(cur, x.r[1]);
   });
   if(timed.length && wk.e-cur>=0.24) rows+=gapRow(cur, wk.e);
@@ -3535,8 +3592,10 @@ function renderToday(list){
     const partnerStudents=mergedPartner?activeStudents(mergedPartner):[];
     if(mergedPartner && classMeets(mergedPartner, wd) && partnerStudents.length){
       const pk=ckey(mergedPartner);
-      let pAttKeys=attKeysFor(mergedPartner, wd);
-      const pMySubjSet=mySubjectKeys(mergedPartner, wd, lt);
+      // 파트너 반 자체에 오늘 등록된 과목이 없으면(합반 후 메인 반에만 과목을 추가한 경우), 메인 반(c)의 과목 구성을 그대로 빌려와 출결칸을 맞춘다
+      const partnerHasOwnSubjects=daySubjectNames(mergedPartner, wd).length>0;
+      let pAttKeys=partnerHasOwnSubjects ? attKeysFor(mergedPartner, wd) : attKeysWithOwner(c, pk, wd);
+      const pMySubjSet=partnerHasOwnSubjects ? mySubjectKeys(mergedPartner, wd, lt) : mySubjSet;
       if(pMySubjSet){ const pf=pAttKeys.filter(x=>x.subject==null||pMySubjSet.has(x.subject)); if(pf.length) pAttKeys=pf; }
       body+=`<div style="margin:10px 0 4px;padding:6px 10px;background:#eef0ff;border-radius:8px;font-size:.8rem;font-weight:800;color:#4338ca">🔗 합반 — ${esc(mergedPartner.name)} 학생 (${partnerStudents.length}명)</div>`;
       body+=partnerStudents.map(s=>studentAttRow(s,pk,pAttKeys)).join('');
