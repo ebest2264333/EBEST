@@ -3454,16 +3454,23 @@ function renderTimeline(list){
       else untimed.push(c);
     }
   });
-  // IBT는 같은 시간대에 여러 반이 동시에 진행되는 경우가 많으므로, 시간이 같으면 반을 묶어서 한 줄로 보여준다
-  const timed=[]; const ibtGroups={};
+  // IBT·단어시험은 같은 시간대에 여러 반이 동시에 진행되는 경우가 많으므로, 시간이 같으면 반을 묶어서 한 줄로 보여준다
+  const mergeKind=(subs)=>{
+    if(subs.length!==1 || !subs[0]) return null;
+    const s=String(subs[0]).trim();
+    if(s.toUpperCase()==='IBT') return {kind:'IBT', label:'IBT'};
+    if(s.replace(/\s/g,'')==='단어시험') return {kind:'WT', label:'📖 단어시험'};
+    return null;
+  };
+  const timed=[]; const mergeGroups={};
   rawTimed.forEach(x=>{
-    const isPureIBT=x.subs.length===1 && x.subs[0] && x.subs[0].trim().toUpperCase()==='IBT';
-    if(isPureIBT){
-      const tkey=x.r[0].toFixed(4)+'-'+x.r[1].toFixed(4);
-      if(!ibtGroups[tkey]){ ibtGroups[tkey]={r:x.r, isIBT:true, classes:[]}; timed.push(ibtGroups[tkey]); }
-      ibtGroups[tkey].classes.push(x.c);
+    const mk=mergeKind(x.subs);
+    if(mk){
+      const tkey=mk.kind+'|'+x.r[0].toFixed(4)+'-'+x.r[1].toFixed(4);
+      if(!mergeGroups[tkey]){ mergeGroups[tkey]={r:x.r, isMerged:true, label:mk.label, classes:[]}; timed.push(mergeGroups[tkey]); }
+      mergeGroups[tkey].classes.push(x.c);
     } else {
-      timed.push({r:x.r, isIBT:false, classes:[x.c], subs:x.subs});
+      timed.push({r:x.r, isMerged:false, classes:[x.c], subs:x.subs});
     }
   });
   timed.sort((x,y)=>x.r[0]-y.r[0]);
@@ -3473,10 +3480,10 @@ function renderTimeline(list){
   timed.forEach(x=>{
     if(x.r[0]-cur>=0.24) rows+=gapRow(cur, x.r[0]);
     let cn2Html, sbHtml, tlk;
-    if(x.isIBT){
+    if(x.isMerged){
       const names=x.classes.map(c=>c.name);
       const totalCount=x.classes.reduce((n,c)=>n+(c.count||0),0);
-      cn2Html=`IBT <span style="font-weight:400;color:var(--sub)">(${names.length}개 반)</span>`;
+      cn2Html=`${x.label} <span style="font-weight:400;color:var(--sub)">(${names.length}개 반)</span>`;
       sbHtml=`${names.join(', ')}${totalCount?' · '+totalCount+'명':''}`;
       tlk='';
     } else {
