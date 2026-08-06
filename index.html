@@ -931,7 +931,7 @@ function tabDefs(){
   const lt=loginTeacher();
   if(lt && !isMgr()){
     return {main:[['today','🏠 홈'],['consult','상담'],['report','업무일지'],['dash','반 · 교재']],
-            more:[['bookgive','📦 교재배부'],['wordrange','📝 단어 범위'],['roster','학생 명단'],['timetable','🕒 시간표'],['yearly','연간 교재'],['cal','일정 · 회의'],['set','설정']]};
+            more:[['bookgive','📦 교재배부'],['wordrange','📝 단어 범위'],['roster','학생 명단'],['timetable','🕒 시간표'],['yearly','연간 교재'],['cal','일정 · 회의'],['archive','전체 기록'],['set','설정']]};
   }
   if(isMgr()){
     return {main:[['today','🏠 홈'],['consult','상담'],['report','업무보고'],['dash','반 · 교재']],
@@ -1866,12 +1866,27 @@ function linkSibling(id, siblingName){
   const groupIds=new Set([id, sib.id]);
   (s.siblings||[]).forEach(x=>groupIds.add(x));
   (sib.siblings||[]).forEach(x=>groupIds.add(x));
+  // 그룹 안에 등록된 부모님 번호가 있으면, 번호가 비어있는 형제자매에게 같이 채워준다 (이미 다른 번호가 있으면 덮어쓰지 않음)
+  let groupPhone='';
+  groupIds.forEach(memberId=>{ const m=store.students.find(x=>x.id===memberId); if(m && m.parentPhone && !groupPhone) groupPhone=m.parentPhone; });
   groupIds.forEach(memberId=>{
     const member=store.students.find(x=>x.id===memberId); if(!member) return;
     member.siblings=[...groupIds].filter(x=>x!==memberId);
+    if(!member.parentPhone && groupPhone) member.parentPhone=groupPhone;
     member.updatedAt=Date.now();
   });
   save(); render(true);
+}
+function gotoStudent(id){
+  const s=store.students.find(x=>x.id===id); if(!s) return;
+  state.tab='roster'; state.q=''; state.rosterStatus='전체'; state.rosterView='all';
+  if(MODE==='all') state.ac=s.academy;
+  if(isAdminRole()) state.rosterOpen[id]=true;
+  render();
+  setTimeout(()=>{
+    const el=document.getElementById('stu_'+id);
+    if(el) el.scrollIntoView({behavior:'smooth', block:'center'});
+  }, 60);
 }
 function unlinkSibling(id, siblingId){
   const s=store.students.find(x=>x.id===id); const sib=store.students.find(x=>x.id===siblingId);
@@ -1887,24 +1902,26 @@ function classNameOptions(a){
 function studentCard(s, admin){
   const canNote = admin || !!loginTeacher();
   const statusColor = s.status==='퇴원' ? '#c0392b' : s.status==='휴원' ? '#b45309' : '#0e9f6e';
-  const sibNames=(s.siblings||[]).map(id=>{ const sib=store.students.find(x=>x.id===id); return sib?sib.nameKo:null; }).filter(Boolean);
+  const sibs=(s.siblings||[]).map(id=>{ const sib=store.students.find(x=>x.id===id); return sib?{id,name:sib.nameKo}:null; }).filter(Boolean);
+  const sibNames=sibs.map(x=>x.name);
+  const sibLinks=sibs.map(x=>`<span data-rsgoto="${x.id}" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px">${esc(x.name)}</span>`).join(', ');
   const open = admin && state.rosterOpen[s.id];
   if(!open){
-    return `<article class="card ${AC[s.academy].cls}">
+    return `<article class="card ${AC[s.academy].cls}" id="stu_${s.id}">
       <h2>${esc(s.nameKo)}${s.nameEn?' <span style="font-weight:400;color:var(--sub)">('+esc(s.nameEn)+')</span>':''}
         <span class="badge" style="background:${statusColor};color:#fff">${esc(s.status)}</span>
         ${admin?`<button class="btn small" style="float:right;font-size:.72rem;padding:4px 9px" data-rstoggle="${s.id}">✎ 편집</button>`:''}</h2>
       <div class="meta">${esc(s.className||'미배정')}${s.grade?' · '+esc(s.grade):''}${s.school?' · '+esc(s.school):''}${s.parentPhone?' · 📞 '+esc(s.parentPhone):''}</div>
       ${s.preCheck?`<div class="rnote">🔎 상담 전 확인: ${esc(s.preCheck)}</div>`:''}
       ${s.status!=='재원'&&s.statusReason?`<div class="rnote">${esc(s.status)} 사유: ${esc(s.statusReason)}</div>`:''}
-      ${sibNames.length?`<div style="font-size:.78rem;color:var(--sub);margin-top:4px">👨‍👩‍👧‍👦 형제자매: ${sibNames.map(esc).join(', ')}</div>`:''}
+      ${sibs.length?`<div style="font-size:.78rem;color:var(--sub);margin-top:4px">👨‍👩‍👧‍👦 형제자매: ${sibLinks}</div>`:''}
       ${canNote?`<textarea data-rsnote="${s.id}" placeholder="특이사항 코멘트…" style="width:100%;min-height:44px;margin-top:8px;border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-family:inherit;font-size:.83rem">${esc(s.note||'')}</textarea>`
         :(s.note?`<div class="note">${esc(s.note)}</div>`:'')}
     </article>`;
   }
   const statusOpts=['재원','휴원','퇴원'];
   const clsOpts=classNameOptions(s.academy);
-  return `<article class="card ${AC[s.academy].cls}" style="border:2px solid ${AC[s.academy].cls==='eb'?'var(--ebest)':'var(--icon)'}">
+  return `<article class="card ${AC[s.academy].cls}" id="stu_${s.id}" style="border:2px solid ${AC[s.academy].cls==='eb'?'var(--ebest)':'var(--icon)'}">
     <datalist id="dl_cls_${s.academy}">${clsOpts.map(n=>`<option value="${esc(n)}">`).join('')}</datalist>
     <datalist id="dl_allstudents">${store.students.filter(x=>x.id!==s.id && !x._deleted).map(x=>`<option value="${esc(x.nameKo)}">`).join('')}</datalist>
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
@@ -1925,7 +1942,7 @@ function studentCard(s, admin){
     </div>
     <input type="text" value="${esc(s.preCheck||'')}" placeholder="상담 전 확인해야 할 내용" data-rsfield="${s.id}|preCheck" style="width:100%;margin-bottom:8px;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.86rem">
     <div style="font-size:.78rem;font-weight:700;color:var(--sub);margin-bottom:4px">형제자매</div>
-    <div style="margin-bottom:6px">${sibNames.length?sibNames.map((n,idx)=>`<span class="stu">${esc(n)} <b data-rsunlink="${s.id}|${s.siblings[idx]}" style="cursor:pointer;color:#c0392b;margin-left:3px">×</b></span>`).join(''):'<span style="font-size:.8rem;color:#8b93a7">없음</span>'}</div>
+    <div style="margin-bottom:6px">${sibs.length?sibs.map(x=>`<span class="stu"><span data-rsgoto="${x.id}" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px">${esc(x.name)}</span> <b data-rsunlink="${s.id}|${x.id}" style="cursor:pointer;color:#c0392b;margin-left:3px">×</b></span>`).join(''):'<span style="font-size:.8rem;color:#8b93a7">없음</span>'}</div>
     <div style="display:flex;gap:6px;margin-bottom:10px">
       <input type="text" placeholder="형제자매 이름 검색" list="dl_allstudents" data-rssib-in="${s.id}" style="flex:1;min-width:100px;padding:6px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.86rem">
       <button class="btn small" data-rssiblink="${s.id}">연결</button>
@@ -2125,6 +2142,7 @@ function bindRoster(){
     const id=b.dataset.rstoggle; state.rosterOpen[id]=!state.rosterOpen[id]; render(true);
   });
   v.querySelectorAll('[data-rsdel]').forEach(b=>b.onclick=()=>removeStudentRecord(b.dataset.rsdel));
+  v.querySelectorAll('[data-rsgoto]').forEach(el=>el.onclick=(e)=>{ e.stopPropagation(); gotoStudent(el.dataset.rsgoto); });
   v.querySelectorAll('[data-rsfield]').forEach(el=>el.onchange=()=>{
     const [id,field]=el.dataset.rsfield.split('|');
     updateStudentField(id,field,el.value);
