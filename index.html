@@ -640,13 +640,30 @@ async function pollInbox(){
     if(n){ localStorage.setItem(KEY, JSON.stringify(store)); render(true); toast('📥 새 제출 '+n+'건 수신'); schedulePushShared(); }
   }catch(e){ console.warn('inbox 확인 실패', e); }
 }
+let __syncLoopStarted=false;
 function startSyncLoop(){
   if(!syncOn()) return;
   pullShared(true);
   // 다른 사람이 바꾼 내용도 빨리 보이도록 5초마다 확인
   if(MODE==='all'){ pollInbox(); setInterval(()=>{ pullShared(false); pollInbox(); }, 5000); }
   else setInterval(()=>pullShared(false), 5000);
-  document.addEventListener('visibilitychange',()=>{ if(!document.hidden){ pullShared(true); if(MODE==='all') pollInbox(); } });
+  if(__syncLoopStarted) return; // 껐다 켰다를 반복해도 화면 이벤트 리스너는 한 번만 등록
+  __syncLoopStarted=true;
+  document.addEventListener('visibilitychange',()=>{
+    if(document.hidden){ flushPendingPush(); }
+    else{ pullShared(true); if(MODE==='all') pollInbox(); }
+  });
+  window.addEventListener('beforeunload', (e)=>{
+    if(syncOn() && (pushTimer || syncBusy)){
+      flushPendingPush();
+      e.preventDefault(); e.returnValue='';
+      return '';
+    }
+  });
+}
+function flushPendingPush(){
+  // 화면을 벗어나거나 닫기 직전, 아직 서버로 안 나간 저장이 있으면 즉시 전송 시도
+  if(pushTimer){ clearTimeout(pushTimer); pushTimer=null; pushShared(); }
 }
 
 /* ---------- 데이터 접근 (내장자료 + 업로드자료) ---------- */
@@ -3259,7 +3276,7 @@ function todoCard(list){
   const who=whoKey(lt); const today=todayISO();
   // 업무일지 상태
   const e=(store.worklog[who]||{})[today];
-  const jFilled=e && (e.today.some(x=>x.t)||e.lessons.some(L=>L.cls));
+  const jFilled=e && ((e.today||[]).some(x=>x.t)||(e.lessons||[]).some(L=>L.cls));
   const jSub=!!findSubmit('journal',who,today);
   // 주간계획 상태
   const wk=weekOf(today)[0];
@@ -3621,7 +3638,7 @@ function renderToday(list){
       if(deptStudents.length === 0) return; 
       
       absentGroupsHTML += `
-      <details open style="margin-bottom:10px; border:1px solid #f5c6cb; border-radius:8px; padding:8px 12px; background:#fff;">
+      <details ${state.absentDeptOpen&&state.absentDeptOpen[deptName]===false?'':'open'} data-absdept="${esc(deptName)}" style="margin-bottom:10px; border:1px solid #f5c6cb; border-radius:8px; padding:8px 12px; background:#fff;">
         <summary style="cursor:pointer; font-weight:800; color:#c0392b; font-size:.95rem;">
           ${deptName} (${deptStudents.length}명)
         </summary>
@@ -3669,6 +3686,10 @@ function renderToday(list){
 function bindToday(){
   const v=document.getElementById('view');
   bindWordTest();
+  v.querySelectorAll('[data-absdept]').forEach(el=>el.addEventListener('toggle', ()=>{
+    state.absentDeptOpen=state.absentDeptOpen||{};
+    state.absentDeptOpen[el.dataset.absdept]=el.open;
+  }));
   v.querySelectorAll('[data-crdone]').forEach(b=>b.onclick=()=>updateConsultRequestField(b.dataset.crdone,'done',true));
   v.querySelectorAll('[data-crnote]').forEach(t=>t.onchange=()=>updateConsultRequestField(t.dataset.crnote,'consultNote',t.value));
   v.querySelectorAll('[data-rsalertdone]').forEach(b=>b.onclick=()=>updateStudentField(b.dataset.rsalertdone,'alertNote',''));
@@ -4674,8 +4695,8 @@ function submitDoc(kind, who, ref){
   if(kind==='journal'){
     payload=store.worklog[who]&&store.worklog[who][ref];
     label=`업무일지 ${ref} (${wdOf(ref)})`;
-    const e=payload||{today:[],lessons:[]};
-    summary=`오늘 업무 ${e.today.filter(x=>x.t).length}건 (완료 ${e.today.filter(x=>['완료','O'].includes(x.r)).length}) · 수업 ${e.lessons.filter(L=>L.cls).length}줄`;
+    const e=payload||{}; const eToday=e.today||[], eLessons=e.lessons||[];
+    summary=`오늘 업무 ${eToday.filter(x=>x.t).length}건 (완료 ${eToday.filter(x=>['완료','O'].includes(x.r)).length}) · 수업 ${eLessons.filter(L=>L.cls).length}줄`;
   } else if(kind==='weekplan'){
     payload=store.weekplan[who]&&store.weekplan[who][ref];
     label=`주간 진도계획표 ${ref} 주간`;
@@ -4764,7 +4785,11 @@ function importSubmission(pack){
     else throw new Error(pack.teacher.name+' 선생님이 목록에 없고 자리가 없습니다 (최대 10명)');
   }
   const who=a+'|'+i;
-  if(pack.kind==='journal'){ store.worklog[who]=store.worklog[who]||{}; store.worklog[who][pack.ref]=pack.payload; }
+  if(pack.kind==='journal'){
+    store.worklog[who]=store.worklog[who]||{};
+    const p=pack.payload||{};
+    store.worklog[who][pack.ref]={monthly:p.monthly||[], weekly:p.weekly||[], today:p.today||[], tomorrow:p.tomorrow||[], lessons:p.lessons||[], updatedAt:p.updatedAt||Date.now()};
+  }
   else if(pack.kind==='weekplan'){ store.weekplan[who]=store.weekplan[who]||{}; store.weekplan[who][pack.ref]=pack.payload; }
   else if(pack.kind==='consult'){
     const mo=pack.ref;
