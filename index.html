@@ -481,6 +481,23 @@ function toast(msg){ const el=document.getElementById('saved'); el.textContent=m
 let UPFILTER=null; // 학원별 마스터 업로드 시 해당 학원 시트만 반영
 let pushTimer=null, syncBusy=false;
 let lastSyncError=null, lastSyncOkAt=0;
+let pendingRenderAfterEdit=false;
+function isEditingNow(){
+  const el=document.activeElement;
+  if(!el) return false;
+  const tag=el.tagName;
+  return tag==='INPUT' || tag==='TEXTAREA' || el.isContentEditable;
+}
+document.addEventListener('focusout', ()=>{
+  if(!pendingRenderAfterEdit) return;
+  // 포커스가 완전히 빠져나갔을 때만(다른 입력칸으로 옮겨간 게 아니라) 미뤄둔 자동 수신 화면 갱신을 적용
+  setTimeout(()=>{
+    if(pendingRenderAfterEdit && !isEditingNow()){
+      pendingRenderAfterEdit=false;
+      refreshMonthSel(); refreshLoginSel(); render(true);
+    }
+  }, 50);
+}, true);
 function schedulePushShared(){
   if(!syncOn()) return;
   clearTimeout(pushTimer);
@@ -611,8 +628,18 @@ async function pullShared(silent){
       });
       store.sharedAt=pack.updatedAt;
       localStorage.setItem(KEY, JSON.stringify(store));
-      refreshMonthSel(); refreshLoginSel(); render(true);
-      if(!silent) toast('☁ 학원 자료 자동 적용됨');
+      if(isEditingNow()){
+        // 입력칸에 타이핑하는 도중에 자동 수신이 화면을 다시 그리면 아직 저장 안 된 글자가 사라지므로,
+        // 지금 편집 중이면 화면 갱신을 미뤄뒀다가 입력을 마치고(포커스를 벗어나면) 그때 반영한다
+        pendingRenderAfterEdit=true;
+      } else {
+        const scrollY=window.scrollY; // 스크롤 보던 중에 자동 갱신되면서 화면이 맨 위로 튀지 않도록 위치를 기억해뒀다가 복원
+        const ttEl=document.getElementById('ttWeekScroll'); const ttScroll=ttEl?ttEl.scrollTop:null;
+        refreshMonthSel(); refreshLoginSel(); render(true);
+        window.scrollTo(0, scrollY);
+        if(ttScroll!=null){ const ttEl2=document.getElementById('ttWeekScroll'); if(ttEl2) ttEl2.scrollTop=ttScroll; }
+        if(!silent) toast('☁ 학원 자료 자동 적용됨');
+      }
     }
   }catch(e){ console.warn('sync pull 실패', e); lastSyncError=e.message; toast('⚠ 수신 실패: '+e.message); }
   updateSyncBadge();
@@ -1519,6 +1546,16 @@ function renderTimetableBulk(){
   </table></div>`;
 }
 function renderTimetableWeek(list){
+  // 합반 상대(파트너) 반은 메인 반 안에서 함께 처리되므로, 전체 시간표에 별도 칸으로 중복 표시되지 않게 걸러낸다
+  const absorbedKeys=new Set();
+  list.forEach(c=>{
+    if(!c.mergedWith) return;
+    const partner=mergedPartnerClass(c);
+    if(!partner) return;
+    if(absorbedKeys.has(ckey(c))) return; // 양쪽이 서로를 합반 상대로 지정한 경우, 한쪽만 흡수시킨다
+    absorbedKeys.add(ckey(partner));
+  });
+  if(absorbedKeys.size) list=list.filter(c=>!absorbedKeys.has(ckey(c)));
   const days=['월','화','수','목','금','토','일'];
   // (반, 과목, 요일) 단위로 실제 발생하는 수업을 풀어낸다 — 한 반 안에서도 과목마다 시간이 다를 수 있음
   const occ=[];
@@ -1575,7 +1612,7 @@ function renderTimetableWeek(list){
   if(!times.length){
     grid='<div class="empty">시간이 입력된 반·과목이 없습니다. 반 편집에서 시간을 입력해주세요.</div>';
   } else {
-    grid=`<div style="overflow:auto;max-height:74vh;border:1px solid var(--line);border-radius:10px"><table style="border-collapse:collapse;width:100%;min-width:${(showDays.length+1)*130}px">
+    grid=`<div id="ttWeekScroll" style="overflow:auto;max-height:74vh;border:1px solid var(--line);border-radius:10px"><table style="border-collapse:collapse;width:100%;min-width:${(showDays.length+1)*130}px">
       <thead><tr>
         <th style="border:1px solid var(--line);padding:6px 10px;background:#f6f8fc;position:sticky;top:0;left:0;z-index:3">시간</th>
         ${showDays.map(d=>`<th style="border:1px solid var(--line);padding:6px 10px;background:#f6f8fc;position:sticky;top:0;z-index:2">${d}요일</th>`).join('')}
@@ -2555,13 +2592,19 @@ function renderBookGive(list){
   if(lt && state.myOnly) cls=cls.filter(c=>teacherTeaches(c,lt));
   let h=`<div class="todaybar"><span class="wd">📦 교재 배부</span>
     ${lt?`<span class="mytag" style="background:${lt.t.color}">👤 ${esc(lt.t.name)}</span><label class="hwlab"><input type="checkbox" id="bgMyOnly" ${state.myOnly?'checked':''}> 내 수업만 보기</label>`:''}
-    <span style="font-size:.76rem;color:var(--sub)">학생을 체크하고 [배부 처리]를 누르면 반교재·연간교재 탭에도 실시간으로 반영됩니다. 선생님 누구나 개별로 체크하거나, [반 전체 선택]으로 한 번에 배부 처리할 수 있어요.</span></div>`;
+    <span style="font-size:.76rem;color:var(--sub)">교재명을 직접 입력하고 학생을 체크한 뒤 [배부 처리]를 누르면 반교재·연간교재·업무일지에도 실시간으로 반영됩니다. 선생님 누구나 개별로 체크하거나, [반 전체 선택]으로 한 번에 배부 처리할 수 있어요.</span></div>`;
   if(!cls.length) return h+'<div class="empty">학생이 등록된 반이 없습니다.</div>';
   const wbOpts=(store.wordbookOptions&&store.wordbookOptions.length)?store.wordbookOptions:WORDBOOK_OPTIONS_DEFAULT;
   const tpOpts=(store.testPaperOptions&&store.testPaperOptions.length)?store.testPaperOptions:[];
   cls.forEach(c=>{
     const k=ckey(c);
-    const subs=(c.subjects||[]).filter(s=>s.book && !s.book.startsWith('〇'));
+    const subjSeen=new Set();
+    const subs=(c.subjects||[]).filter(s=>{
+      if(!s.subject) return false;
+      if(subjSeen.has(s.subject)) return false;
+      subjSeen.add(s.subject);
+      return true;
+    });
     store.giveSel[k]=store.giveSel[k]||{};
     h+=`<div class="ysec"><h3>${esc(c.name)} ${bdg(c.academy)}</h3><div style="padding:0 16px 14px">`;
     subs.forEach(s=>{
@@ -2572,7 +2615,7 @@ function renderBookGive(list){
       h+=`<div style="margin-bottom:14px;padding:10px 12px;background:#f6f8fc;border-radius:10px">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
           <b style="font-size:.86rem">${esc(subj)}</b>
-          <span style="font-size:.8rem;color:var(--sub)">${esc(s.book)}</span>
+          <input type="text" class="bgbook" data-k="${esc(k)}" data-subj="${esc(subj)}" value="${esc(s.book||'')}" placeholder="교재명 직접 입력" style="flex:1;min-width:120px;max-width:220px;border:1px solid var(--line);border-radius:7px;padding:5px 8px;font-family:inherit;font-size:.82rem">
           <span style="font-size:.76rem;font-weight:800;color:${done===total&&total?'var(--ok)':'var(--sub)'}">배부 ${done}/${total}</span>
           <button class="btn small" data-bgall="${esc(k)}|${esc(subj)}" style="margin-left:auto">☑ 반 전체 선택</button>
           <button class="btn small" data-bgnone="${esc(k)}|${esc(subj)}">☐ 전체 해제</button>
@@ -2590,6 +2633,27 @@ function renderBookGive(list){
   });
   return h;
 }
+function resolveBookGiveLabel(v, k, subj){
+  if(subj.startsWith('wb:')) return {label:'단어장', book:subj.slice(3)};
+  if(subj.startsWith('tp:')) return {label:'단어 시험지', book:subj.slice(3)};
+  const inp=v.querySelector('.bgbook[data-k="'+CSS.escape(k)+'"][data-subj="'+CSS.escape(subj)+'"]');
+  return {label:subj, book: inp?inp.value.trim():''};
+}
+function logBookGiveToJournal(k, subjLabel, bookTitle, count){
+  const lt=loginTeacher(); if(!lt) return; // 로그인한 선생님이 배부 처리했을 때만 업무일지에 자동 기록
+  const who=whoKey(lt);
+  const a=k.split('|')[0]; const className=k.slice(a.length+1);
+  const e=wlGet(who, todayISO());
+  const detailPrefix=`${className} · ${subjLabel}`;
+  const detail=`${detailPrefix}${bookTitle?': '+bookTitle:''} (${count}명)`;
+  const idx=e.today.findIndex(x=>x.t==='교재 배부' && x.d && x.d.startsWith(detailPrefix));
+  if(idx>=0) e.today[idx]={t:'교재 배부', d:detail, r:'완료'};
+  else{
+    const emptyIdx=e.today.findIndex(x=>!x.t);
+    if(emptyIdx>=0) e.today[emptyIdx]={t:'교재 배부', d:detail, r:'완료'}; else e.today.push({t:'교재 배부', d:detail, r:'완료'});
+  }
+  e.updatedAt=Date.now();
+}
 function bindBookGive(){
   const v=document.getElementById('view');
   const mo=v.querySelector('#bgMyOnly'); if(mo) mo.onchange=()=>{state.myOnly=mo.checked; render();};
@@ -2597,6 +2661,11 @@ function bindBookGive(){
     const k=sel.dataset.k, type=sel.dataset.type;
     store.giveSel[k]=store.giveSel[k]||{};
     store.giveSel[k][type==='wb'?'wordbook':'testpaper']=sel.value;
+    save(); render(true);
+  });
+  v.querySelectorAll('.bgbook').forEach(inp=>inp.onchange=()=>{
+    const kk=inp.dataset.k; const a=kk.split('|')[0]; const className=kk.slice(a.length+1);
+    syncBookToClass(a, className, inp.dataset.subj, state.month, inp.value.trim());
     save(); render(true);
   });
   v.querySelectorAll('.bgchk').forEach(cb=>cb.onchange=()=>{
@@ -2614,6 +2683,8 @@ function bindBookGive(){
     store.bookGiven[k][subj]=store.bookGiven[k][subj]||{students:{}};
     checks.forEach(cb=>{ store.bookGiven[k][subj].students[cb.dataset.stu]=true; });
     store.bookGiven[k][subj].updatedAt=Date.now();
+    const {label,book}=resolveBookGiveLabel(v,k,subj);
+    logBookGiveToJournal(k, label, book, checks.length);
     save(); render(true);
     toast('☑ 반 전체 배부 처리 완료 · '+checks.length+'명');
   });
@@ -2632,6 +2703,8 @@ function bindBookGive(){
     store.bookGiven[k][subj]=store.bookGiven[k][subj]||{students:{}};
     checks.forEach(cb=>{ store.bookGiven[k][subj].students[cb.dataset.stu]=true; });
     store.bookGiven[k][subj].updatedAt=Date.now();
+    const {label,book}=resolveBookGiveLabel(v,k,subj);
+    logBookGiveToJournal(k, label, book, checks.length);
     save(); render(true);
     toast('📦 교재 배부 처리 완료 · '+checks.length+'명');
   });
