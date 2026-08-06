@@ -414,7 +414,7 @@ if(!store.admissionConsults) store.admissionConsults=[];
 if(!store.wordTests) store.wordTests=[];
 if(!store.sharedAt) store.sharedAt=0;
 if(!store.inboxDone) store.inboxDone={};
-const SHARE_FIELDS=['uploads','bookedit','bookdone','daysedit','timeedit','calendar','meetings','teachers','adminEmail','enrollment','newStudents','students','admissionConsults','wordTests','attend','homework','stayback','bookGiven','uploadTombstones','uploadStamps','wordbookOptions','testPaperOptions','giveSel'];
+const SHARE_FIELDS=['uploads','bookedit','bookdone','daysedit','timeedit','calendar','meetings','teachers','adminEmail','enrollment','newStudents','students','admissionConsults','wordTests','attend','homework','stayback','bookGiven','uploadTombstones','uploadStamps','wordbookOptions','testPaperOptions','giveSel','consultRequests','records','assign','cmemo','worklog','weekplan','submits','handover'];
 // 반 자료·학생 명단처럼 "삭제"가 중요한 항목은 병합하지 않고 통째로 교체한다(마지막 저장이 우선).
 // 병합 방식(mergeById)에는 삭제라는 개념이 없어서, 지운 반·학생이 다른 기기 자료와 합쳐지며 계속 되살아나기 때문.
 const REPLACE_FIELDS=['uploads','students','teachers','bookedit','bookdone','daysedit','timeedit','wordbookOptions','testPaperOptions'];
@@ -619,7 +619,7 @@ async function pollInbox(){
       store.inboxDone[k]=true;
       fbDel('/inbox/'+k);
     }
-    if(n){ localStorage.setItem(KEY, JSON.stringify(store)); render(true); toast('📥 새 제출 '+n+'건 수신'); }
+    if(n){ localStorage.setItem(KEY, JSON.stringify(store)); render(true); toast('📥 새 제출 '+n+'건 수신'); schedulePushShared(); }
   }catch(e){ console.warn('inbox 확인 실패', e); }
 }
 function startSyncLoop(){
@@ -2083,13 +2083,17 @@ function renderRoster(list){
 function bindRoster(){
   const v=document.getElementById('view');
   const rsSearch=v.querySelector('#rosterSearch');
+  let rsRenderTimer=null;
   if(rsSearch) rsSearch.oninput=()=>{
     state.q=rsSearch.value;
     const q2=document.getElementById('q'); if(q2) q2.value=rsSearch.value; // 상단 전체 검색창과도 값 맞춰둠
     const pos=rsSearch.selectionStart;
-    render(true);
-    const el=document.getElementById('rosterSearch');
-    if(el){ el.focus(); try{ el.setSelectionRange(pos,pos); }catch(e){} }
+    clearTimeout(rsRenderTimer);
+    rsRenderTimer=setTimeout(()=>{
+      render(true);
+      const el=document.getElementById('rosterSearch');
+      if(el){ el.focus(); try{ el.setSelectionRange(pos,pos); }catch(e){} }
+    }, 150);
   };
   const rsSel=v.querySelector('[data-rosterstatus]');
   if(rsSel) rsSel.onchange=()=>{ state.rosterStatus=rsSel.value; state.rosterClass=null; render(true); };
@@ -2705,7 +2709,9 @@ function addConsultRequestAction(a){
 function updateConsultRequestField(id, field, value){
   const r=store.consultRequests.find(x=>x.id===id); if(!r) return;
   r[field]=value; r.updatedAt=Date.now();
-  save(); render(true);
+  save();
+  // 메모 텍스트는 입력창에 이미 그대로 보이고 있어 다시 그릴 필요가 없음 — 매번 전체 렌더링하면 여러 명 연달아 입력할 때 화면이 멈칫거림
+  if(field!=='consultNote') render(true);
 }
 function removeConsultRequestAction(id){
   if(!confirm('이 상담 요청을 삭제할까요?')) return;
@@ -2788,21 +2794,9 @@ function renderNewStudentAdmin(){
     ${rows||'<div style="font-size:.8rem;color:#8b93a7">등록된 신입생이 없습니다.</div>'}
   </div>`;
 }
-// [추가] 파이어베이스 동기화가 포함된 공통 저장 함수
+// 공통 저장 함수 — save()가 이미 로컬 저장 + 실시간 서버 전송(schedulePushShared)까지 처리함
 async function saveAndSync() {
-  if (typeof save === 'function') {
-    save(); // 기존 로컬 저장 실행
-  }
-  try {
-    if (window.db && window.academyId) {
-      await window.db.collection('academies').doc(window.academyId).set({
-        store: store,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-      }, { merge: true });
-    }
-  } catch (err) {
-    console.error("파이어베이스 동기화 실패:", err);
-  }
+  save();
 }
 
 function renderNewStudentMine(a,i){
@@ -4634,7 +4628,7 @@ function submitDoc(kind, who, ref){
   if(!payload){ alert('제출할 내용이 없습니다.'); return; }
   const ex=findSubmit(kind,who,ref);
   const ts=new Date().toISOString().slice(0,16).replace('T',' ');
-  if(ex) ex.ts=ts; else store.submits.push({kind,who,ref,name:w.t.name,a:w.a,ts});
+  if(ex){ ex.ts=ts; ex.updatedAt=Date.now(); } else store.submits.push({id:kind+'|'+who+'|'+ref, kind,who,ref,name:w.t.name,a:w.a,ts,updatedAt:Date.now()});
   save();
   const pack={v:'submit1',kind,ref,teacher:{name:w.t.name,academy:w.a,color:w.t.color},submittedAt:ts,payload};
   const kindName={journal:'업무일지',weekplan:'주간계획표',consult:'상담기록',newstudent:'신입생 상담'}[kind];
@@ -4694,8 +4688,8 @@ function importSubmission(pack){
     if(ns) Object.assign(ns, pack.payload);
   }
   const ex=findSubmit(pack.kind,who,pack.ref);
-  if(ex){ ex.ts=pack.submittedAt; ex.received=true; }
-  else store.submits.push({kind:pack.kind,who,ref:pack.ref,name:pack.teacher.name,a,ts:pack.submittedAt,received:true});
+  if(ex){ ex.ts=pack.submittedAt; ex.received=true; ex.updatedAt=Date.now(); }
+  else store.submits.push({id:pack.kind+'|'+who+'|'+pack.ref, kind:pack.kind,who,ref:pack.ref,name:pack.teacher.name,a,ts:pack.submittedAt,received:true,updatedAt:Date.now()});
   return {kind:pack.kind,name:pack.teacher.name,ref:pack.ref};
 }
 
@@ -5932,7 +5926,12 @@ function render(keepOpen){
   renderBell();
 }
 startSyncLoop();
-document.getElementById('q').addEventListener('input',e=>{state.q=e.target.value.trim();render(true);});
+let qRenderTimer=null;
+document.getElementById('q').addEventListener('input',e=>{
+  state.q=e.target.value.trim();
+  clearTimeout(qRenderTimer);
+  qRenderTimer=setTimeout(()=>render(true), 150);
+});
 document.getElementById('bellBtn').addEventListener('click',e=>{
   e.stopPropagation();
   const p=document.getElementById('bellPanel');
