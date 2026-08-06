@@ -3689,6 +3689,7 @@ function renderToday(list){
     const mine = lt && teacherTeaches(c,lt);
     let daySubjects=(c.subjects||[]).filter(s=>subjOnDay(s,wd)&&!isWordTestSubject(s));
     let attKeys=attKeysFor(c, wd);
+    const trueMulti = attKeys.length>1; // "내 과목만" 필터로 걸러지기 전 원래 과목 수 — 이 값으로 저장 방식(과목별/단일)을 고정해야 보기 모드를 바꿔도 적어둔 내용이 사라지지 않는다
     const mySubjSet=mySubjectKeys(c, wd, lt);
 
     if (state.myOnly) {
@@ -3713,10 +3714,10 @@ function renderToday(list){
       </div>
       ${ref?`<div style="font-size:.72rem;color:#8b93a7;margin-top:4px">과제표 참고 — ${ref}</div>`:''}
     </div>`;
-   const studentAttRow=(s, ownerK, ownerAttKeys)=>{
+   const studentAttRow=(s, ownerK, ownerAttKeys, forceMulti)=>{
       const hrec=(hw[ownerK]||{})[s]||{};
       const srec=(stay[ownerK]||{})[s]||{};
-      const rowMulti=ownerAttKeys.length>1;
+      const rowMulti=forceMulti!=null ? forceMulti : ownerAttKeys.length>1;
       const atGroups = rowMulti
         ? ownerAttKeys.map(({subject,key})=>{
             const a=(at[key]||{})[s]||'';
@@ -3789,7 +3790,7 @@ function renderToday(list){
   };
     let body='';
     if(cStudents.length){
-      body=asgBox+cStudents.map(s=>studentAttRow(s,k,attKeys)).join('');
+      body=asgBox+cStudents.map(s=>studentAttRow(s,k,attKeys,trueMulti)).join('');
     } else {
       const cm=(hw[k]||{})['_class']||{};
       body=asgBox+`<div style="padding:8px 0"><input type="text" class="hwnote" data-k="${esc(k)}" data-s="_class" style="width:100%;border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:.83rem" placeholder="수업 · 숙제 메모 (명단 자료가 없는 반)" value="${esc(cm.note||'')}"></div>`;
@@ -3802,10 +3803,11 @@ function renderToday(list){
       // 파트너 반 자체에 오늘 등록된 과목이 없으면(합반 후 메인 반에만 과목을 추가한 경우), 메인 반(c)의 과목 구성을 그대로 빌려와 출결칸을 맞춘다
       const partnerHasOwnSubjects=daySubjectNames(mergedPartner, wd).length>0;
       let pAttKeys=partnerHasOwnSubjects ? attKeysFor(mergedPartner, wd) : attKeysWithOwner(c, pk, wd);
+      const pTrueMulti = pAttKeys.length>1;
       const pMySubjSet=partnerHasOwnSubjects ? mySubjectKeys(mergedPartner, wd, lt) : mySubjSet;
       if(pMySubjSet){ const pf=pAttKeys.filter(x=>x.subject==null||pMySubjSet.has(x.subject)); if(pf.length) pAttKeys=pf; }
       body+=`<div style="margin:10px 0 4px;padding:6px 10px;background:#eef0ff;border-radius:8px;font-size:.8rem;font-weight:800;color:#4338ca">🔗 합반 — ${esc(mergedPartner.name)} 학생 (${partnerStudents.length}명)</div>`;
-      body+=partnerStudents.map(s=>studentAttRow(s,pk,pAttKeys)).join('');
+      body+=partnerStudents.map(s=>studentAttRow(s,pk,pAttKeys,pTrueMulti)).join('');
     }
     const cardOpen = state.todayOpen && state.todayOpen[k];
     h+=`<div class="ccard ${cardOpen?'open':''}" id="tc-${esc(k).replace(/[^0-9A-Za-z가-힣]/g,'_')}" style="border-left-color:${mine&&lt?lt.t.color:AC[c.academy].color}">
@@ -3836,12 +3838,18 @@ function renderToday(list){
   cls.forEach(c=>{
     const k=ckey(c);
     const recs=stay[k]||{};
+    const daySubjNamesForC=daySubjectNames(c, wd); // 과목이 하나뿐이어도 이름을 알 수 있게
     Object.keys(recs).forEach(sname=>{
       const dedupKey=k+'|'+sname;
       if(recs[sname] && recs[sname].stay && !recs[sname].doneDate && !seenStay.has(dedupKey)){
         seenStay.add(dedupKey);
         seenStayName.add(c.academy+'|'+sname);
-        stayList.push({className:c.name, academy:c.academy, student:studentDisplayName(c.academy,sname,c.name), memo:recs[sname].bySubject?Object.entries(recs[sname].bySubject).filter(([,v])=>v).map(([sub,v])=>`${sub}: ${v}`).join(' · '):(recs[sname].memo||''), k, s:sname});
+        const bySubjEntries = recs[sname].bySubject ? Object.entries(recs[sname].bySubject).filter(([,v])=>v) : [];
+        let memo;
+        if(bySubjEntries.length) memo=bySubjEntries.map(([sub,v])=>`📚 ${sub}: ${v}`).join(' · ');
+        else if(recs[sname].memo){ const subjLabel=daySubjNamesForC.length===1?daySubjNamesForC[0]:c.name; memo=`📚 ${subjLabel}: ${recs[sname].memo}`; }
+        else memo='';
+        stayList.push({className:c.name, academy:c.academy, student:studentDisplayName(c.academy,sname,c.name), memo, k, s:sname});
       }
     });
   });
@@ -5757,11 +5765,18 @@ function ttgTeacherCode(academy, teacherName){
   const t=(store.teachers[academy]||[]).find(x=>x.name===teacherName);
   return (t && t.ttCode) ? t.ttCode.trim() : teacherName;
 }
-function ttgTeacherColorArgb(academy, teacherName){
+function ttgTeacherColorHex(academy, teacherName){
   const t=(store.teachers[academy]||[]).find(x=>x.name===teacherName);
-  if(t && t.ttColor) return 'FF'+t.ttColor.replace('#','').toUpperCase();
-  return null;
+  return (t && t.ttColor) ? t.ttColor : null;
 }
+function ttgIsDarkColor(hex){
+  if(!hex) return false;
+  const h=hex.replace('#','');
+  const r=parseInt(h.substr(0,2),16), g=parseInt(h.substr(2,2),16), b=parseInt(h.substr(4,2),16);
+  const lum=(0.299*r+0.587*g+0.114*b)/255; // 표준 상대 휘도 공식
+  return lum<0.55;
+}
+const TTG_WORDTEST_FILL='FFD9D9D9'; // 단어시험 셀 배경 — 연한 회색
 async function exportTtGrid(academy){
   const statusEl=document.getElementById('ttgDlStatus');
   if(statusEl) statusEl.textContent='엑셀 라이브러리 불러오는 중…';
@@ -5772,14 +5787,15 @@ async function exportTtGrid(academy){
     const ws=wb.addWorksheet('시간표');
     const cls=classesFor(state.month).filter(c=>c.academy===academy);
     let rowIdx=1, any=false;
+    const CENTER={horizontal:'center', vertical:'middle'};
     TTG_DAYS.forEach(day=>{
       const dayClasses=cls.filter(c=>cdays(c).includes(day));
       if(!dayClasses.length) return;
       const entries=[];
       dayClasses.forEach(c=>{
-        (c.subjects||[]).filter(s=>subjOnDay(s,day) && s.subject && s.time && parseRange(s.time) && !isWordTestSubject(s)).forEach(s=>{
+        (c.subjects||[]).filter(s=>subjOnDay(s,day) && s.subject && s.time && parseRange(s.time)).forEach(s=>{
           const r=parseRange(s.time);
-          entries.push({className:c.name, subject:s.subject, teacher:s.teacher||'', room:s.room||'', start:r[0], end:r[1]});
+          entries.push({className:c.name, subject:s.subject, teacher:s.teacher||'', room:s.room||'', start:r[0], end:r[1], isWordTest:isWordTestSubject(s)});
         });
       });
       if(!entries.length) return;
@@ -5787,22 +5803,33 @@ async function exportTtGrid(academy){
       const classNames=[...new Set(entries.map(e=>e.className))].sort((a,b)=>a.localeCompare(b,'ko',{numeric:true}));
       const bounds=new Set(); entries.forEach(e=>{ bounds.add(e.start); bounds.add(e.end); });
       const sorted=[...bounds].sort((a,b)=>a-b);
-      ws.getCell(rowIdx,1).value=day; rowIdx++;
-      ws.getCell(rowIdx,1).value='시간';
-      classNames.forEach((nm,i)=>{ ws.getCell(rowIdx, 3+i).value=nm; });
+      const dayCell=ws.getCell(rowIdx,1); dayCell.value=day; dayCell.alignment=CENTER; rowIdx++;
+      const timeHead=ws.getCell(rowIdx,1); timeHead.value='시간'; timeHead.alignment=CENTER;
+      classNames.forEach((nm,i)=>{ const hc=ws.getCell(rowIdx, 3+i); hc.value=nm; hc.alignment=CENTER; });
       rowIdx++;
       for(let i=0;i<sorted.length-1;i++){
         const s0=sorted[i], s1=sorted[i+1];
-        ws.getCell(rowIdx,1).value=fmtH(s0)+'~'+fmtH(s1);
+        const tCell=ws.getCell(rowIdx,1); tCell.value=fmtH(s0)+'~'+fmtH(s1); tCell.alignment=CENTER;
         classNames.forEach((nm,ci)=>{
           const hit=entries.find(e=>e.className===nm && e.start<=s0+1e-6 && e.end>=s1-1e-6);
           if(hit){
-            const code=ttgTeacherCode(academy, hit.teacher);
-            const text=code?`${hit.subject}(${code})`:(hit.room?`${hit.subject}(${hit.room})`:hit.subject);
             const cell=ws.getCell(rowIdx, 3+ci);
-            cell.value=text;
-            const argb=ttgTeacherColorArgb(academy, hit.teacher);
-            if(argb) cell.fill={type:'pattern', pattern:'solid', fgColor:{argb}};
+            cell.alignment=CENTER;
+            if(hit.isWordTest){
+              // 단어시험은 색상으로 담당을 구분하지 않으므로, 강의실(선생님 이름 약자)를 그대로 적어준다
+              const code=ttgTeacherCode(academy, hit.teacher);
+              cell.value = hit.room ? (code?`${hit.room}(${code})`:hit.room) : (code?`단어시험(${code})`:'단어시험');
+              cell.fill={type:'pattern', pattern:'solid', fgColor:{argb:TTG_WORDTEST_FILL}};
+              cell.font={color:{argb:'FF000000'}};
+            } else {
+              // 일반 과목은 가운데 정렬 + 선생님 색상으로 담당이 구분되므로 과목명만 적는다
+              cell.value=hit.subject;
+              const hex=ttgTeacherColorHex(academy, hit.teacher);
+              if(hex){
+                cell.fill={type:'pattern', pattern:'solid', fgColor:{argb:'FF'+hex.replace('#','').toUpperCase()}};
+                cell.font={color:{argb: ttgIsDarkColor(hex) ? 'FFFFFFFF' : 'FF000000'}};
+              }
+            }
           }
         });
         rowIdx++;
