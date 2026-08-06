@@ -2001,9 +2001,10 @@ function linkSibling(id, siblingName){
 }
 function gotoStudent(id){
   const s=store.students.find(x=>x.id===id); if(!s) return;
-  state.tab='roster'; state.q=''; state.rosterStatus='전체'; state.rosterView='all';
+  // 형제자매를 눌렀을 때 편집 상태로 여는 대신, 그 학생이 속한 반의 명단(조회 상태)으로 이동한다
+  state.tab='roster'; state.q=''; state.rosterStatus='전체'; state.rosterView='class';
+  state.rosterClass = (s.className||'').trim() || '미배정';
   if(MODE==='all') state.ac=s.academy;
-  if(isAdminRole()) state.rosterOpen[id]=true;
   render();
   setTimeout(()=>{
     const el=document.getElementById('stu_'+id);
@@ -2827,14 +2828,33 @@ function studentRow(k, s, showClass, c, readOnly){
   const stRec=matchStudentByRosterName(c.academy, s);
   const preCheck=stRec?(stRec.preCheck||''):'';
   const dis = readOnly?'disabled':'';
+  const sibs=stRec?(stRec.siblings||[]).map(id=>{ const sib=store.students.find(x=>x.id===id); return sib?{id,name:studentDisplayName(sib.academy,sib.nameKo)}:null; }).filter(Boolean):[];
+  const sibLinks=sibs.length?`<div style="font-size:.76rem;color:var(--sub);margin-top:2px">👨‍👩‍👧‍👦 형제자매: ${sibs.map(x=>`<span data-rsgoto="${x.id}" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px;color:#2e5fb7">${esc(x.name)}</span>`).join(', ')}</div>`:'';
   return `<div class="srow">
     <input type="checkbox" data-k="${esc(k)}" data-s="${esc(s)}" ${r.done?'checked':''} ${dis}>
-    <span class="sn ${r.done?'done':''}">${hl(studentDisplayName(c.academy,s))}${showClass?`<span class="cls">${esc(c.name)} · ${AC[c.academy].label}</span>`:''}</span>
+    <span class="sn ${r.done?'done':''}">${hl(studentDisplayName(c.academy,s))}${showClass?`<span class="cls">${esc(c.name)} · ${AC[c.academy].label}</span>`:''}
+      ${stRec&&stRec.parentPhone?`<span style="font-size:.76rem;color:var(--sub);font-weight:400"> · 📞 ${esc(stRec.parentPhone)}</span>`:''}
+      ${sibLinks}</span>
     <div style="display:flex;flex-direction:column;gap:5px">
       ${preCheck?`<div style="font-size:.76rem;color:#b45309;background:#fff8ec;border:1px solid #f0dcae;border-radius:7px;padding:5px 8px">🔎 상담 전 확인: ${esc(preCheck)}</div>`:''}
+      ${stRec&&stRec.note?`<div style="font-size:.76rem;color:#2e5fb7;background:#eef4ff;border:1px solid #cfe0fb;border-radius:7px;padding:5px 8px">📝 특이사항 코멘트(다른 선생님 포함): ${esc(stRec.note)}</div>`:''}
       <textarea placeholder="상담 내역…" data-k="${esc(k)}" data-s="${esc(s)}" ${dis}>${esc(r.memo||'')}</textarea>
     </div>
     <input type="date" class="dtin" title="상담일자" data-k="${esc(k)}" data-s="${esc(s)}" value="${esc(r.date||'')}" ${dis} style="border:1px solid var(--line);border-radius:8px;padding:5px 7px;font-family:inherit;font-size:.78rem;color:var(--sub)"></div>`;
+}
+function goToStudentConsult(id){
+  const s=store.students.find(x=>x.id===id); if(!s) return;
+  const cls=classesFor(state.month).find(c=>c.academy===s.academy && c.name===s.className);
+  if(!cls){ alert('이 학생이 속한 반을 이번 달 자료에서 찾을 수 없습니다.'); return; }
+  const k=ckey(cls);
+  const ti=mAssign()[k];
+  if(ti==null){ alert('이 반은 아직 상담 담당 선생님이 배정되지 않았습니다. ([상담] 화면에서 실장·관리자가 배정할 수 있어요)'); return; }
+  state.tab='consult'; state.tf={a:s.academy, i:ti};
+  render();
+  setTimeout(()=>{
+    const el=document.querySelector('[data-k="'+CSS.escape(k)+'"][data-s="'+CSS.escape(s.nameKo)+'"]');
+    if(el) el.scrollIntoView({behavior:'smooth', block:'center'});
+  }, 60);
 }
 function ensureAssign(){
   const mo=state.month; let changed=false;
@@ -3062,8 +3082,8 @@ function renderMyConsult(list){
 function renderConsult(list){
   list=list.filter(c=>c.students && c.students.length>0);
   const _lt=loginTeacher();
-  if(_lt && !isAdminRole()){ state.tf={a:_lt.a,i:_lt.i}; } // 일반 선생님은 항상 본인 상담 화면만 (전체 배정 화면은 실장·관리자 전용)
-  else if(_lt && state.tf===undefined){ state.tf={a:_lt.a,i:_lt.i}; } // 실장·관리자는 기본은 본인 화면이지만, [← 전체 반 배정 보기]로 전환 가능
+  if(_lt && !isAdminRole() && !state.tf){ state.tf={a:_lt.a,i:_lt.i}; } // 일반 선생님은 처음 진입 시엔 본인 화면, 다른 선생님 카드나 형제자매 링크로 이동한 경우엔 유지
+  else if(_lt && isAdminRole() && state.tf===undefined){ state.tf={a:_lt.a,i:_lt.i}; } // 실장·관리자는 기본은 본인 화면이지만, [← 전체 반 배정 보기]로 전환 가능
   if(state.tf) return renderMyConsult(list);
   const un=list.filter(c=>mAssign()[ckey(c)]==null).length;
   let bar=`<div class="cbtns">
@@ -3100,6 +3120,7 @@ function bindConsult(){
     state.tf = (state.tf && state.tf.a===nf.a && state.tf.i===nf.i) ? null : nf;
     render();
   });
+  v.querySelectorAll('[data-rsgoto]').forEach(el=>el.onclick=(e)=>{ e.stopPropagation(); goToStudentConsult(el.dataset.rsgoto); });
   const back=v.querySelector('#backAll'); if(back) back.onclick=e=>{e.stopPropagation(); state.tf=null; render();};
   v.querySelectorAll('.chead').forEach(h=>h.addEventListener('click',e=>{
     if(e.target.closest('select')) return;
