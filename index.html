@@ -6640,6 +6640,8 @@ function bindSet(){
   v.querySelectorAll('.sw').forEach(s=>s.onclick=()=>{ if(!isAdminRole())return; const t=store.teachers[s.dataset.a][s.dataset.i]; t.color=s.dataset.c; t.updatedAt=Date.now(); save(); render(true); });
   v.querySelectorAll('.tttcode').forEach(inp=>inp.onchange=()=>{ if(!isAdminRole())return; const t=store.teachers[inp.dataset.a][inp.dataset.i]; t.ttCode=inp.value.trim(); t.updatedAt=Date.now(); save(); });
   v.querySelectorAll('.tttcolor').forEach(inp=>inp.onchange=()=>{ if(!isAdminRole())return; const t=store.teachers[inp.dataset.a][inp.dataset.i]; t.ttColor=inp.value; t.updatedAt=Date.now(); save(); });
+  v.querySelectorAll('.tworkstart').forEach(inp=>inp.onchange=()=>{ if(!isAdminRole())return; const t=store.teachers[inp.dataset.a][inp.dataset.i]; t.workStart=inp.value.trim(); t.updatedAt=Date.now(); save(); render(true); });
+v.querySelectorAll('.tworkend').forEach(inp=>inp.onchange=()=>{ if(!isAdminRole())return; const t=store.teachers[inp.dataset.a][inp.dataset.i]; t.workEnd=inp.value.trim(); t.updatedAt=Date.now(); save(); render(true); });
   v.querySelectorAll('.del[data-a]').forEach(b=>b.onclick=()=>{
     if(!isAdminRole())return;
     const a=b.dataset.a, i=Number(b.dataset.i);
