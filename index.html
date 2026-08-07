@@ -4685,7 +4685,21 @@ function repDailyJournal(who, date){
 if(!store.weekplan) store.weekplan={};
 const WDCOLOR={'월':'#fce4ec','화':'#ffe9d6','수':'#fff8c4','목':'#e6f6e8','금':'#e3f0fd','토':'#ece7f6','일':'#f2f2f2'};
 function splitProg(p){ const parts=String(p||'').split('→'); return [ (parts[0]||'').trim(), (parts[1]||'').trim() ]; }
-function autoWeekRows(who, days){
+function latestMprogFor(who, cls, beforeDate){
+  // 그 반의 가장 최근에 적힌 "8월 진도"(월말 목표)를 이어받는다
+  const wp=store.weekplan[who]; if(!wp) return '';
+  let best='', bestDate='';
+  for(const wk in wp){
+    const rows=wp[wk] && wp[wk].rows; if(!rows) continue;
+    rows.forEach(r=>{
+      if(r.cls===cls && r.mprog && r.date && r.date<=beforeDate && r.date>bestDate){
+        best=r.mprog; bestDate=r.date;
+      }
+    });
+  }
+  return best;
+}
+  function autoWeekRows(who, days){
   const rows=[];
   days.forEach(d=>{
     // 그 날짜에 이미 작성된 업무일지가 있으면, 시간표 기준으로 다시 계산하지 않고
@@ -4696,7 +4710,7 @@ function autoWeekRows(who, days){
       const lesson=L.lesson!=null?L.lesson:L.subject;
       if(String(lesson||'').trim().toUpperCase()==='IBT') return; // IBT는 주간 진도계획표 작성 대상에서 제외
       const [p1,p2]=splitProg(L.prog);
-      rows.push({date:d, cls:L.cls, book:L.book, subj:L.subj||L.subject||'', prog:p1, test:'', hw:L.hw, mprog:p2});
+     rows.push({date:d, cls:L.cls, book:L.book, subj:L.subj||L.subject||'', prog:p1, test:'', hw:L.hw, mprog:p2||latestMprogFor(who, L.cls, d)});
     });
   });
   return rows;
