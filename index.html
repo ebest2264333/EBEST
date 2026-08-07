@@ -3274,6 +3274,20 @@ function bindConsult(){
 /* ---------- 오늘 수업 (출석·숙제) ---------- */
 const WD=['일','월','화','수','목','금','토'];
 const WORK={ebest:{s:13.5,e:22,label:'1:30 ~ 10:00'}, icon:{s:14.5,e:21,label:'2:30 ~ 9:00'}};
+  function parseHourStr(s){
+  if(!s) return null;
+  const m=String(s).trim().match(/(\d{1,2})[:시]?(\d{2})?분?/);
+  if(!m) return null;
+  let h=+m[1]+(+(m[2]||0))/60;
+  if(+m[1]>=1 && +m[1]<=11) h+=12;
+  return h;
+}
+function workHoursFor(lt){
+  const def=WORK[lt.a];
+  const s=parseHourStr(lt.t.workStart), e=parseHourStr(lt.t.workEnd);
+  if(s!=null && e!=null && e>s) return {s, e, label: fmtH(s)+' ~ '+fmtH(e)};
+  return def;
+}
 // 반의 "기본 시간"은 이제 수동 입력이 아니라, 그 반에 속한 과목들의 시간(과목별로 요일·시간이 따로 있음)을 통해
 // 등원(가장 이른 시작)~하원(가장 늦은 종료)으로 자동 계산한다. 과목에 시간이 하나도 없으면 예전 방식(수동 입력값)을 그대로 사용.
 function autoSpanFromSubjects(c, wd){
@@ -3588,7 +3602,7 @@ function todoCard(list){
 }
 function renderTimeline(list){
   const lt=loginTeacher(); if(!lt) return '';
-  const wk=WORK[lt.a];
+  const wk=workHoursFor(lt);
   const wd=wdOf(state.date);
   const nm=norm(lt.t.name);
   const mine=list.filter(c=>classMeets(c,wd)&&teacherTeaches(c,lt));
