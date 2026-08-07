@@ -881,8 +881,6 @@ function teacherTeaches(c, lt){
   if(c.academy!==lt.a) return false;
   const nm=lt.t.name.trim().toLowerCase();
   if((c.subjects||[]).some(s=>s.teacher && s.teacher.trim().toLowerCase()===nm)) return true;
-  const mp=mergedCounterpart(c);
-  if(mp && (mp.subjects||[]).some(s=>s.teacher && s.teacher.trim().toLowerCase()===nm)) return true;
   const asn=(store.assign[state.month]||{})[ckey(c)];
   return asn===lt.i;
 }
@@ -3605,7 +3603,8 @@ function renderTimeline(list){
   const wk=workHoursFor(lt);
   const wd=wdOf(state.date);
   const nm=norm(lt.t.name);
-  const mine=list.filter(c=>classMeets(c,wd)&&teacherTeaches(c,lt));
+  const teachesViaMerge=c=>{ if(teacherTeaches(c,lt)) return true; const mp=mergedCounterpart(c); return !!(mp && teacherTeaches(mp,lt)); };
+  const mine=list.filter(c=>classMeets(c,wd)&&teachesViaMerge(c));
   const rawTimed=[], untimed=[];
   mine.forEach(c=>{
     // 반 전체 시간이 아니라, 오늘 이 반에서 "내가" 실제로 맡은 과목의 시간만 사용
