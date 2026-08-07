@@ -3595,8 +3595,10 @@ function renderTimeline(list){
   mine.forEach(c=>{
     // 반 전체 시간이 아니라, 오늘 이 반에서 "내가" 실제로 맡은 과목의 시간만 사용
     const daySubs=(c.subjects||[]).filter(s=>subjOnDay(s,wd));
-    const mySubs=daySubs.filter(s=>s.teacher&&norm(s.teacher)===nm);
-    const useSubs=mySubs.length?mySubs:daySubs; // 과목별 담당 표기가 아예 없는 반이면 기존처럼 반 전체를 사용
+   const mySubs=daySubs.filter(s=>s.teacher&&norm(s.teacher)===nm);
+const anyTeacherSet=daySubs.some(s=>s.teacher); // 과목별 담당 표기가 하나라도 있는 반인지
+const useSubs=mySubs.length ? mySubs : (anyTeacherSet ? [] : daySubs);
+if(!useSubs.length) return; // 오늘은 이 반에 내 과목이 없으면 통째로 건너뛴다 (forEach 콜백이라 return이 '다음 반으로' 역할)
     const withTime=useSubs.filter(s=>s.time&&parseRange(s.time));
     if(withTime.length){
       // 같은 시간대에 있는 과목끼리 묶어서, 시간대별로 한 줄씩 만든다
