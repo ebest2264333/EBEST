@@ -881,13 +881,12 @@ function teacherTeaches(c, lt){
   if(c.academy!==lt.a) return false;
   const nm=lt.t.name.trim().toLowerCase();
   if((c.subjects||[]).some(s=>s.teacher && s.teacher.trim().toLowerCase()===nm)) return true;
-  // 합반 상대 반 과목에 내 이름이 있으면 이 반도 내 반으로 인정 (부속 반은 자체 과목이 없는 경우가 많음)
   const mp=mergedCounterpart(c);
   if(mp && (mp.subjects||[]).some(s=>s.teacher && s.teacher.trim().toLowerCase()===nm)) return true;
   const asn=(store.assign[state.month]||{})[ckey(c)];
   return asn===lt.i;
 }
-const esc = s => (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const esc = s => (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const bdg = a => MODE==='all' ? `<span class="badge ${AC[a].cls}">${AC[a].label}</span>` : '';
 function hl(s){ s=esc(s); if(!state.q) return s;
   const q=state.q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
