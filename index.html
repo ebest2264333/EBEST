@@ -6308,7 +6308,9 @@ function renderSet(){
           ${PALETTE.map(c=>`<span class="sw ${t.color===c?'on':''}" style="background:${c}" data-a="${a}" data-i="${i}" data-c="${c}"></span>`).join('')}
           <input type="text" value="${esc(t.ttCode||'')}" placeholder="시간표 코드" title="시간표 엑셀 괄호 안에 쓰는 축약코드 (예: MAT)" data-a="${a}" data-i="${i}" class="tttcode" style="width:84px;padding:8px 9px;border:1.5px solid var(--line);border-radius:9px;font-family:inherit;font-size:.8rem">
           <input type="color" value="${t.ttColor||'#cccccc'}" title="시간표 엑셀 셀 색상" data-a="${a}" data-i="${i}" class="tttcolor" style="width:34px;height:34px;padding:0;border:1.5px solid var(--line);border-radius:8px;cursor:pointer">
-          <button class="del" data-a="${a}" data-i="${i}">삭제</button></div>`).join('')}
+          <input type="text" value="${esc(t.workStart||'')}" placeholder="출근(예: 2:30)" data-a="${a}" data-i="${i}" class="tworkstart" style="width:90px;padding:8px 9px;border:1.5px solid var(--line);border-radius:9px;font-family:inherit;font-size:.8rem">
+<input type="text" value="${esc(t.workEnd||'')}" placeholder="퇴근(예: 9:00)" data-a="${a}" data-i="${i}" class="tworkend" style="width:90px;padding:8px 9px;border:1.5px solid var(--line);border-radius:9px;font-family:inherit;font-size:.8rem">
+<button class="del" data-a="${a}" data-i="${i}">삭제</button></div>`).join('')}
         ${ts.length<10?`<div style="margin-top:10px"><button class="btn" data-add="${a}">+ 선생님 추가</button></div>`:''}
       </div>`;
     } else {
