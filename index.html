@@ -2519,6 +2519,7 @@ function classDeptForName(academy, className){
   return c ? (c.dept||'') : '';
 }
 const DEPT_SORT_ORDER={'초등':0,'중등':1,'고등':2};
+const CLASS_PREFIX_ORDER={'EC':0,'RG':1,'PJ':2,'JM':3,'JF':4,'JB':5}; // 그리드 시간표 반 배열 순서 — 초등(EC,RG,PJ) 다음 중등(JM,JF,JB)
 function renderWordTestPending(){
   const pending=store.wordTests.filter(r=>r.retestNeeded && !r.retestCompleted && !r.absent && (state.ac==='all'||r.academy===state.ac));
   pending.sort((a,b)=>{
@@ -4566,6 +4567,15 @@ function bindJournal(who, date, readOnly){
   });
   v.querySelectorAll('.wl-l').forEach(inp=>inp.onchange=()=>{
     const i=Number(inp.dataset.i), f=inp.dataset.f;
+    // 교재·수업·과제·진도처럼 내용이 있는 칸을 실수로 완전히 지우면 한 번 더 확인해서 사고로 날아가는 걸 막는다
+    if(['book','lesson','hw','prog'].includes(f)){
+      const prev=e.lessons[i][f]||'';
+      if(prev.trim().length>=3 && !inp.value.trim()){
+        if(!confirm('이미 적혀있던 내용("'+(prev.length>30?prev.slice(0,30)+'…':prev)+'")을 완전히 지우시겠어요?')){
+          inp.value=prev; return;
+        }
+      }
+    }
     e.lessons[i][f]=inp.value; touch(); save();
     if(f==='book'){
       const L=e.lessons[i]; const w=whoTeacher(who);
@@ -4712,6 +4722,15 @@ function bindWeekPlan(who, days, readOnly){
     const idx = Number(inp.dataset.i); // 몇 번째 줄인지
     const field = inp.dataset.f; // 어떤 칸을 수정했는지 (cls, book, hw, prog 등)
     const val = inp.value; // 수정한 내용
+    // 교재·진도·과제처럼 내용이 있는 칸을 실수로 완전히 지우면 한 번 더 확인해서 사고로 날아가는 걸 막는다
+    if(['book','prog','hw','mprog'].includes(field)){
+      const prev=wp.rows[idx][field]||'';
+      if(prev.trim().length>=3 && !val.trim()){
+        if(!confirm('이미 적혀있던 내용("'+(prev.length>30?prev.slice(0,30)+'…':prev)+'")을 완전히 지우시겠어요?')){
+          inp.value=prev; return;
+        }
+      }
+    }
     
     // 1. 주간진도계획표 데이터 정상 업데이트
     wp.rows[idx][field] = val; 
@@ -6029,11 +6048,15 @@ async function exportTtGrid(academy){
         });
       });
       if(!entries.length) return;
-      // 왼쪽부터 초등부 → 중등부 → 고등부 순으로 배열
+      // 왼쪽부터 초등부 → 중등부 → 고등부 순, 부서 안에서는 정해진 반 앞글자 순서(EC,RC,RG,PJ / JM,JF,JB)로 배열
       const classNames=[...new Set(entries.map(e=>e.className))].sort((a,b)=>{
         const ra=DEPT_SORT_ORDER[deptOf[a]]!=null?DEPT_SORT_ORDER[deptOf[a]]:99;
         const rb=DEPT_SORT_ORDER[deptOf[b]]!=null?DEPT_SORT_ORDER[deptOf[b]]:99;
         if(ra!==rb) return ra-rb;
+        const pa=String(a).match(/^[^\d]*/)[0], pb=String(b).match(/^[^\d]*/)[0];
+        const pra=CLASS_PREFIX_ORDER[pa]!=null?CLASS_PREFIX_ORDER[pa]:99;
+        const prb=CLASS_PREFIX_ORDER[pb]!=null?CLASS_PREFIX_ORDER[pb]:99;
+        if(pra!==prb) return pra-prb;
         return a.localeCompare(b,'ko',{numeric:true});
       });
       const bounds=new Set(); entries.forEach(e=>{ bounds.add(e.start); bounds.add(e.end); });
@@ -6042,17 +6065,17 @@ async function exportTtGrid(academy){
     });
     if(!dayData.length){ if(statusEl) statusEl.textContent='이번 달 자료에 요일·시간이 입력된 과목이 없습니다.'; return; }
     const maxClasses=Math.max(...dayData.map(d=>d.classNames.length));
-    const legendCol=Math.max(14, 3+maxClasses+1); // 반이 가장 많은 요일 기준으로 선생님 범례 칸이 겹치지 않는 위치를 정함
+    const legendCol=Math.max(14, 2+maxClasses+1); // 반이 가장 많은 요일 기준으로 선생님 범례 칸이 겹치지 않는 위치를 정함
     let maxColUsed=legendCol+1;
     // 2차: 실제로 시트에 기록
     let rowIdx=1, legendPlaced=false;
     dayData.forEach(({day, entries, classNames, sorted})=>{
-      const lastClassCol=2+classNames.length; // B=2, 반 칸은 C(3)열부터 시작
+      const lastClassCol=1+classNames.length; // 반 칸은 B(2)열부터 바로 시작 (시간 칸 다음에 빈 칸 없음)
       maxColUsed=Math.max(maxColUsed, lastClassCol);
       bordered(ws.getCell(rowIdx,1)).value=day; ws.getCell(rowIdx,1).alignment=CENTER; rowIdx++;
       const headRow=rowIdx;
       bordered(ws.getCell(rowIdx,1)).value='시간'; ws.getCell(rowIdx,1).alignment=CENTER;
-      classNames.forEach((nm,i)=>{ const hc=ws.getCell(rowIdx, 3+i); hc.value=nm; hc.alignment=CENTER; bordered(hc); });
+      classNames.forEach((nm,i)=>{ const hc=ws.getCell(rowIdx, 2+i); hc.value=nm; hc.alignment=CENTER; bordered(hc); });
       if(!legendPlaced){
         // 선생님 색상·단어시험용 약자 범례는 첫 요일 블록 옆에 한 번만 표시 (반이 가장 많은 요일과 겹치지 않는 칸에 위치)
         const lc=ws.getCell(headRow,legendCol); lc.value='선생님'; lc.alignment=CENTER; bordered(lc);
@@ -6081,15 +6104,15 @@ async function exportTtGrid(academy){
         } else {
           const isWtRow=hitsInSlot.some(e=>e.isWordTest);
           classNames.forEach((nm,ci)=>{
-            const col=3+ci;
+            const col=2+ci;
             const cell=bordered(ws.getCell(rowIdx, col));
             cell.alignment=CENTER;
             const hit=hitsInSlot.find(e=>e.className===nm);
             if(hit){
               if(hit.isWordTest){
-                // 단어시험은 강의실(선생님 이름)으로 표시하고, 색은 연한 회색으로 고정한다
-                const nmFull=hit.teacher||'';
-                cell.value = hit.room ? (nmFull?`${hit.room}(${nmFull})`:hit.room) : (nmFull?`단어시험(${nmFull})`:'단어시험');
+                // 단어시험은 강의실(선생님 약자)로 표시하고, 색은 연한 회색으로 고정한다
+                const code=ttgTeacherCode(academy, hit.teacher);
+                cell.value = hit.room ? (code?`${hit.room}(${code})`:hit.room) : (code?`단어시험(${code})`:'단어시험');
                 cell.fill={type:'pattern', pattern:'solid', fgColor:{argb:TTG_WORDTEST_FILL}};
                 cell.font={bold:true, color:{argb:'FF000000'}};
               } else {
