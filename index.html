@@ -4680,7 +4680,7 @@ function autoWeekRows(who, days){
       const lesson=L.lesson!=null?L.lesson:L.subject;
       if(String(lesson||'').trim().toUpperCase()==='IBT') return; // IBT는 주간 진도계획표 작성 대상에서 제외
       const [p1,p2]=splitProg(L.prog);
-      rows.push({date:d, cls:L.cls, book:L.book, prog:p1, test:'', hw:L.hw, mprog:p2});
+      rows.push({date:d, cls:L.cls, book:L.book, subj:L.subj||L.subject||'', prog:p1, test:'', hw:L.hw, mprog:p2});
     });
   });
   return rows;
@@ -4701,13 +4701,14 @@ function weekPlanForm(who, days, readOnly){
       <span style="font-weight:400;font-size:.78rem;color:var(--sub)">${days[0]} ~ ${days[5]} · ${readOnly?'다른 선생님 계획표 (조회 전용)':'자동 저장'}</span>
       <span style="margin-left:auto;display:flex;gap:8px;align-items:center">${readOnly?'':submitBtn('weekplan',who,days[0],w.t.color)+'<button class="btn small" id="wpRefill">자료로 다시 채우기</button>'}</span></h2>
     <div style="overflow-x:auto;margin-top:8px"><table style="min-width:900px;border-collapse:collapse">
-    <thead><tr>${['날짜','반명','교재','진도','테스트','과제',mo+'월 진도',''].map(x=>`<th style="background:var(--ink);color:#fff;padding:6px 8px;font-size:.72rem;text-align:center">${x}</th>`).join('')}</tr></thead><tbody>`;
+    <thead><tr>${['날짜','반명','교재','과목','진도','테스트','과제',mo+'월 진도',''].map(x=>`<th style="background:var(--ink);color:#fff;padding:6px 8px;font-size:.72rem;text-align:center">${x}</th>`).join('')}</tr></thead><tbody>`;
   wp.rows.forEach((r,i)=>{
     const wd=r.date?wdOf(r.date):'';
     const cell=(f,w2)=>`<td style="border:1px solid #e7eaf2;padding:2px"><input type="text" class="wp-c" data-i="${i}" data-f="${f}" value="${esc(r[f]||'')}" ${readOnly?'disabled':''} style="width:${w2||'100%'};border:none;padding:5px 7px;font-family:inherit;font-size:.8rem;background:transparent;text-align:center"></td>`;
+    const subjCell=`<td style="border:1px solid #e7eaf2;padding:2px;text-align:center;font-size:.78rem;color:var(--sub);font-weight:700" title="시간표에 등록된 원래 과목명 — 진도·교재가 저장될 기준입니다">${esc(r.subj||'-')}</td>`;
     h+=`<tr>
       <td style="border:1px solid #e7eaf2;background:${WDCOLOR[wd]||'#fff'};padding:2px"><input type="date" class="wp-c" data-i="${i}" data-f="date" value="${esc(r.date||'')}" ${readOnly?'disabled':''} style="border:none;background:transparent;font-family:inherit;font-size:.78rem;font-weight:700"></td>
-      ${cell('cls','86px')}${cell('book')}${cell('prog')}${cell('test','96px')}${cell('hw')}${cell('mprog','80px')}
+      ${cell('cls','86px')}${cell('book')}${subjCell}${cell('prog')}${cell('test','96px')}${cell('hw')}${cell('mprog','80px')}
       <td style="border:1px solid #e7eaf2;text-align:center">${readOnly?'':'<button class="del wp-del" data-i="'+i+'">✕</button>'}</td></tr>`;
   });
   h+=`</tbody></table></div>
