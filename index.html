@@ -3955,8 +3955,7 @@ function renderToday(list){
   store.wordTests.filter(r=>r.date===state.date && r.retestNeeded && !r.retestCompleted && !r.absent).forEach(r=>{
     const st=store.students.find(x=>x.id===r.studentId); if(!st) return;
     const nameKey=st.academy+'|'+st.nameKo;
-    if(seenStayName.has(nameKey)) return; // 이미 수동으로 "오늘 남기" 체크된 학생이면 중복 표시 안함
-    seenStayName.add(nameKey);
+   seenStayName.add(nameKey);
     stayList.push({className:st.className||'-', academy:st.academy, student:studentDisplayName(st.academy,st.nameKo,st.className), memo:'📖 재시험 대상'+(r.wordbook?' · '+r.wordbook:'')+(r.range?' · '+r.range:''), isRetest:true, wtId:r.id});
   });
   const staySection=isAdminRole()?`<div class="ysec" style="margin-top:16px;border-top:4px solid #b45309"><h3>🙋 오늘 남는 학생 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">${state.date} 전체 반 기준 (${stayList.length}명, 재시험 대상 포함)</span></h3>
