@@ -3951,25 +3951,24 @@ function renderToday(list){
     const partner=mergedPartnerClass(c);
     if(partner && classMeets(partner, wd) && partner.students && partner.students.length) collectStay(partner);
   });
-  // 재시험 대상 학생도 "오늘 남는 학생"에 자동으로 합쳐서 보여준다 (재시험은 보통 남아서 다시 봐야 하므로)
+ // 재시험 대상 학생도 "오늘 남는 학생"에 자동으로 합쳐서 보여준다 (재시험은 보통 남아서 다시 봐야 하므로)
   store.wordTests.filter(r=>r.date===state.date && r.retestNeeded && !r.retestCompleted && !r.absent).forEach(r=>{
     const st=store.students.find(x=>x.id===r.studentId); if(!st) return;
     const nameKey=st.academy+'|'+st.nameKo;
-   seenStayName.add(nameKey);
-    stayList.push({className:st.className||'-', academy:st.academy, student:studentDisplayName(st.academy,st.nameKo,st.className), memo:'📖 재시험 대상'+(r.wordbook?' · '+r.wordbook:'')+(r.range?' · '+r.range:''), isRetest:true, wtId:r.id});
+    const retestSubj={subj:'📖 재시험', memo:(r.wordbook?r.wordbook:'')+(r.range?' · '+r.range:''), done:false, isRetest:true, wtId:r.id};
+    const existing=stayList.find(x=>!x.isRetest && x.academy===st.academy && x.student===studentDisplayName(st.academy,st.nameKo,st.className));
+    if(existing){ existing.subjects.push(retestSubj); return; } // 이미 다른 이유로 남는 학생이면 같은 줄에 재시험 칸만 추가
+    seenStayName.add(nameKey);
+    stayList.push({className:st.className||'-', academy:st.academy, student:studentDisplayName(st.academy,st.nameKo,st.className), subjects:[retestSubj], k:'', s:''});
   });
   const staySection=isAdminRole()?`<div class="ysec" style="margin-top:16px;border-top:4px solid #b45309"><h3>🙋 오늘 남는 학생 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">${state.date} 전체 반 기준 (${stayList.length}명, 재시험 대상 포함)</span></h3>
     <div style="padding:0 16px 14px">
       ${stayList.length?stayList.map(x=>{
-        if(x.isRetest){
-          return `<div class="rowitem" style="align-items:center"><span class="key">${esc(x.student)} ${MODE==='all'?bdg(x.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(x.className)}</span></span><span class="val">${esc(x.memo)} <button class="btn small" data-wtdone="${x.wtId}">✔ 재시험 완료</button></span></div>`;
-        }
         const openSubjects=x.subjects.filter(s=>!s.done);
         const doneSubjects=x.subjects.filter(s=>s.done);
         return `<div class="rowitem" style="align-items:flex-start"><span class="key">${esc(x.student)} ${MODE==='all'?bdg(x.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(x.className)}</span></span>
           <span class="val" style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
-            ${openSubjects.map(s=>`<span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">${s.subj?`<b style="font-size:.76rem;color:var(--sub)">📚 ${esc(s.subj)}</b>`:''} ${s.memo?esc(s.memo):'<span style="color:#c3c9d6">메모 없음</span>'} <button class="btn small" data-staydonesub="${esc(x.k)}|${esc(x.s)}|${esc(s.subj||'')}">✔ 완료</button></span>`).join('')}
-            ${doneSubjects.length?`<span style="font-size:.72rem;color:#8b93a7">✔ 완료: ${doneSubjects.map(s=>esc(s.subj||'')).join(', ')}</span>`:''}
+           ${openSubjects.map(s=>`<span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">${s.subj?`<b style="font-size:.76rem;color:${s.isRetest?'#b45309':'var(--sub)'}">${s.isRetest?'':'📚 '}${esc(s.subj)}</b>`:''} ${s.memo?esc(s.memo):'<span style="color:#c3c9d6">메모 없음</span>'} ${s.isRetest?`<button class="btn small" data-wtdone="${s.wtId}">✔ 완료</button>`:`<button class="btn small" data-staydonesub="${esc(x.k)}|${esc(x.s)}|${esc(s.subj||'')}">✔ 완료</button>`}</span>`).join('')}            ${doneSubjects.length?`<span style="font-size:.72rem;color:#8b93a7">✔ 완료: ${doneSubjects.map(s=>esc(s.subj||'')).join(', ')}</span>`:''}
           </span></div>`;
       }).join(''):'<div style="font-size:.82rem;color:#8b93a7">오늘 남는 학생이 없습니다.</div>'}
     </div></div>`:'';
