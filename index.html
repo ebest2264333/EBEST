@@ -4728,6 +4728,14 @@ function wpGet(who, wkStart, days){
   }
   return store.weekplan[who][wkStart];
 }
+  function subjectOptionsForClass(academy, className, dateForMonth){
+  // 그 반(합반이면 관련 반 전부)에 실제로 등록된 과목 목록을 뽑아서 드롭다운 후보로 쓴다
+  const month=(dateForMonth||state.month||'').slice(0,7)||state.month;
+  const list=classesMatchingName(academy, month, className);
+  const names=new Set();
+  list.forEach(c=>(c.subjects||[]).forEach(s=>{ if(s.subject) names.add(s.subject); }));
+  return [...names];
+}
 function weekPlanForm(who, days, readOnly){
   const w=whoTeacher(who); const wp=wpGet(who,days[0],days);
   const mo=Number(days[0].slice(5,7));
@@ -4740,7 +4748,12 @@ function weekPlanForm(who, days, readOnly){
   wp.rows.forEach((r,i)=>{
     const wd=r.date?wdOf(r.date):'';
     const cell=(f,w2)=>`<td style="border:1px solid #e7eaf2;padding:2px"><input type="text" class="wp-c" data-i="${i}" data-f="${f}" value="${esc(r[f]||'')}" ${readOnly?'disabled':''} style="width:${w2||'100%'};border:none;padding:5px 7px;font-family:inherit;font-size:.8rem;background:transparent;text-align:center"></td>`;
-    const subjCell=`<td style="border:1px solid #e7eaf2;padding:2px;text-align:center;font-size:.78rem;color:var(--sub);font-weight:700" title="시간표에 등록된 원래 과목명 — 진도·교재가 저장될 기준입니다">${esc(r.subj||'-')}</td>`;
+    const subjOpts=subjectOptionsForClass(w.a, r.cls, r.date);
+    const subjCell=`<td style="border:1px solid #e7eaf2;padding:2px">
+      <select class="wp-c" data-i="${i}" data-f="subj" ${readOnly?'disabled':''} style="width:100%;border:none;padding:5px 4px;font-family:inherit;font-size:.78rem;background:transparent;text-align:center">
+        <option value="">-</option>
+        ${subjOpts.map(nm=>`<option value="${esc(nm)}" ${r.subj===nm?'selected':''}>${esc(nm)}</option>`).join('')}
+      </select></td>`;
     h+=`<tr>
       <td style="border:1px solid #e7eaf2;background:${WDCOLOR[wd]||'#fff'};padding:2px"><input type="date" class="wp-c" data-i="${i}" data-f="date" value="${esc(r.date||'')}" ${readOnly?'disabled':''} style="border:none;background:transparent;font-family:inherit;font-size:.78rem;font-weight:700"></td>
       ${cell('cls','86px')}${cell('book')}${subjCell}${cell('prog')}${cell('test','96px')}${cell('hw')}${cell('mprog','80px')}
