@@ -4497,7 +4497,7 @@ function autoLessonsFilled(who, date){
   return autoLessons(who, date).map(L=>{
     const wr=weeklyPlanRowFor(who, date, L.cls, L.subj);
     if(!wr) return L;
-    const prog=[wr.prog, wr.mprog].filter(Boolean).join(' → ');
+    const prog=[wr.prog, wr.mprog].filter(Boolean).join(' / ');
     return {...L, book:wr.book||L.book, hw:wr.hw||L.hw, prog:prog||L.prog};
   });
 }
