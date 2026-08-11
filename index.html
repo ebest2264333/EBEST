@@ -4794,13 +4794,9 @@ function bindWeekPlan(who, days, readOnly){
     // 날짜와 반 이름이 존재하고, 수정한 칸이 '교재(book)', '과제(hw)', '진도(prog)' 중 하나일 때만 실행
     if(rDate && rCls && (field === 'book' || field === 'hw' || field === 'prog')){
         try {
-            // 해당 날짜의 업무일지 데이터(wlGet)를 가져옵니다.
             const e = wlGet(who, rDate); 
-            
-            // 업무일지의 수업목록(e.lessons) 중에서 이름이 같은 반을 찾습니다.
-            const targetLesson = e.lessons.find(L => L.cls === rCls); 
-            
-            // 같은 반이 존재한다면 값을 똑같이 넣어줍니다.
+            const rSubj = wp.rows[idx].subj;
+            const targetLesson = (rSubj ? e.lessons.find(L => L.cls === rCls && L.subj === rSubj) : null) || e.lessons.find(L => L.cls === rCls); 
             if(targetLesson){
                 targetLesson[field] = val; 
                 e.updatedAt = Date.now(); // 업무일지 업데이트 시간 갱신
