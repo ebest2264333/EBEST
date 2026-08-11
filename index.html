@@ -4478,15 +4478,13 @@ function autoLessons(who, date){
   return rows;
 }
 function pad(arr,n,mk){ arr=arr||[]; while(arr.length<n) arr.push(mk()); return arr; }
-function weeklyPlanRowFor(who, date, cls){
-  // 주간 진도계획표에 이미 적혀있는 그 날짜·반 줄을 찾아준다 (업무일지 자동 채움 때 우선 반영하기 위함).
-  // 여러 주차 자료에 같은 날짜가 겹쳐 있을 수 있어, 가장 최근에 수정된 계획표 쪽을 우선한다.
-  // 반 이름도 "JM3" ↔ "JM3,4"처럼 합반 표기가 다를 수 있어 느슨하게 한 번 더 확인한다.
+function weeklyPlanRowFor(who, date, cls, subj){
   const wp=store.weekplan[who]; if(!wp) return null;
   let best=null, bestTs=-1;
   for(const wk in wp){
     const rows=wp[wk] && wp[wk].rows; if(!rows) continue;
-    const r=rows.find(r=>r.date===date && r.cls===cls) || rows.find(r=>r.date===date && classNameCompatible(r.cls, cls));
+    let r = subj ? rows.find(r=>r.date===date && r.cls===cls && r.subj===subj) : null;
+    if(!r) r = rows.find(r=>r.date===date && r.cls===cls) || rows.find(r=>r.date===date && classNameCompatible(r.cls, cls));
     if(r){
       const ts=tsOf(wp[wk].updatedAt);
       if(ts>=bestTs){ best=r; bestTs=ts; }
@@ -4497,7 +4495,7 @@ function weeklyPlanRowFor(who, date, cls){
 function autoLessonsFilled(who, date){
   // 시간표 기준 기본값에, 주간 진도계획표에 이미 적어둔 진도·과제·교재가 있으면 그걸 우선 채워넣는다
   return autoLessons(who, date).map(L=>{
-    const wr=weeklyPlanRowFor(who, date, L.cls);
+    const wr=weeklyPlanRowFor(who, date, L.cls, L.subj);
     if(!wr) return L;
     const prog=[wr.prog, wr.mprog].filter(Boolean).join(' → ');
     return {...L, book:wr.book||L.book, hw:wr.hw||L.hw, prog:prog||L.prog};
