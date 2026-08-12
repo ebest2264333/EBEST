@@ -4475,6 +4475,13 @@ function autoLessons(who, date){
     if(rb) return 1;
     return 0;
   });
+  rows.sort((a,b)=>{
+    const ra=parseRange(a.time), rb=parseRange(b.time);
+    if(ra && rb) return ra[0]-rb[0];
+    if(ra) return -1;
+    if(rb) return 1;
+    return 0;
+  });
   return rows;
 }
 function pad(arr,n,mk){ arr=arr||[]; while(arr.length<n) arr.push(mk()); return arr; }
@@ -5247,7 +5254,8 @@ function submitDoc(kind, who, ref){
     } }
     // 상담 완료 학생의 반명을 그 날짜 업무일지 Today(업무계획·상세내용) 항목에 자동 기록 (중복 방지)
     Object.keys(byDate).forEach(d=>{
-      const e=wlGet(who,d);
+      if(!store.worklog[who] || !store.worklog[who][d]) return;
+      const e=store.worklog[who][d];
       byDate[d].forEach(className=>{
         const already=e.today.some(x=>x.t==='전화 상담' && x.d===className);
         if(!already){ e.today.push({t:'전화 상담', d:className, r:'완료'}); e.updatedAt=Date.now(); }
