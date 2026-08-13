@@ -6947,6 +6947,61 @@ function repSet(){
   }
   return h;
 }
+  function repRosterSchoolGrade(){
+  const deptPrefix={'초등':'초','중등':'중','고등':'고'};
+  const classDept={};
+  classesFor(state.month).forEach(c=>{ classDept[c.academy+'|'+c.name]=c.dept; });
+  const schoolPrefix=school=>{
+    const sc=(school||'').trim();
+    if(!sc) return null;
+    if(sc.endsWith('초')) return '초';
+    if(sc.endsWith('중')) return '중';
+    if(sc.endsWith('고')) return '고';
+    return null;
+  };
+  const gradeOf=s=>{
+    const g=(s.grade||'').trim();
+    let prefix=schoolPrefix(s.school);
+    if(!prefix){
+      const dept=classDept[s.academy+'|'+(s.className||'').trim()];
+      if(dept && deptPrefix[dept]) prefix=deptPrefix[dept];
+    }
+    if(prefix) return prefix+(g||'?');
+    return g?g+'학년':'미배정';
+  };
+  const gradeOrder=['초1','초2','초3','초4','초5','초6','중1','중2','중3','고1','고2','고3'];
+  let h='';
+  for(const a of academies()){
+    if(state.ac!=='all' && a!==state.ac) continue;
+    const all=store.students.filter(s=>!s._deleted && s.academy===a && s.status==='재원');
+    if(!all.length) continue;
+    h+=rSecTitle(a, `학교 · 학년별 재원생 명단 (${all.length}명)`);
+    const bySchool={};
+    all.forEach(s=>{ const k=(s.school||'').trim()||'학교 미입력'; (bySchool[k]=bySchool[k]||[]).push(s); });
+    const schoolKeys=Object.keys(bySchool).sort((x,y)=>{
+      if(x==='학교 미입력') return 1; if(y==='학교 미입력') return -1;
+      return x.localeCompare(y,'ko');
+    });
+    schoolKeys.forEach(sch=>{
+      const students=bySchool[sch];
+      h+=`<table style="width:100%;border-collapse:collapse;${rF};margin-top:8px"><tr>
+        <td style="${BD}background:#eef1f6;padding:5px 10px;font-weight:bold;font-size:10pt">${esc(sch)} <span style="font-weight:400;color:#5a6478;font-size:8.5pt">(${students.length}명)</span></td></tr></table>`;
+      h+=`<table style="width:100%;border-collapse:collapse;${rF};margin-bottom:6px"><tr>${rTH('학년')}${rTH('이름')}${rTH('영어이름')}${rTH('반')}${rTH('학부모 연락처')}</tr>`;
+      const sorted=students.slice().sort((p,q)=>{
+        const gp=gradeOf(p), gq=gradeOf(q);
+        const ip=gradeOrder.indexOf(gp), iq=gradeOrder.indexOf(gq);
+        if(ip!==iq){ if(ip===-1) return 1; if(iq===-1) return -1; return ip-iq; }
+        return (p.nameKo||'').localeCompare(q.nameKo||'','ko');
+      });
+      sorted.forEach((s,i)=>{
+        const z=i%2?'background:#f7f9fc;':'';
+        h+=`<tr>${rTD(esc(gradeOf(s)),z+'text-align:center;white-space:nowrap')}${rTD('<b>'+esc(s.nameKo||'')+'</b>',z)}${rTD(esc(s.nameEn||''),z)}${rTD(esc(s.className||'-'),z+'white-space:nowrap')}${rTD(esc(s.parentPhone||''),z+'white-space:nowrap')}</tr>`;
+      });
+      h+='</table>';
+    });
+  }
+  return h||'<p style="'+rF+'">표시할 재원생이 없습니다.</p>';
+}
 function reportHTML(){
   if(state.tab==='report'){
     const who=curWho();
