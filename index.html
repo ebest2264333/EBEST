@@ -884,6 +884,17 @@ function teacherTeaches(c, lt){
   const asn=(store.assign[state.month]||{})[ckey(c)];
   return asn===lt.i;
 }
+// teacherTeaches()는 요일을 안 따져서, 반의 "다른 요일" 과목에 이름이 있기만 해도 true가 나온다
+// (그래서 오늘 담당이 아닌 선생님이 "오늘" 카드에 자기 색으로 표시되는 문제가 생김) — 오늘 실제로 그 반에 과목이 있는지까지 확인하는 버전
+function teacherTeachesToday(c, lt, wd){
+  if(!lt) return false;
+  if(c.academy!==lt.a) return false;
+  const nm=lt.t.name.trim().toLowerCase();
+  const daySubjs=(c.subjects||[]).filter(s=>subjOnDay(s,wd));
+  if(daySubjs.some(s=>s.teacher && s.teacher.trim().toLowerCase()===nm)) return true;
+  const asn=(store.assign[state.month]||{})[ckey(c)]; // 상담 담당은 요일과 무관하게 그 반 전체를 자기 반으로 본다
+  return asn===lt.i;
+}
   const esc = s => (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const bdg = a => MODE==='all' ? `<span class="badge ${AC[a].cls}">${AC[a].label}</span>` : '';
 function hl(s){ s=esc(s); if(!state.q) return s;
@@ -3770,7 +3781,7 @@ function renderToday(list){
   if(absAutoChanged) save();
   cls.forEach(c=>{
     const k=ckey(c);
-    const mine = lt && teacherTeaches(c,lt);
+    const mine = lt && teacherTeachesToday(c,lt,wd);
     let daySubjects=(c.subjects||[]).filter(s=>subjOnDay(s,wd)&&!isWordTestSubject(s));
     let attKeys=attKeysFor(c, wd);
     const trueMulti = attKeys.length>1; // "내 과목만" 필터로 걸러지기 전 원래 과목 수 — 이 값으로 저장 방식(과목별/단일)을 고정해야 보기 모드를 바꿔도 적어둔 내용이 사라지지 않는다
