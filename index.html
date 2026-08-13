@@ -3532,11 +3532,19 @@ function todayClasses(list){
         const pKeys=mySubjectKeys(partner, wd, lt);
         partnerHasNone = !!(pKeys && pKeys.has('__NONE__'));
       }
-      if(mainHasNone && partnerHasNone) return false;
+     if(mainHasNone && partnerHasNone) return false;
 
       return true;
     });
   }
+  // 오늘(그 요일) 시작 시간 순으로 정렬 — 시간 정보가 없는 반은 맨 뒤로 보낸다
+  cls = cls.slice().sort((a,b)=>{
+    const ra=parseRange(timeOfDay(a,wd)), rb=parseRange(timeOfDay(b,wd));
+    if(ra && rb) return ra[0]-rb[0];
+    if(ra) return -1;
+    if(rb) return 1;
+    return 0;
+  });
   return cls;
 }
 function absentReasonMissingCount(academy, dateISO){
