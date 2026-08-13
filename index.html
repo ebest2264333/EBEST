@@ -4555,7 +4555,12 @@ function journalForm(who, date, readOnly){
     h+=readOnly?'</div>':`<button class="btn small wl-add" data-sec="${sec}">+ 줄 추가</button></div>`;
   }
   h+=`</div></details>`;
-  // Today / Tomorrow
+// Today / Tomorrow
+  // "불러오기" 버튼은 무조건 어제 날짜가 아니라, 이 선생님이 실제로 마지막에 작성한 업무일지(요일별로 출근이 달라 며칠 전일 수도 있음)를 찾아 그 Tomorrow를 가져온다
+  const pullDates=Object.keys(store.worklog[who]||{}).filter(d=>d<date).sort();
+  const pullFromDate=pullDates.length?pullDates[pullDates.length-1]:null;
+  const pullFromEntry=pullFromDate?store.worklog[who][pullFromDate]:null;
+  const pullCount=pullFromEntry?(pullFromEntry.tomorrow||[]).filter(x=>x.t).length:0;
   for(const [sec,label,res] of [['today','Today — 오늘 업무계획 · 상세내용 · 진행결과',true],['tomorrow','Tomorrow — 내일 업무계획 · 상세내용 · 필수항목(★)',false]]){
     h+=`<div class="myclass" style="margin-top:16px">${label}</div>`;
     e[sec].forEach((x,i)=>{
@@ -4564,6 +4569,9 @@ function journalForm(who, date, readOnly){
         ${res?resSel(sec,i,x.r):starBtn(i,x.r)}${readOnly?'':`<button class="wl-del" data-sec="${sec}" data-i="${i}" title="이 줄 삭제" style="border:none;background:none;color:#c0392b;cursor:pointer;font-weight:800;padding:0 6px;font-size:1rem">×</button>`}</div>`;
     });
     h+=readOnly?'':`<button class="btn small wl-add" data-sec="${sec}">+ 줄 추가</button>`;
+    if(sec==='today' && !readOnly){
+      h+=`<button class="btn small" id="wlPullTomorrow" style="margin-left:6px" ${pullCount?'':'disabled'} title="${pullFromDate?esc(pullFromDate)+' ('+wdOf(pullFromDate)+') 에 작성한 Tomorrow 항목을 가져옵니다':'가져올 이전 업무일지가 없습니다'}">📥 ${pullFromDate?esc(pullFromDate.slice(5))+'('+wdOf(pullFromDate)+') ':''}Tomorrow 불러오기${pullCount?' ('+pullCount+')':''}</button>`;
+    }
   }
   // 수업내용 및 진도 (자동)
   h+=`<div class="myclass" style="margin-top:16px">수업내용 및 진도 <span style="font-weight:400">— 시간표·교재·과제 자료 기반 자동 채움, 수정 가능</span>
@@ -4588,8 +4596,22 @@ function bindJournal(who, date, readOnly){
     const badge=v.querySelector('#wlSavedAt'); if(badge) badge.textContent='자동저장됨 · '+new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Seoul'}); });
   v.querySelectorAll('.wl-r').forEach(s=>s.onchange=()=>{ e[s.dataset.sec][Number(s.dataset.i)].r=s.value; touch(); save(); render(true); });
   v.querySelectorAll('.wl-star').forEach(b=>b.onclick=()=>{ const x=e.tomorrow[Number(b.dataset.i)]; x.r=x.r?'':'★'; touch(); save(); render(true); });
-  v.querySelectorAll('.wl-add').forEach(b=>b.onclick=()=>{ const sec=b.dataset.sec;
+ v.querySelectorAll('.wl-add').forEach(b=>b.onclick=()=>{ const sec=b.dataset.sec;
     e[sec].push(sec==='monthly'||sec==='weekly'?{t:'',r:''}:{t:'',d:'',r:''}); touch(); save(); render(true); });
+  const pullBtn=v.querySelector('#wlPullTomorrow'); if(pullBtn) pullBtn.onclick=()=>{
+    const prevDates=Object.keys(store.worklog[who]||{}).filter(d=>d<date).sort();
+    if(!prevDates.length){ alert('가져올 이전 업무일지가 없습니다.'); return; }
+    const fromDate=prevDates[prevDates.length-1];
+    const prev=store.worklog[who][fromDate];
+    const carried=(prev.tomorrow||[]).filter(x=>x.t).map(x=>({t:x.t,d:x.d,r:''}));
+    if(!carried.length){ alert(`${fromDate} (${wdOf(fromDate)}) 업무일지에 Tomorrow 항목이 없습니다.`); return; }
+    const hasContent=e.today.some(x=>x.t);
+    if(hasContent && !confirm(`이미 Today에 적힌 내용이 있습니다.\n${fromDate} (${wdOf(fromDate)}) Tomorrow 항목 ${carried.length}개를 이어서 추가할까요?`)) return;
+    e.today = hasContent ? e.today.filter(x=>x.t||x.d).concat(carried) : carried;
+    e.today = pad(e.today,3,()=>({t:'',d:'',r:''}));
+    touch(); save(); render(true);
+    toast(`📥 ${fromDate} Tomorrow ${carried.length}개 불러왔습니다`);
+  };
   v.querySelectorAll('.wl-del').forEach(b=>b.onclick=()=>{
     const sec=b.dataset.sec, i=Number(b.dataset.i);
     if(!confirm('이 줄을 삭제할까요?')) return;
@@ -7008,7 +7030,7 @@ function reportHTML(){
     if(whoTeacher(who)) return state.rkind==='weekly' ? repWeekPlan(who, weekOf(state.date)) : repDailyJournal(who, state.date);
   }
   const date=todayISO();
-  const tabName={dash:'반 · 교재 현황',today:'수업 일지 (출석 · 숙제)',consult:'상담 기록',attend:'월별 출결부',report:(state.rkind==='weekly'?'주간 진도계획표':'업무일지'),yearly:'연간 교재 내역',stats:'학생 통계',cal:'학사일정 · 회의록',board:'게시판',archive:'전체 기록 모아보기',set:'선생님 설정'}[state.tab];
+  const tabName={dash:'반 · 교재 현황',today:'수업 일지 (출석 · 숙제)',consult:'상담 기록',attend:'월별 출결부',report:(state.rkind==='weekly'?'주간 진도계획표':'업무일지'),roster:'학교 · 학년별 명단',yearly:'연간 교재 내역',stats:'학생 통계',cal:'학사일정 · 회의록',board:'게시판',archive:'전체 기록 모아보기',set:'선생님 설정'}[state.tab];
   let extra='';
   if(state.tab==='consult'&&state.tf) extra=' — '+store.teachers[state.tf.a][state.tf.i].name+' 선생님';
   const lt=loginTeacher();
@@ -7020,10 +7042,10 @@ function reportHTML(){
   let body='', boxes='';
   if(state.tab==='dash'){
     boxes=rBoxes(academies().map(a=>[AC[a].label, list.filter(c=>c.academy===a).length+'반 · '+list.filter(c=>c.academy===a).reduce((n,c)=>n+(c.count||0),0)+'명', AC[a].color]));
-    body=repDash(list);
+    body=repDash(list);    
   } else if(state.tab==='today'){
     const cls=todayClasses(list); const at=atFor(state.date), hw=hwFor(state.date);
-    let tot=0,pres=0,hwd=0;
+    let tot=0,pres=0,hwd=0;    
     cls.forEach(c=>(c.students||[]).forEach(s=>{tot++;
       if(((at[ckey(c)]||{})[s])==='출')pres++;
       if(((hw[ckey(c)]||{})[s]||{}).done)hwd++;}));
@@ -7034,8 +7056,9 @@ function reportHTML(){
     const un=list.filter(c=>mAssign()[ckey(c)]==null).length;
     boxes=rBoxes([['대상 반',list.length+'개'],['상담 완료',d+' / '+tot+'명', d===tot&&tot?'#0e9f6e':'#1c2740'],['담당 미배정',un+'개 반', un?'#b45309':'#0e9f6e']]);
     body=repConsult(list);
-  } else if(state.tab==='attend'){ body=repAttend(list); }
+ } else if(state.tab==='attend'){ body=repAttend(list); }
   else if(state.tab==='report'){ body = state.rkind==='weekly' ? repWorkWeekly(state.date) : repWorkDaily(state.date); }
+  else if(state.tab==='roster'){ body=repRosterSchoolGrade(); }
   else if(state.tab==='yearly'){ body=repYearly(); }
   else if(state.tab==='stats'){ body=repStats(); }
   else if(state.tab==='cal'){ body=repCal(); }
@@ -7053,8 +7076,7 @@ document.getElementById('printBtn').onclick=()=>{
 document.getElementById('xlsBtn').onclick=()=>{
   const html=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>보고서</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head><body>${reportHTML()}</body></html>`;
   const blob=new Blob(['\uFEFF'+html],{type:'application/vnd.ms-excel'});
-  const tabName={dash:'반교재',today:'수업일지',consult:'상담기록',attend:'출결부',report:(state.rkind==='weekly'?'주간진도계획표':'업무일지'),yearly:'연간교재',stats:'학생통계',cal:'일정회의',archive:'전체기록',set:'설정'}[state.tab];
-  let who = (state.tab==='consult'&&state.tf) ? '_'+store.teachers[state.tf.a][state.tf.i].name : '';
+  const tabName={dash:'반교재',today:'수업일지',consult:'상담기록',attend:'출결부',report:(state.rkind==='weekly'?'주간진도계획표':'업무일지'),roster:'학교학년별명단',yearly:'연간교재',stats:'학생통계',cal:'일정회의',archive:'전체기록',set:'설정'}[state.tab];  let who = (state.tab==='consult'&&state.tf) ? '_'+store.teachers[state.tf.a][state.tf.i].name : '';
   const lt=loginTeacher();
   if((state.tab==='today'||state.tab==='attend')&&lt&&state.myOnly) who='_'+lt.t.name;
   if(state.tab==='report'){ const w=whoTeacher(curWho()); if(w) who='_'+w.t.name; }
