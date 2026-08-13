@@ -3556,7 +3556,10 @@ function todayClasses(list){
       let partnerHasNone = true;
       if(partner && classMeets(partner, wd)){
         const pKeys=mySubjectKeys(partner, wd, lt);
-        partnerHasNone = !!(pKeys && pKeys.has('__NONE__'));
+        // pKeys가 null이면 "합반 상대 반에 담당 표기 자체가 없어서 제한 안 함(전체 공개)"인 상태인데,
+        // 이걸 "상대 반에 내 과목이 있다"로 잘못 해석하면 — JB4처럼 텅 빈 합반 상대 때문에 JB3까지 모든 선생님 화면에 새어나와 보인다.
+        // 진짜로 상대 반에 내 이름이 붙은 과목이 있을 때만(pKeys가 실제 과목 이름들을 담은 Set일 때만) "상대 반엔 내 게 있다"로 본다.
+        partnerHasNone = !pKeys || pKeys.has('__NONE__');
       }
      if(mainHasNone && partnerHasNone) return false;
 
