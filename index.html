@@ -4556,11 +4556,10 @@ function journalForm(who, date, readOnly){
   }
   h+=`</div></details>`;
 // Today / Tomorrow
-  // "불러오기" 버튼은 무조건 어제 날짜가 아니라, 이 선생님이 실제로 마지막에 작성한 업무일지(요일별로 출근이 달라 며칠 전일 수도 있음)를 찾아 그 Tomorrow를 가져온다
-  const pullDates=Object.keys(store.worklog[who]||{}).filter(d=>d<date).sort();
-  const pullFromDate=pullDates.length?pullDates[pullDates.length-1]:null;
-  const pullFromEntry=pullFromDate?store.worklog[who][pullFromDate]:null;
-  const pullCount=pullFromEntry?(pullFromEntry.tomorrow||[]).filter(x=>x.t).length:0;
+  // "불러오기"는 어제로 고정하지 않고, 이 선생님이 Tomorrow를 적어둔 이전 날짜 중에서 직접 골라 가져올 수 있게 한다 (요일별로 출근이 달라 며칠 전일 수도 있어서)
+  const pullOptions=Object.keys(store.worklog[who]||{}).filter(d=>d<date).sort().reverse()
+    .map(d=>({d, cnt:(store.worklog[who][d].tomorrow||[]).filter(x=>x.t).length}))
+    .filter(o=>o.cnt>0);
   for(const [sec,label,res] of [['today','Today — 오늘 업무계획 · 상세내용 · 진행결과',true],['tomorrow','Tomorrow — 내일 업무계획 · 상세내용 · 필수항목(★)',false]]){
     h+=`<div class="myclass" style="margin-top:16px">${label}</div>`;
     e[sec].forEach((x,i)=>{
@@ -4570,7 +4569,12 @@ function journalForm(who, date, readOnly){
     });
     h+=readOnly?'':`<button class="btn small wl-add" data-sec="${sec}">+ 줄 추가</button>`;
     if(sec==='today' && !readOnly){
-      h+=`<button class="btn small" id="wlPullTomorrow" style="margin-left:6px" ${pullCount?'':'disabled'} title="${pullFromDate?esc(pullFromDate)+' ('+wdOf(pullFromDate)+') 에 작성한 Tomorrow 항목을 가져옵니다':'가져올 이전 업무일지가 없습니다'}">📥 ${pullFromDate?esc(pullFromDate.slice(5))+'('+wdOf(pullFromDate)+') ':''}Tomorrow 불러오기${pullCount?' ('+pullCount+')':''}</button>`;
+      h+=`<span style="display:inline-flex;gap:6px;align-items:center;margin-left:6px">
+        <select id="wlPullDateSel" ${pullOptions.length?'':'disabled'} style="padding:5px 7px;border:1px solid var(--line);border-radius:7px;font-family:inherit;font-size:.8rem;font-weight:700">
+          ${pullOptions.length ? pullOptions.map(o=>`<option value="${esc(o.d)}">${esc(o.d)} (${wdOf(o.d)}) · Tomorrow ${o.cnt}개</option>`).join('') : '<option>가져올 이전 업무일지 없음</option>'}
+        </select>
+        <button class="btn small" id="wlPullTomorrow" ${pullOptions.length?'':'disabled'} title="선택한 날짜에 적어둔 Tomorrow 항목을 가져옵니다">📥 불러오기</button>
+      </span>`;
     }
   }
   // 수업내용 및 진도 (자동)
@@ -4599,9 +4603,10 @@ function bindJournal(who, date, readOnly){
  v.querySelectorAll('.wl-add').forEach(b=>b.onclick=()=>{ const sec=b.dataset.sec;
     e[sec].push(sec==='monthly'||sec==='weekly'?{t:'',r:''}:{t:'',d:'',r:''}); touch(); save(); render(true); });
   const pullBtn=v.querySelector('#wlPullTomorrow'); if(pullBtn) pullBtn.onclick=()=>{
-    const prevDates=Object.keys(store.worklog[who]||{}).filter(d=>d<date).sort();
-    if(!prevDates.length){ alert('가져올 이전 업무일지가 없습니다.'); return; }
-    const fromDate=prevDates[prevDates.length-1];
+    // 자동으로 "가장 최근 날짜"를 쓰지 않고, 드롭다운에서 선생님이 직접 고른 날짜를 사용한다
+    const sel=v.querySelector('#wlPullDateSel');
+    const fromDate=sel&&sel.value;
+    if(!fromDate || !(store.worklog[who]||{})[fromDate]){ alert('가져올 이전 업무일지가 없습니다.'); return; }
     const prev=store.worklog[who][fromDate];
     const carried=(prev.tomorrow||[]).filter(x=>x.t).map(x=>({t:x.t,d:x.d,r:''}));
     if(!carried.length){ alert(`${fromDate} (${wdOf(fromDate)}) 업무일지에 Tomorrow 항목이 없습니다.`); return; }
