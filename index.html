@@ -3494,6 +3494,32 @@ function activeStudents(c){
   // 반 배정에서 퇴원생을 제외한 "현재 활성" 학생 명단 — 반 카드 자체의 c.students 배열은 그대로 두고(과거 기록 보존), 화면 표시만 걸러준다
   return (c.students||[]).filter(sname=>!isWithdrawnRosterName(c.academy, sname, c.name));
 }
+// 이 반에서 "내가"(lt) 오늘 실제로 담당한 과목들 중 가장 이른 시작 시간을 구한다 (반 전체 시간이 아니라 내 과목 시간 기준)
+// — 담당 과목 표기가 아예 없는 반이면(누구 담당인지 안 적혀있으면) 그 반 전체를 내 것으로 보고 계산하고, lt가 없으면(관리자 등) 그냥 반 전체 시간을 쓴다
+function myTodayStartTime(c, wd, lt){
+  const timeOfMine=(cls)=>{
+    const daySubs=(cls.subjects||[]).filter(s=>subjOnDay(s,wd));
+    if(!daySubs.length) return null;
+    let subs=daySubs;
+    if(lt){
+      const nm=norm(lt.t.name);
+      const mySubs=daySubs.filter(s=>s.teacher&&norm(s.teacher)===nm);
+      const anyTeacherSet=daySubs.some(s=>s.teacher);
+      subs = mySubs.length ? mySubs : (anyTeacherSet ? [] : daySubs);
+    }
+    let best=null;
+    subs.forEach(s=>{
+      const r=parseRange(s.time)||parseRange(timeOfDay(cls,wd));
+      if(r && (best===null || r[0]<best)) best=r[0];
+    });
+    return best;
+  };
+  const mainT=timeOfMine(c);
+  const partner=mergedPartnerClass(c);
+  const partnerT=(partner && classMeets(partner, wd)) ? timeOfMine(partner) : null;
+  if(mainT!=null && partnerT!=null) return Math.min(mainT, partnerT);
+  return mainT!=null ? mainT : partnerT;
+}
 function todayClasses(list){
   const wd=wdOf(state.date);
   let cls=list.filter(c=>{
@@ -3537,12 +3563,13 @@ function todayClasses(list){
       return true;
     });
   }
-  // 오늘(그 요일) 시작 시간 순으로 정렬 — 시간 정보가 없는 반은 맨 뒤로 보낸다
+  // 오늘(그 요일) 시작 시간 순으로 정렬 — 로그인한 선생님이 있으면 "반 전체 시간"이 아니라 "그 선생님이 실제로 담당한 과목의 시간" 기준으로,
+  // 없으면(관리자 등) 반 전체 시간 기준으로. 시간 정보가 없는 반은 맨 뒤로 보낸다
   cls = cls.slice().sort((a,b)=>{
-    const ra=parseRange(timeOfDay(a,wd)), rb=parseRange(timeOfDay(b,wd));
-    if(ra && rb) return ra[0]-rb[0];
-    if(ra) return -1;
-    if(rb) return 1;
+    const ra=myTodayStartTime(a,wd,lt), rb=myTodayStartTime(b,wd,lt);
+    if(ra!=null && rb!=null) return ra-rb;
+    if(ra!=null) return -1;
+    if(rb!=null) return 1;
     return 0;
   });
   return cls;
