@@ -4836,7 +4836,10 @@ function weekPlanForm(who, days, readOnly){
     h+=`<tr>
       <td style="border:1px solid #e7eaf2;background:${WDCOLOR[wd]||'#fff'};padding:2px"><input type="date" class="wp-c" data-i="${i}" data-f="date" value="${esc(r.date||'')}" ${readOnly?'disabled':''} style="border:none;background:transparent;font-family:inherit;font-size:.78rem;font-weight:700"></td>
       ${cell('cls','86px')}${cell('book')}${subjCell}${cell('prog')}${cell('test','96px')}${cell('hw')}${cell('mprog','80px')}
-      <td style="border:1px solid #e7eaf2;text-align:center">${readOnly?'':'<button class="del wp-del" data-i="'+i+'">✕</button>'}</td></tr>`;
+     <td style="border:1px solid #e7eaf2;text-align:center;white-space:nowrap">${readOnly?'':`
+        <button class="wp-up" data-i="${i}" title="위로" ${i===0?'disabled':''} style="border:none;background:none;color:${i===0?'#c9cfdd':'#5a6478'};cursor:${i===0?'default':'pointer'};font-weight:800;padding:0 3px">▲</button>
+        <button class="wp-down" data-i="${i}" title="아래로" ${i===wp.rows.length-1?'disabled':''} style="border:none;background:none;color:${i===wp.rows.length-1?'#c9cfdd':'#5a6478'};cursor:${i===wp.rows.length-1?'default':'pointer'};font-weight:800;padding:0 3px">▼</button>
+        <button class="del wp-del" data-i="${i}">✕</button>`}</td></tr>`;
   });
   h+=`</tbody></table></div>
     <div style="display:flex;gap:8px;margin-top:8px">
@@ -4916,7 +4919,23 @@ function bindWeekPlan(who, days, readOnly){
     await saveAndSync();
     render(true);
   });
-
+  // 원하는 순서로 직접 줄을 위/아래로 옮길 수 있게 — 바로 옆 줄과 자리를 맞바꾼다
+  v.querySelectorAll('.wp-up').forEach(b=>b.onclick = async ()=>{
+    const idx = Number(b.dataset.i);
+    if(idx<=0) return;
+    [wp.rows[idx-1], wp.rows[idx]] = [wp.rows[idx], wp.rows[idx-1]];
+    wp.updatedAt = Date.now();
+    await saveAndSync();
+    render(true);
+  });
+  v.querySelectorAll('.wp-down').forEach(b=>b.onclick = async ()=>{
+    const idx = Number(b.dataset.i);
+    if(idx>=wp.rows.length-1) return;
+    [wp.rows[idx], wp.rows[idx+1]] = [wp.rows[idx+1], wp.rows[idx]];
+    wp.updatedAt = Date.now();
+    await saveAndSync();
+    render(true);
+  });
   const refBtn = v.querySelector('#wpRefill');
   if(refBtn) refBtn.onclick = async ()=>{
     if(!confirm('주간 진도계획표를 학원 자료 기준으로 다시 채울까요? (직접 수정한 내용은 지워집니다)')) return;
