@@ -5899,7 +5899,7 @@ function renderSyllabus(){
       <div class="chead" data-toggle="${esc(en.id)}"><span class="arrow">▶</span>
         <span style="font-weight:800">${esc(en.title||'제목 없음')}</span>
         <span style="font-size:.76rem;color:var(--sub);margin-left:8px">${esc(en.dept||'기타')} · ${esc(en.uploadedBy||'')} · ${en.uploadedAt?new Date(en.uploadedAt).toLocaleDateString('ko-KR'):''}</span>
-        ${admin?`<button class="del sylDel" data-id="${esc(en.id)}" style="margin-left:auto">삭제</button>`:''}
+        ${admin?`<span style="margin-left:auto;display:flex;gap:6px"><button class="btn small sylRename" data-id="${esc(en.id)}">✎ 이름 수정</button><button class="del sylDel" data-id="${esc(en.id)}">삭제</button></span>`:''}
       </div>
       <div class="cbody" style="padding:12px 16px">`;
     if(en.sheets && en.sheets.length>1){
@@ -5956,6 +5956,16 @@ function bindSyllabus(){
     if(!isAdminRole()) return;
     if(!confirm('이 실러버스를 삭제할까요?')) return;
     const en=store.syllabus.find(x=>x.id===b.dataset.id); if(en){ en._deleted=true; en.updatedAt=Date.now(); }
+    save(); render(true);
+  });
+  v.querySelectorAll('.sylRename').forEach(b=>b.onclick=()=>{
+    if(!isAdminRole()) return;
+    const en=store.syllabus.find(x=>x.id===b.dataset.id); if(!en) return;
+    const nv=prompt('새 이름을 입력하세요', en.title||'');
+    if(nv==null) return; // 취소
+    const trimmed=nv.trim();
+    if(!trimmed){ alert('이름을 입력해주세요.'); return; }
+    en.title=trimmed; en.updatedAt=Date.now();
     save(); render(true);
   });
 }
