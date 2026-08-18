@@ -2753,7 +2753,13 @@ function effStudentsForGive(c){
 function renderBookGive(list){
   const lt=loginTeacher();
   let cls=list.filter(c=>effStudentsForGive(c).length); // 단어장·시험지 배부는 과목 교재 등록 여부와 상관없이 학생이 있는 반이면 대상 (합반 파트너는 상대 반 학생 기준)
-  if(lt && state.myOnly) cls=cls.filter(c=>teacherTeaches(c,lt));
+    if(lt && state.myOnly) cls=cls.filter(c=>{
+    if(teacherTeaches(c,lt)) return true;
+    // 합반 상대(파트너) 반은 담당(teacher) 표기가 메인 반 쪽에만 있는 경우가 많아,
+    // 상대 반 기준으로도 내 수업이면 이 반(파트너 카드)을 숨기지 않는다
+    const mp=mergedCounterpart(c);
+    return !!(mp && teacherTeaches(mp,lt));
+  });
   let h=`<div class="todaybar"><span class="wd">📦 교재 배부</span>
     ${lt?`<span class="mytag" style="background:${lt.t.color}">👤 ${esc(lt.t.name)}</span><label class="hwlab"><input type="checkbox" id="bgMyOnly" ${state.myOnly?'checked':''}> 내 수업만 보기</label>`:''}
     <span style="font-size:.76rem;color:var(--sub)">교재명을 직접 입력하고 학생을 체크한 뒤 [배부 처리]를 누르면 반교재·연간교재·업무일지에도 실시간으로 반영됩니다. 선생님 누구나 개별로 체크하거나, [반 전체 선택]으로 한 번에 배부 처리할 수 있어요.</span></div>`;
