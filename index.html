@@ -353,8 +353,19 @@ const PALETTE = ['#2563EB','#0E9F6E','#FFC700','#9333EA','#DC2626','#0891B2','#D
 
 /* ---------- 저장소 ---------- */
 const KEY='academy-dash-v2';
+// ⚠️ 임시조치(2026-08): Firebase 무료 대역폭(월 10GB) 초과로, "매 글자 입력마다 즉시 전송 +
+// 20초마다 자동확인"하던 걸 "1~2분에 한 번씩만 자동으로 주고받기"로 낮춰뒀습니다.
+// 완전 실시간은 아니지만 사람이 버튼을 직접 누르지 않아도 자동으로 동기화됩니다.
+// - 결제(Blaze 전환) 완료되면 아래 PUSH_DEBOUNCE_MS / PULL_INTERVAL_MS 값을 줄여서
+//   원래(거의 실시간)대로 되돌리면 됩니다. (예: 400 / 20000)
+const AUTO_SYNC_PAUSED = false;
+const PUSH_DEBOUNCE_MS = 90000;
+const PULL_INTERVAL_MS = 90000;
 let store = {teachers:null, assign:{}, records:{}, cmemo:{}, uploads:{}, homework:{}, attend:{}, login:null};
 try{ const s=localStorage.getItem(KEY); if(s) store=Object.assign(store, JSON.parse(s)); }catch(e){}
+// 교체방식(REPLACE_FIELDS) 필드가 "진짜로" 바뀌었는지 감지하기 위한 기준 스냅샷.
+let __replaceFieldSnap={};
+function __snapshotReplaceFields(){ REPLACE_FIELDS.forEach(f=>{ __replaceFieldSnap[f]=JSON.stringify(store[f]); }); }
 if(!store.uploads) store.uploads={};
 if(!store.homework) store.homework={};
 if(!store.attend) store.attend={};
@@ -420,6 +431,7 @@ const SHARE_FIELDS=['uploads','bookedit','bookdone','daysedit','timeedit','calen
 // 반 자료·학생 명단처럼 "삭제"가 중요한 항목은 병합하지 않고 통째로 교체한다(마지막 저장이 우선).
 // 병합 방식(mergeById)에는 삭제라는 개념이 없어서, 지운 반·학생이 다른 기기 자료와 합쳐지며 계속 되살아나기 때문.
 const REPLACE_FIELDS=['uploads','students','teachers','bookedit','bookdone','daysedit','timeedit','wordbookOptions','testPaperOptions'];
+__snapshotReplaceFields();
 // 출결·숙제 등은 여러 선생님이 동시에 서로 다른 학생을 입력하므로 기존처럼 병합해야 안전하다.
 function isReplaceField(f){ return REPLACE_FIELDS.includes(f); }
 // 각 항목을 마지막으로 편집한 시각 — 교체 방식에서 "누가 더 최신인지" 판단에 사용
@@ -446,11 +458,14 @@ let saveTimer=null;
 function save(){
   // 어떤 값이든 바뀌면 그 즉시 이 기기에 저장되고, 곧바로 서버로도 올라간다(글자 하나만 고쳐도 반영)
   store.fieldStamps=store.fieldStamps||{};
-  REPLACE_FIELDS.forEach(f=>{ store.fieldStamps[f]=Date.now(); });
+  REPLACE_FIELDS.forEach(f=>{
+    const cur=JSON.stringify(store[f]);
+    if(cur!==__replaceFieldSnap[f]){ store.fieldStamps[f]=Date.now(); __replaceFieldSnap[f]=cur; }
+  });
   localStorage.setItem(KEY, JSON.stringify(store));
   const el=document.getElementById('saved'); el.classList.add('show');
   clearTimeout(saveTimer); saveTimer=setTimeout(()=>el.classList.remove('show'),900);
-  if(MODE==='all' || isAdminRole() || loginTeacher()) schedulePushShared(); }
+  if(!AUTO_SYNC_PAUSED && (MODE==='all' || isAdminRole() || loginTeacher())) schedulePushShared(); }
 
 /* ---------- 실시간 동기화 (Firebase Realtime Database REST) ---------- */
 function syncOn(){ return !!(store.sync && store.sync.on && store.sync.url && store.sync.code); }
@@ -460,12 +475,15 @@ function updateSyncBadge(){
   if(!syncOn()){
     b.style.background='#4b3a1a'; b.style.color='#f5c26b';
     b.textContent='⚠ 로컬 전용'; b.title='실시간 동기화가 꺼져 있습니다 — 이 기기에만 저장되고 다른 선생님 화면에는 반영되지 않습니다. 눌러서 설정으로 이동하세요.';
+  } else if(AUTO_SYNC_PAUSED){
+    b.style.background='#3a2f0e'; b.style.color='#f5c26b';
+    b.textContent='✋ 수동 전송 대기'; b.title='서버 용량 문제로 자동 전송이 잠시 꺼져 있습니다. 저장은 정상적으로 되지만, 서버에는 설정 화면의 "지금 동기화" 버튼을 눌러야 올라갑니다. 눌러서 설정으로 이동하세요.';
   } else if(lastSyncError){
     b.style.background='#4b1a1a'; b.style.color='#ff9b9b';
     b.textContent='⚠ 동기화 오류'; b.title='최근 서버 전송/수신이 실패했습니다: '+lastSyncError+' — 눌러서 설정에서 확인하세요.';
   } else {
     b.style.background='#123a2a'; b.style.color='#7be0b0';
-    b.textContent='☁ 동기화중'; b.title=lastSyncOkAt?('마지막 전송 성공: '+new Date(lastSyncOkAt).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Seoul'})):'실시간 동기화가 켜져 있습니다.';
+    b.textContent='☁ 자동 동기화(1~2분)'; b.title=lastSyncOkAt?('마지막 전송 성공: '+new Date(lastSyncOkAt).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Seoul'})+' — 대역폭 절약을 위해 1~2분 간격으로 자동 동기화됩니다.'):'대역폭 절약을 위해 1~2분 간격으로 자동 동기화됩니다.';
   }
 }
 function syncBase(){
@@ -502,8 +520,8 @@ document.addEventListener('focusout', ()=>{
 function schedulePushShared(){
   if(!syncOn()) return;
   clearTimeout(pushTimer);
-  // 타자 치는 중에 매 글자마다 전송하면 느려지므로, 입력이 잠깐 멈추면(0.4초) 곧바로 올린다
-  pushTimer=setTimeout(pushShared, 400);
+  // 매 글자마다 전송하면 대역폭이 낭비되므로, 입력이 잠깐 멈추면 일정 시간 후 모아서 올린다
+  pushTimer=setTimeout(pushShared, PUSH_DEBOUNCE_MS);
 }
 function tsOf(v){
   // updatedAt(숫자 타임스탬프)와 createdAt("2026-07-28" 같은 날짜 문자열)을 같은 기준으로 비교하기 위해 통일된 숫자로 변환
@@ -555,7 +573,14 @@ async function pushShared(){
     syncBusy=true;
     // 전송 직전 서버 최신본을 받아와 내 자료와 병합 — 그 사이 다른 사람이 올린 내용을 덮어쓰지 않도록
     let remotePack=null;
-    try{ remotePack=await fbGet('/shared'); }catch(e){}
+    try{ remotePack=await fbGet('/shared'); }
+    catch(e){
+      console.warn('sync push: 서버 최신본 조회 실패 — 데이터 보호를 위해 이번 전송을 건너뜀', e);
+      lastSyncError='전송 전 서버 확인 실패(안전을 위해 건너뜀): '+e.message;
+      toast('⚠ 서버 확인 실패 — 안전을 위해 이번 전송은 건너뜀');
+      syncBusy=false; updateSyncBadge();
+      return;
+    }
     if(remotePack){
       const rStamps=remotePack.fieldStamps||{};
       const lStamps=store.fieldStamps||{};
@@ -566,6 +591,7 @@ async function pushShared(){
           if((rStamps[f]||0) > (lStamps[f]||0)){
             store[f]=remotePack[f];
             store.fieldStamps=store.fieldStamps||{}; store.fieldStamps[f]=rStamps[f];
+            __replaceFieldSnap[f]=JSON.stringify(store[f]);
           }
           return;
         }
@@ -618,6 +644,15 @@ function mergeById(localArr, remoteArr){
 async function pullShared(silent){
   if(!syncOn()) return;
   try{
+    // 대역폭 절약: 매번 전체 자료(/shared)를 통째로 받는 대신, 가벼운 updatedAt 값 하나만 먼저
+    // 확인해서 실제로 서버가 더 최신일 때만 전체를 받아온다.
+    let remoteTs=null;
+    try{ remoteTs=await fbGet('/shared/updatedAt'); }catch(e){}
+    if(remoteTs!=null && remoteTs<=(store.sharedAt||0)){
+      lastSyncError=null; lastSyncOkAt=Date.now();
+      updateSyncBadge();
+      return;
+    }
     const pack=await fbGet('/shared');
     if(pack && pack.updatedAt && pack.updatedAt>(store.sharedAt||0)){
       const rStamps=pack.fieldStamps||{};
@@ -629,6 +664,7 @@ async function pullShared(silent){
           if((rStamps[f]||0) > (lStamps[f]||0)){
             store[f]=pack[f];
             store.fieldStamps=store.fieldStamps||{}; store.fieldStamps[f]=rStamps[f];
+            __replaceFieldSnap[f]=JSON.stringify(store[f]);
           }
           return;
         }
@@ -672,16 +708,18 @@ async function pollInbox(){
       store.inboxDone[k]=true;
       fbDel('/inbox/'+k);
     }
-    if(n){ localStorage.setItem(KEY, JSON.stringify(store)); render(true); toast('📥 새 제출 '+n+'건 수신'); schedulePushShared(); }
+    if(n){ localStorage.setItem(KEY, JSON.stringify(store)); render(true); toast('📥 새 제출 '+n+'건 수신'); if(!AUTO_SYNC_PAUSED) schedulePushShared(); }
   }catch(e){ console.warn('inbox 확인 실패', e); }
 }
 let __syncLoopStarted=false;
 function startSyncLoop(){
   if(!syncOn()) return;
   pullShared(true);
-  // 다른 사람이 바꾼 내용도 빨리 보이도록 5초마다 확인
-  if(MODE==='all'){ pollInbox(); setInterval(()=>{ pullShared(false); pollInbox(); }, 5000); }
-  else setInterval(()=>pullShared(false), 5000);
+  // 다른 사람이 바꾼 내용도 빨리 보이도록 주기적으로 확인
+  if(!AUTO_SYNC_PAUSED){
+    if(MODE==='all'){ pollInbox(); setInterval(()=>{ pullShared(false); pollInbox(); }, PULL_INTERVAL_MS); }
+    else setInterval(()=>pullShared(false), PULL_INTERVAL_MS);
+  }
   if(__syncLoopStarted) return; // 껐다 켰다를 반복해도 화면 이벤트 리스너는 한 번만 등록
   __syncLoopStarted=true;
   document.addEventListener('visibilitychange',()=>{
