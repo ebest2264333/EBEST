@@ -2531,6 +2531,7 @@ function wtStudentRow(s, date){
         ${wbSel}
         ${langSel}
         <input type="text" placeholder="범위" value="${esc(r.range||'')}" data-wtfield="${s.id}|range" ${r.absent?'disabled':''} style="width:110px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
+        <input type="text" placeholder="점수 (예: 18/20)" value="${esc(r.score||'')}" data-wtfield="${s.id}|score" ${r.absent?'disabled':''} style="width:90px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
         ${studentIsHigh(s)?`<label style="font-size:.8rem;color:${r.accumulate?'#7c3aed':'var(--sub)'};${dim}" title="체크하면 이전 등원일 이틀치 시험 범위를 자동으로 이어서 채워줍니다"><input type="checkbox" data-wtaccum="${s.id}" ${r.accumulate?'checked':''} ${r.absent?'disabled':''}> 📚 누적</label>`:''}
         <label style="font-size:.8rem;color:${r.retestNeeded?'#c0392b':'var(--sub)'};${dim}"><input type="checkbox" data-wtretest="${s.id}" ${r.retestNeeded?'checked':''} ${r.absent?'disabled':''}> 재시험(O)</label>
         <label style="font-size:.8rem;color:${r.absent?'#6b7280':'var(--sub)'};font-weight:${r.absent?'800':'400'}"><input type="checkbox" data-wtabsent="${s.id}" ${r.absent?'checked':''}> 미응시</label>
@@ -2918,7 +2919,7 @@ function renderWordRange(list){
           if(rec.absent) cell='<span style="color:#9ca3af;font-size:.7rem">미응시</span>';
           else{
             const wbTxt=[wbShort(rec.wordbook),rec.lang].filter(Boolean).join(' ');
-            cell=`<span style="font-size:.7rem;color:var(--sub)">${esc(wbTxt)}</span>${rec.range?`<br><b style="font-size:.74rem">${esc(rec.range)}</b>`:''}`;
+            cell=`<span style="font-size:.7rem;color:var(--sub)">${esc(wbTxt)}</span>${rec.range?`<br><b style="font-size:.74rem">${esc(rec.range)}</b>`:''}${rec.score?`<br><span style="font-size:.72rem;color:#7c3aed;font-weight:800">📊 ${esc(rec.score)}</span>`:''}`;
           }
         }
         row+=`<td style="min-width:56px">${cell}</td>`;
@@ -5890,7 +5891,8 @@ function renderSyllabus(){
     h+=`<div class="cbtns" style="margin-top:6px">${cchips.map(c=>`<button class="btn small ${state.sylCourse===c?'primary':''}" data-sylcourse="${esc(c)}">${esc(c)}</button>`).join('')}</div>`;
   }
   h+=`<div class="ysec"><h3>📘 Syllabus <span style="font-size:.74rem;font-weight:400;color:var(--sub)">교재별 진도표 · 모든 선생님이 볼 수 있어요${admin?' · 업로드·삭제는 실장·관리자만 가능합니다':' (업로드·수정은 실장·관리자만 가능합니다)'}</span></h3>
-    <div style="padding:0 16px 14px">`;
+    <div style="padding:0 16px 14px">
+    <input type="text" id="sylSearch" value="${esc(state.sylQ||'')}" placeholder="🔍 교재명으로 검색" style="width:100%;margin-bottom:12px;padding:8px 12px;border:1.5px solid var(--line);border-radius:9px;font-family:inherit;font-size:.86rem">`;
   if(admin){
     const courseOptions=[...new Set(store.syllabus.filter(s=>!s._deleted).map(sylCourseOf))].sort((a,b)=>a.localeCompare(b,'ko'));
     h+=`<div style="background:#f7f9fc;border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:12px">
@@ -5906,9 +5908,10 @@ function renderSyllabus(){
   }
   const entries=store.syllabus.filter(s=>!s._deleted && (state.sylDept==='전체'||s.dept===state.sylDept) && (state.sylCourse==='전체'||sylCourseOf(s)===state.sylCourse)).sort((a,b)=>(b.uploadedAt||0)-(a.uploadedAt||0));
   if(!entries.length) h+='<div style="font-size:.83rem;color:#8b93a7">등록된 Syllabus가 없습니다.</div>';
+  h+='<div id="sylNoMatch" class="empty" style="display:none;font-size:.83rem;color:#8b93a7;padding:10px 0">검색 결과가 없습니다.</div>';
   entries.forEach(en=>{
     const open=!!state.sylOpen[en.id];
-    h+=`<div class="ccard ${open?'open':''}" style="border-left-color:var(--ebest);margin-bottom:12px">
+    h+=`<div class="ccard syl-card ${open?'open':''}" data-syltitle="${esc((en.title||'').toLowerCase())}" style="border-left-color:var(--ebest);margin-bottom:12px">
       <div class="chead" data-toggle="${esc(en.id)}"><span class="arrow">▶</span>
         <span style="font-weight:800">${esc(en.title||'제목 없음')}</span>
         <span style="font-size:.76rem;color:var(--sub);margin-left:8px">${esc(en.dept||'기타')} · ${esc(sylCourseOf(en))} · ${esc(en.uploadedBy||'')} · ${en.uploadedAt?new Date(en.uploadedAt).toLocaleDateString('ko-KR'):''}</span>
@@ -5936,6 +5939,26 @@ function bindSyllabus(){
   const lt=loginTeacher(); const myName=lt?lt.t.name:(store.login==='admin'?'관리자':'');
   v.querySelectorAll('[data-syldept]').forEach(b=>b.onclick=()=>{ state.sylDept=b.dataset.syldept; state.sylCourse='전체'; render(true); });
   v.querySelectorAll('[data-sylcourse]').forEach(b=>b.onclick=()=>{ state.sylCourse=b.dataset.sylcourse; render(true); });
+  const applySylSearch=(q)=>{
+    const qq=(q||'').trim().toLowerCase();
+    const cards=[...v.querySelectorAll('.syl-card')];
+    let shown=0;
+    cards.forEach(c=>{
+      const match=!qq || (c.dataset.syltitle||'').includes(qq);
+      c.style.display=match?'':'none';
+      if(match) shown++;
+    });
+    const noMatch=v.querySelector('#sylNoMatch');
+    if(noMatch) noMatch.style.display=(cards.length && shown===0)?'':'none';
+  };
+  const sylSearch=v.querySelector('#sylSearch');
+  if(sylSearch){
+    applySylSearch(sylSearch.value); // 탭 전환·부서 칩 클릭 후 다시 그려졌을 때도 이전 검색어를 그대로 유지·적용
+    sylSearch.addEventListener('input',e=>{
+      state.sylQ=e.target.value; // 렌더를 다시 하지 않고 카드만 즉시 보이기/숨기기 — 입력 중 포커스가 끊기지 않도록
+      applySylSearch(e.target.value);
+    });
+  }
   v.querySelectorAll('.chead').forEach(hd=>hd.addEventListener('click',e=>{
     if(e.target.closest('button')) return;
     const k=hd.dataset.toggle;
