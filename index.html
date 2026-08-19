@@ -489,7 +489,7 @@ function toast(msg){ const el=document.getElementById('saved'); el.textContent=m
   clearTimeout(saveTimer); saveTimer=setTimeout(()=>{el.classList.remove('show'); el.textContent='저장됨 ✓';},2200); }
 
 let UPFILTER=null; // 학원별 마스터 업로드 시 해당 학원 시트만 반영
-let pushTimer=null, syncBusy=false;
+let pushTimer=null, syncBusy=false, pullBusy=false;
 let lastSyncError=null, lastSyncOkAt=0;
 let pendingRenderAfterEdit=false;
 function isEditingNow(){
@@ -626,8 +626,10 @@ function mergeById(localArr, remoteArr){
 }
 async function pullShared(silent){
   if(!syncOn()) return;
+  if(pullBusy) return; // 이전 수신이 아직 안 끝났으면 겹쳐서 또 요청하지 않는다 — 느린 회선에서 5초마다 계속 겹쳐 쌓이면 그때마다 실패해서 오류가 끊임없이 뜨는 원인이 됨
+  pullBusy=true;
   try{
-    const pack=await fbGet('/shared');
+    const pack=await fbGet('/shared', 12000); // 5초 주기 폴링이라 타임아웃도 짧게(12초) — 오래 걸리는 요청이 다음 주기와 겹치지 않도록
     if(pack && pack.updatedAt && pack.updatedAt>(store.sharedAt||0)){
       const rStamps=pack.fieldStamps||{};
       const lStamps=store.fieldStamps||{};
@@ -658,7 +660,12 @@ async function pullShared(silent){
         if(!silent) toast('☁ 학원 자료 자동 적용됨');
       }
     }
-  }catch(e){ console.warn('sync pull 실패', e); lastSyncError=e.message; toast('⚠ 수신 실패: '+e.message); }
+  }catch(e){
+    console.warn('sync pull 실패', e);
+    const isNewErr = lastSyncError!==e.message; // 같은 오류가 5초마다 반복 표시되어 계속 뜨는 것처럼 보이지 않도록, 오류 내용이 바뀔 때만 알림을 띄운다
+    lastSyncError=e.message;
+    if(isNewErr) toast('⚠ 수신 실패: '+e.message);
+  } finally { pullBusy=false; }
   updateSyncBadge();
 }
 let syllabusSyncBusy=false, lastSylSyncAt=0;
