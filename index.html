@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>이베스트 (본관) — 선생님용 대시보드</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📚</text></svg>">
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">
 <style>
@@ -1757,6 +1756,20 @@ function renderExamPeriodView(admin){
   }).join('');
 }
 function examClassesForMonth(){ return classesFor(state.month).filter(c=>c.examOnly); }
+function renderTtGridExamUpload(admin){
+  if(!admin) return '';
+  let h=`<div class="setsec" style="border:2px solid #d97706"><h3>🕒 내신반 시간표 엑셀 업로드</h3>
+    <div class="desc">요일×시간 격자 시간표 엑셀을 올리면, <b>내신전용반</b>에만 과목·시간·강의실·담당을 자동으로 반영합니다 (일반 반은 건드리지 않습니다). 내신 기간용 시간표 파일을 그대로 올리면 됩니다.</div>
+    <div class="cbtns">
+      <select id="ttgExAcSel" style="padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${academies().map(a=>`<option value="${a}">${AC[a].label}</option>`).join('')}</select>
+      <button class="btn primary" style="background:#d97706;border-color:#d97706" id="ttgExBtn">🕒 내신반 시간표 엑셀 업로드</button><input type="file" id="ttgExFile" accept=".xlsx,.xls" style="display:none">
+      <span id="ttgExStatus" style="font-size:.8rem;color:var(--sub)"></span>
+    </div>
+  </div>`;
+  if(state.ttGridWb && state.ttGridWb.examOnly) h+=renderTtGridSheetPicker();
+  if(state.ttGrid && state.ttGrid.examOnly) h+=renderTtGridPreview();
+  return h;
+}
 function renderExamClasses(admin){
   let toolbar='';
   if(admin){
@@ -1764,6 +1777,7 @@ function renderExamClasses(admin){
       ${academies().map(a=>`<button class="btn primary" style="background:#d97706;border-color:#d97706" data-addclass="${a}" data-examonly="1">+ ${AC[a].label} 내신전용반 추가</button>`).join('')}
     </div>`;
   }
+  toolbar=renderTtGridExamUpload(admin)+toolbar;
   const list=examClassesForMonth();
   if(!list.length) return toolbar+'<div class="empty">아직 만든 내신전용반이 없습니다. 위 버튼으로 추가한 뒤, 카드를 열어 요일·학생 명단을 채워주세요.</div>';
   const nameCounts={};
@@ -1787,6 +1801,7 @@ function bindExam(){
     store.examPeriod[a][part]=inp.value;
     save(); render(true);
   });
+  bindTtGrid();
   bindClassEdit(); // 내신전용반 카드도 반 편집과 같은 방식(학생 추가·요일·점수표 입력)으로 동작
 }
 /* ---------- 시간표 (관리자·실장) ---------- */
@@ -6445,9 +6460,14 @@ async function sylChunkPut(attId, fileName, fileDataUrl, onProgress){
   }
   await fbPut('/syllabusFiles/'+attId+'/meta', {fileName, prefix, parts:total}, 30000);
 }
+// 같은 첨부파일을 열 때마다 서버에서 통째로 다시 받아오면(수십 MB) 여러 번 열어볼수록 다운로드 용량이 급격히 늘어나므로,
+// 한 번 받아온 파일은 이 화면(탭)을 새로고침하기 전까지는 메모리에 갖고 있다가 재사용한다.
+const sylAttCache={};
 async function sylChunkGet(attId){
+  if(sylAttCache[attId]) return sylAttCache[attId];
   const data=await fbGet('/syllabusFiles/'+attId, 90000); // 조각까지 전부 한 번에 받아온다(읽기는 값 크기 제한이 없음)
   if(!data) throw new Error('파일을 찾을 수 없습니다');
+  let result=null;
   if(data.meta){
     let payload='';
     for(let i=0;i<data.meta.parts;i++){
@@ -6455,10 +6475,13 @@ async function sylChunkGet(attId){
       if(!part) throw new Error('파일 일부가 누락되었습니다(재업로드가 필요할 수 있어요)');
       payload+=part.d;
     }
-    return {fileName:data.meta.fileName, fileData:data.meta.prefix+payload};
+    result={fileName:data.meta.fileName, fileData:data.meta.prefix+payload};
+  } else if(data.fileData){
+    result={fileName:data.fileName, fileData:data.fileData};
   }
-  if(data.fileData) return {fileName:data.fileName, fileData:data.fileData};
-  throw new Error('파일을 찾을 수 없습니다');
+  if(!result) throw new Error('파일을 찾을 수 없습니다');
+  sylAttCache[attId]=result;
+  return result;
 }
 function renderSyllabus(){
   const admin=isAdminRole();
@@ -6757,6 +6780,7 @@ function bindSyllabus(){
     en.attachments=(en.attachments||[]).filter(a=>a.id!==b.dataset.attid);
     en.updatedAt=Date.now();
     if(removed && removed.remote) fbDel('/syllabusFiles/'+removed.id);
+    if(removed) delete sylAttCache[removed.id];
     save(); schedulePushSyllabus(); render(true);
   });
   v.querySelectorAll('.sylAttLinkBtn').forEach(b=>b.onclick=()=>{
@@ -7043,13 +7067,15 @@ function ttgColorKey(fill){
 }
 function ttgFindZones(ws, headerRow, maxCol){
   const markers=[];
-  for(let c=1;c<=maxCol;c++){ if(String(ws.getCell(headerRow,c).value||'').trim()==='반명') markers.push(c); }
+  // 실제 학원 파일들은 두번째 이후 시간표 블록의 표시가 "반명"이 아니라 그냥 "반"으로 되어있는 경우가 많아 둘 다 인식
+  for(let c=1;c<=maxCol;c++){ const v=String(ws.getCell(headerRow,c).value||'').trim(); if(v==='반명'||v==='반') markers.push(c); }
   const starts=[1, ...markers];
-  return starts.map((timeCol,i)=>({
-    timeCol,
-    classStart: timeCol+(i===0?2:1),
-    classEnd: (i+1<starts.length? starts[i+1]-1 : maxCol)
-  }));
+  return starts.map((timeCol,i)=>{
+    let cs=timeCol+(i===0?2:1);
+    // 헤더 칸이 비어있으면(포맷에 따라 시간 칸 하나가 더 끼어있는 경우) 실제 반명이 나오는 칸까지 건너뛴다
+    while(cs<=maxCol && !String(ws.getCell(headerRow,cs).value||'').trim()) cs++;
+    return { timeCol, classStart: cs, classEnd: (i+1<starts.length? starts[i+1]-1 : maxCol) };
+  });
 }
 function ttgParseWorkbook(ws, colorMap, codeMap){
   const maxRow=ws.rowCount, maxCol=ws.columnCount;
@@ -7101,8 +7127,14 @@ function ttgParseWorkbook(ws, colorMap, codeMap){
   }
   return {results, unresolved};
 }
-async function handleTtGridFile(file, academy){
-  const statusEl=document.getElementById('ttgStatus');
+function ttgExistingClasses(academy, examOnly){
+  // 내신반 전용 업로드는 내신전용반만 대상으로, 일반 업로드는 내신전용반을 뺀 나머지 반만 대상으로 매칭한다 (서로 섞이지 않게)
+  return examOnly
+    ? examClassesForMonth().filter(c=>c.academy===academy)
+    : classesFor(state.month).filter(c=>c.academy===academy && !c.examOnly);
+}
+async function handleTtGridFile(file, academy, examOnly){
+  const statusEl=document.getElementById(examOnly?'ttgExStatus':'ttgStatus');
   if(statusEl) statusEl.textContent='엑셀 라이브러리 불러오는 중…';
   try{
     const ExcelJSLib=await ttgLoadLib();
@@ -7110,21 +7142,40 @@ async function handleTtGridFile(file, academy){
     const buf=await file.arrayBuffer();
     const wb=new ExcelJSLib.Workbook();
     await wb.xlsx.load(buf);
-    const ws=wb.worksheets[0];
+    state.ttGrid=null;
+    if(wb.worksheets.length>1){
+      // 시트가 여러 개면(예: 내신 기간용/특강용/변경본 등) 어느 시트를 반영할지 먼저 고르게 한다
+      state.ttGridWb={academy, wb, sheetNames: wb.worksheets.map(w=>w.name), examOnly:!!examOnly};
+      if(statusEl) statusEl.textContent=`시트 ${wb.worksheets.length}개 발견 — 아래에서 반영할 시트를 선택하세요.`;
+      render(true);
+      return;
+    }
+    state.ttGridWb=null;
+    ttgParseSheet(academy, wb, wb.worksheets[0].name, examOnly);
+  }catch(e){
+    if(statusEl) statusEl.textContent='오류: '+e.message;
+    console.error(e);
+  }
+}
+function ttgParseSheet(academy, wb, sheetName, examOnly){
+  const statusEl=document.getElementById(examOnly?'ttgExStatus':'ttgStatus');
+  try{
+    const ws=wb.getWorksheet(sheetName);
     const colorMap={}, codeMap={};
     store.teachers[academy].forEach(t=>{
       if(t.ttColor) colorMap[t.ttColor.replace('#','FF').toUpperCase()]=t.name;
       if(t.ttCode) codeMap[t.ttCode.trim().toUpperCase()]=t.name;
     });
     const {results, unresolved}=ttgParseWorkbook(ws, colorMap, codeMap);
-    if(!results.length){ if(statusEl) statusEl.textContent='시간표 형식을 인식하지 못했습니다.'; return; }
+    if(!results.length){ if(statusEl) statusEl.textContent='시간표 형식을 인식하지 못했습니다. (시트: '+sheetName+')'; return; }
     // 반명 자동 매칭 (해당 학원 · 이번 달 기존 반과 이름이 정확히 같으면 자동 연결)
-    const existing=classesFor(state.month).filter(c=>c.academy===academy);
+    const existing=ttgExistingClasses(academy, examOnly);
     const rawNames=[...new Set(results.map(x=>x.className))];
     const classMap={};
     rawNames.forEach(nm=>{ const hit=existing.find(c=>c.name.trim()===nm.trim()); classMap[nm]=hit?hit.name:''; });
-    state.ttGrid={academy, results, unresolved, classMap};
-    if(statusEl) statusEl.textContent=`분석 완료 — ${results.length}개 항목, 반 ${rawNames.length}개 (아래에서 확인 후 적용하세요)`;
+    state.ttGrid={academy, sheetName, results, unresolved, classMap, examOnly:!!examOnly};
+    state.ttGridWb=null;
+    if(statusEl) statusEl.textContent=`분석 완료 (시트: ${sheetName}) — ${results.length}개 항목, 반 ${rawNames.length}개 (아래에서 확인 후 적용하세요)`;
     render(true);
   }catch(e){
     if(statusEl) statusEl.textContent='오류: '+e.message;
@@ -7276,15 +7327,50 @@ async function exportTtGrid(academy){
     console.error(e);
   }
 }
+function renderTtGridSheetPicker(){
+  const w=state.ttGridWb; if(!w) return '';
+  return `<div class="setsec" style="border:2px solid #6366f1;background:#f5f6ff"><h3>📑 시트 선택 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">${AC[w.academy].label} · 시트 ${w.sheetNames.length}개</span></h3>
+    <div class="desc">이 파일에는 시간표 시트가 여러 개 들어있습니다. 지금 반영할 시트 하나를 고르세요 (나머지는 나중에 필요할 때 같은 파일을 다시 올려서 고르면 됩니다).</div>
+    <div class="cbtns" style="flex-wrap:wrap">${w.sheetNames.map(nm=>`<button class="btn primary" data-ttgsheet="${esc(nm)}">📄 ${esc(nm)}</button>`).join('')}
+      <button class="btn" id="ttgSheetCancel">취소</button></div>
+  </div>`;
+}
+function ttgDiffFor(targetCls, x){
+  // targetCls가 없으면(아직 반을 매칭 안 함) 비교할 기존 자료가 없으므로 "신규"로 취급
+  if(!targetCls) return {status:'new'};
+  const s=(targetCls.subjects||[]).find(sub=>(sub.subject||'')===x.subject && (sub.day||'')===x.day);
+  if(!s) return {status:'new'};
+  const oldTime=s.time||'', oldRoom=s.room||'', oldTeacher=s.teacher||'';
+  const changed = oldTime!==(x.time||'') || oldRoom!==(x.room||'') || oldTeacher!==(x.teacher||'');
+  return {status: changed?'changed':'same', oldTime, oldRoom, oldTeacher};
+}
+function ttgDiffLine(x, diff){
+  const newPart=`${esc(x.time)}${x.room?' · 🚪'+esc(x.room):''}${x.teacher?' · 👤'+esc(x.teacher):' · <span style="color:#c0392b">담당 미지정</span>'}`;
+  const head=`${esc(x.day)} · ${esc(x.subject)}`;
+  if(diff.status==='new') return `${head} · <span style="color:#2e7d32;font-weight:700">🆕 신규</span> ${newPart}`;
+  if(diff.status==='same') return `<span style="color:#b3b8c4">${head} · 변경없음 ${newPart}</span>`;
+  const oldPart=`${esc(diff.oldTime)||'(시간 없음)'}${diff.oldRoom?' · 🚪'+esc(diff.oldRoom):''}${diff.oldTeacher?' · 👤'+esc(diff.oldTeacher):''}`;
+  return `${head} · <span style="color:#c0392b;font-weight:700">✏ 변경</span> <span style="text-decoration:line-through;color:#b3b8c4">${oldPart}</span> → ${newPart}`;
+}
 function renderTtGridPreview(){
   const g=state.ttGrid; if(!g) return '';
-  const existing=classesFor(state.month).filter(c=>c.academy===g.academy);
+  const existing=ttgExistingClasses(g.academy, g.examOnly);
   const byClass={};
   g.results.forEach(x=>{ (byClass[x.className]=byClass[x.className]||[]).push(x); });
   const rawNames=Object.keys(byClass).sort((a,b)=>a.localeCompare(b,'ko'));
   const matchedN=rawNames.filter(n=>g.classMap[n]).length;
-  let h=`<div class="setsec" style="border:2px solid #6366f1;background:#f5f6ff"><h3>📋 그리드 시간표 미리보기 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">${AC[g.academy].label} · 반 ${rawNames.length}개 (매칭됨 ${matchedN}) · 항목 ${g.results.length}개</span></h3>
-    <div class="desc">각 반마다 <b>적용할 기존 반</b>을 선택하세요 (이름이 정확히 같으면 자동으로 선택돼 있습니다). "적용 안 함"을 고르면 그 반은 건너뜁니다. 적용을 누르면 선택된 반들의 <b>요일별 과목·시간·강의실·담당</b>만 갱신되고, 학생 명단·교재·진도·과제는 그대로 유지됩니다.</div>`;
+  // 매칭된 반 기준으로 변경/신규/동일 건수 미리 집계
+  let changedN=0, newN=0, sameN=0;
+  rawNames.forEach(nm=>{
+    const targetCls=g.classMap[nm]?existing.find(c=>c.name===g.classMap[nm]):null;
+    byClass[nm].forEach(x=>{
+      const d=ttgDiffFor(targetCls,x);
+      if(d.status==='changed') changedN++; else if(d.status==='new') newN++; else sameN++;
+    });
+  });
+  let h=`<div class="setsec" style="border:2px solid #6366f1;background:#f5f6ff"><h3>📋 ${g.examOnly?'내신반 ':''}그리드 시간표 미리보기 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">${AC[g.academy].label}${g.sheetName?' · 시트 '+esc(g.sheetName):''} · 반 ${rawNames.length}개 (매칭됨 ${matchedN}) · 항목 ${g.results.length}개</span></h3>
+    <div class="desc">각 반마다 <b>적용할 기존 반</b>을 선택하세요 (이름이 정확히 같으면 자동으로 선택돼 있습니다). "적용 안 함"을 고르면 그 반은 건너뜁니다. 적용을 누르면 선택된 반들의 <b>요일별 과목·시간·강의실·담당</b>만 갱신되고, 학생 명단·교재·진도·과제는 그대로 유지됩니다.</div>
+    <div style="margin-bottom:10px;font-size:.8rem;font-weight:700"><span style="color:#c0392b">✏ 변경 ${changedN}건</span> · <span style="color:#2e7d32">🆕 신규 ${newN}건</span> · <span style="color:#8b93a7">변경없음 ${sameN}건</span></div>`;
   if(g.unresolved.length){
     h+=`<div style="margin-bottom:10px;padding:8px 10px;background:#fff8ec;border-radius:10px">
       <div style="font-size:.8rem;font-weight:800;color:#b45309;margin-bottom:4px">⚠ 담당 선생님을 자동으로 못 찾은 항목 ${g.unresolved.length}건 (색상·코드 설정을 확인하거나, 적용 후 직접 지정하세요)</div>
@@ -7293,13 +7379,14 @@ function renderTtGridPreview(){
   }
   rawNames.forEach(nm=>{
     const rows=byClass[nm];
+    const targetCls=g.classMap[nm]?existing.find(c=>c.name===g.classMap[nm]):null;
     const sel=`<select class="ttgClsSel" data-raw="${esc(nm)}" style="padding:6px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.83rem">
       <option value="">— 적용 안 함 —</option>
       ${existing.map(c=>`<option value="${esc(c.name)}" ${g.classMap[nm]===c.name?'selected':''}>${esc(c.name)}</option>`).join('')}
     </select>`;
     h+=`<div style="margin-bottom:10px;padding:8px 10px;background:#fff;border:1px solid var(--line);border-radius:10px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><b style="font-size:.86rem">${esc(nm)}</b> → ${sel} <span style="font-size:.74rem;color:#8b93a7">${rows.length}개 항목</span></div>
-      <div style="font-size:.78rem;color:var(--sub);max-height:110px;overflow:auto">${rows.map(x=>`${esc(x.day)} · ${esc(x.subject)} · ${esc(x.time)}${x.room?' · 🚪'+esc(x.room):''}${x.teacher?' · 👤'+esc(x.teacher):' · <span style="color:#c0392b">담당 미지정</span>'}`).join('<br>')}</div>
+      <div style="font-size:.78rem;color:var(--sub);max-height:140px;overflow:auto">${rows.map(x=>ttgDiffLine(x, ttgDiffFor(targetCls,x))).join('<br>')}</div>
     </div>`;
   });
   h+=`<div class="cbtns"><button class="btn primary" id="ttgApply">✅ 선택한 반에 적용</button><button class="btn" id="ttgCancel">취소</button></div></div>`;
@@ -7307,7 +7394,7 @@ function renderTtGridPreview(){
 }
 function applyTtGridUpdate(){
   const g=state.ttGrid; if(!g) return;
-  const existing=classesFor(state.month).filter(c=>c.academy===g.academy);
+  const existing=ttgExistingClasses(g.academy, g.examOnly);
   let clsN=0, subN=0;
   const byClass={};
   g.results.forEach(x=>{ (byClass[x.className]=byClass[x.className]||[]).push(x); });
@@ -7406,7 +7493,8 @@ function renderSet(){
       </div>
       <div class="desc" style="margin-top:4px">다운로드한 엑셀은 이번 달 자료를 그대로 요일×시간 격자로 정리한 것이라, 수정한 뒤 위 [그리드 시간표 엑셀 업로드]로 그대로 다시 올릴 수 있어요.</div>
     </div>`;
-    if(state.ttGrid) h+=renderTtGridPreview();
+    if(state.ttGridWb && !state.ttGridWb.examOnly) h+=renderTtGridSheetPicker();
+    if(state.ttGrid && !state.ttGrid.examOnly) h+=renderTtGridPreview();
     // 🎓 내신 탭 켜기/끄기 — 켜면 상단에 "🎓 내신" 탭이 새로 생기고, 그 안에서 기간·내신전용반·명단·점수표를 전부 관리한다
     h+=`<div class="setsec" style="border:2px solid #d97706"><h3>🎓 내신 탭</h3>
       <div class="desc">켜면 상단 메뉴(더보기)에 "🎓 내신" 탭이 새로 생기고, 그 안에서 내신 기간·내신전용반·학생 명단·모의고사 점수표를 한 곳에서 관리할 수 있습니다. 평소(내신 기간이 아닐 때)엔 꺼두어도 됩니다.</div>
@@ -7620,9 +7708,8 @@ function parseWorkbook(wb){
   });
   return {found, yearly, skipped};
 }
-function bindSet(){
-  const examTabToggle=document.getElementById('examTabToggle');
-  if(examTabToggle) examTabToggle.onchange=()=>{ store.examTabOn=examTabToggle.checked; save(); goTab(store.examTabOn?'exam':'set'); };
+function bindTtGrid(){
+  // 일반 업로드(설정 탭)와 내신반 전용 업로드([🎓 내신] 탭)가 시트 선택·미리보기·적용 로직을 그대로 공유한다
   const ttgBtn=document.getElementById('ttgBtn'), ttgFile=document.getElementById('ttgFile');
   if(ttgBtn) ttgBtn.onclick=()=>ttgFile.click();
   const ttgDlBtn=document.getElementById('ttgDlBtn');
@@ -7633,16 +7720,36 @@ function bindSet(){
   if(ttgFile) ttgFile.onchange=()=>{
     const f=ttgFile.files[0]; if(!f) return;
     const ac=document.getElementById('ttgAcSel');
-    handleTtGridFile(f, ac?ac.value:academies()[0]);
+    handleTtGridFile(f, ac?ac.value:academies()[0], false);
+    ttgFile.value='';
   };
+  const ttgExBtn=document.getElementById('ttgExBtn'), ttgExFile=document.getElementById('ttgExFile');
+  if(ttgExBtn) ttgExBtn.onclick=()=>ttgExFile.click();
+  if(ttgExFile) ttgExFile.onchange=()=>{
+    const f=ttgExFile.files[0]; if(!f) return;
+    const ac=document.getElementById('ttgExAcSel');
+    handleTtGridFile(f, ac?ac.value:academies()[0], true);
+    ttgExFile.value='';
+  };
+  document.querySelectorAll('[data-ttgsheet]').forEach(b=>b.onclick=()=>{
+    const w=state.ttGridWb; if(!w) return;
+    ttgParseSheet(w.academy, w.wb, b.dataset.ttgsheet, w.examOnly);
+  });
+  const ttgSheetCancel=document.getElementById('ttgSheetCancel'); if(ttgSheetCancel) ttgSheetCancel.onclick=()=>{ state.ttGridWb=null; render(true); };
   document.querySelectorAll('.ttgClsSel').forEach(sel=>sel.onchange=()=>{
-    if(state.ttGrid) state.ttGrid.classMap[sel.dataset.raw]=sel.value;
+    if(state.ttGrid){ state.ttGrid.classMap[sel.dataset.raw]=sel.value; render(true); } // 반 매칭이 바뀌면 변경/신규 비교도 다시 계산해야 해서 다시 그린다
   });
   const ttgApply=document.getElementById('ttgApply'); if(ttgApply) ttgApply.onclick=()=>{
-    if(!confirm('선택한 반들의 요일별 과목·시간·강의실·담당을 갱신할까요? (학생 명단·교재·진도는 그대로 유지됩니다)')) return;
+    const msg=state.ttGrid&&state.ttGrid.examOnly?'선택한 내신전용반들의 요일별 과목·시간·강의실·담당을 갱신할까요? (일반 반은 영향 없습니다)':'선택한 반들의 요일별 과목·시간·강의실·담당을 갱신할까요? (학생 명단·교재·진도는 그대로 유지됩니다)';
+    if(!confirm(msg)) return;
     applyTtGridUpdate();
   };
   const ttgCancel=document.getElementById('ttgCancel'); if(ttgCancel) ttgCancel.onclick=()=>{ state.ttGrid=null; render(true); };
+}
+function bindSet(){
+  const examTabToggle=document.getElementById('examTabToggle');
+  if(examTabToggle) examTabToggle.onchange=()=>{ store.examTabOn=examTabToggle.checked; save(); goTab(store.examTabOn?'exam':'set'); };
+  bindTtGrid();
   const v=document.getElementById('view');
   v.querySelectorAll('[data-dupdel]').forEach(b=>b.onclick=()=>{
     if(!isAdminRole())return;
