@@ -918,7 +918,17 @@ function deleteClassAction(a,m,id){
 }
 function updateClassField(a,m,id,field,value){
   const c=findClassById(a,m,id); if(!c) return;
+  const oldVal=c[field];
   c[field]=value; c.updatedAt=Date.now();
+  // 반 이름을 바꾸면, 학생 명단(store.students)에 예전 이름으로 남아있는 이 반 소속 학생들도 같이 새 이름으로 옮겨준다.
+  // 안 옮기면 반 자체는 새 이름으로 잘 보여도, 그 반에 배정된 단어시험 담당·상담 등 "학생명단 기준"으로 동작하는 기능들이
+  // 예전 이름을 계속 찾다가 아무도 못 찾아서 조용히 빈 목록으로 나오는 문제가 생긴다.
+  if(field==='name' && oldVal && oldVal!==value){
+    (c.students||[]).forEach(sname=>{
+      const st=store.students.find(x=>x.academy===a && !x._deleted && x.nameKo===sname && x.className===oldVal);
+      if(st){ st.className=value; st.updatedAt=Date.now(); }
+    });
+  }
   save(); render(true);
 }
 function addStudentAction(a,m,id,studentName){
@@ -1083,8 +1093,9 @@ function refreshLoginSel(){
   if(lt){ dot.style.display='inline-block'; dot.style.background=lt.t.color; }
   else dot.style.display='none';
   updateSyncBadge();
-  // ④ 선생님에게 월 선택 숨김 (상담 등은 이번 달 기준으로 자동)
-  msel.style.display = lt? 'none':'';
+  // ④ 일반 선생님에게는 월 선택을 숨긴다 (상담 등은 이번 달 기준으로 자동). 실장은 관리자와 동급 권한이라
+  // 다음 달 자료를 미리 입력하는 등의 작업이 필요할 수 있으므로 실장 로그인에서는 월 선택을 계속 보여준다.
+  msel.style.display = (lt && !isMgr())? 'none':'';
   if(lt) state.month = todayISO().slice(0,7); // [수정] 선생님 로그인 때도 '자료 있는 가장 최근 달'이 아니라 실제 오늘 날짜의 달을 기본으로 연다
 }
 function mountLogin(){
@@ -2852,8 +2863,17 @@ function renderWordTestToday(){
     if(!todaysDutyClasses.length){
       return `<div class="empty">오늘(${wd}요일)은 담당으로 배정된 반이 없습니다. (배정은 [시간표]에서 관리자·실장이 설정합니다)</div>`;
     }
-    const classNames=new Set(todaysDutyClasses.map(c=>c.name));
-    studentsList=store.students.filter(s=>!s._deleted && s.academy===lt.a && s.status==='재원' && classNames.has(s.className));
+    // store.students의 className 값이(반 이름을 바꾼 뒤 등) 실제 반 이름과 어긋나 있어도 놓치지 않도록,
+    // 학생명단을 className으로 역filter하지 않고 반 자체의 학생 명단(c.students)에서 실제 레코드를 직접 찾아온다.
+    const seenIds=new Set(); studentsList=[];
+    todaysDutyClasses.forEach(c=>{
+      (c.students||[]).forEach(sname=>{
+        const st=matchStudentByRosterName(c.academy, sname, c.name);
+        // className이 실제로 갈라져 있어도(반명을 바꾼 뒤 등) 오늘 스케줄된 반 이름 기준으로 표시·분류되도록,
+        // 원본을 건드리지 않는 얕은 복사본에 className을 오늘 반 이름으로 맞춰서 넣는다 (입력 저장은 id 기준이라 문제 없음)
+        if(st && !st._deleted && st.status==='재원' && !seenIds.has(st.id)){ seenIds.add(st.id); studentsList.push(st.className===c.name?st:{...st, className:c.name}); }
+      });
+    });
   } else if(admin){
     // 특정 선생님이 아닌 순수 관리자(원장) 로그인 — 전체 재원생 표시
     studentsList=store.students.filter(s=>!s._deleted && s.status==='재원' && (state.ac==='all'||s.academy===state.ac));
