@@ -4146,8 +4146,12 @@ function renderToday(list){
   </div>`;
   const wtSection=`<div class="ysec" style="margin-top:16px"><h3>📖 단어시험 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">오늘(${wd}요일) 담당으로 배정된 반의 학생만 보입니다 (배정은 [시간표]에서 관리자·실장이 설정)</span></h3>
     <div style="padding:0 16px 14px">${renderWordTest()}</div></div>`;
-  if(!cls.length) return h+'<div class="empty">이 요일에 수업하는 반이 없습니다.'+(lt&&state.myOnly?' ("내 수업만 보기"를 꺼보세요 — 담당 표기가 없는 반은 걸러집니다)':'')+'</div>'+wtSection;
   const at=atFor(state.date), hw=hwFor(state.date), stay=stayFor(state.date);
+  // "🚨 오늘 결석생"·"🙋 오늘 남는 학생" 두 위젯은 "전체 반 기준"이라고 안내하는 만큼, 검색창에 다른 글자가 남아있거나
+  // 부서(초등/중등/고등) 칩이 선택돼 있어도 그 필터와 상관없이 오늘 해당하는 학생은 항상 다 보여야 한다.
+  // 그래서 위쪽 목록(cls, 검색·부서 필터 적용됨)이 아니라 필터를 걷어낸 별도 목록을 기준으로 계산한다 —
+  // 자동 결석 처리(여행 등)·단어시험 자동 미응시 처리도 마찬가지로 검색어와 무관하게 항상 돌아가야 하므로 이 목록을 쓴다.
+  const clsForAbsent=todayClasses(classesFor(state.month).filter(c=>!c.examOnly && (state.ac==='all'||c.academy===state.ac)));
   // 미리 등록해둔 "결석 예정"(여행 등) 기간에 오늘이 포함되면, 아직 출결 체크가 안 된 과목은 자동으로 결석 처리하고 사유도 같이 연동해둔다
   let absAutoChanged=false;
   const applyRosterAbsence=(cl)=>{
@@ -4166,7 +4170,7 @@ function renderToday(list){
       }
     });
   };
-  cls.forEach(c=>{
+  clsForAbsent.forEach(c=>{
     applyRosterAbsence(c);
     const partner=mergedPartnerClass(c);
     if(partner && classMeets(partner, wd) && partner.students && partner.students.length) applyRosterAbsence(partner);
@@ -4187,13 +4191,180 @@ function renderToday(list){
         absAutoChanged=true;
       });
     };
-    cls.forEach(c=>{
+    clsForAbsent.forEach(c=>{
       markWordTestAbsent(c);
       const partner=mergedPartnerClass(c);
       if(partner && classMeets(partner, wd) && partner.students && partner.students.length) markWordTestAbsent(partner);
     });
   }
   if(absAutoChanged) save();
+  // 오늘 수업 있는 학생 중 "오늘 공지"(전화 상담 등으로 알게 된 급한 특이사항)가 걸려있는 학생을 모아서 맨 위에 보여준다 (검색·부서 필터와 무관하게 전체 기준)
+  const alertList=[]; const seenAlert=new Set();
+  clsForAbsent.forEach(c=>{
+    activeStudentsForDate(c, state.date).forEach(sname=>{
+      const key=c.academy+'|'+sname;
+      if(seenAlert.has(key)) return;
+      // 반 명단에는 "Kayla(유주)"·"호진(Jin)"처럼 순서가 다른 예전 자료도 있어서, 양쪽 다 비교해서 찾는다
+      const st=matchStudentByRosterName(c.academy, sname, c.name);
+      // 노출 기간(alertDate~alertDateEnd) 안에 오늘 날짜가 들어있을 때만 표시 (날짜를 안 정했으면 저장 시 자동으로 그날 하루로 채워짐)
+      const inRange = st && st.alertNote && (!st.alertDate || (state.date>=st.alertDate && state.date<=(st.alertDateEnd||st.alertDate)));
+      if(inRange){ seenAlert.add(key); alertList.push({id:st.id, student:studentDisplayName(c.academy,sname,c.name), academy:c.academy, className:c.name, note:st.alertNote}); }
+    });
+  });
+  const alertSection=alertList.length?`<div class="ysec" style="margin-bottom:16px;border-top:4px solid #e0a020;background:#fffaf0"><h3>🔔 오늘 학생 특이사항 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">(${alertList.length}명)</span></h3>
+    <div style="padding:0 16px 14px">
+      ${alertList.map(x=>`<div class="rowitem" style="align-items:flex-start"><span class="key">${esc(x.student)} ${MODE==='all'?bdg(x.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(x.className)}</span></span><span class="val" style="display:flex;gap:8px;align-items:flex-start"><span>${esc(x.note)}</span><button class="btn small" data-rsalertdone="${x.id}" style="white-space:nowrap">✔ 해제</button></span></div>`).join('')}
+    </div></div>`:'';
+  const stayList=[]; const seenStay=new Set(); const seenStayName=new Set();
+  const collectStay=(cl)=>{
+    const k=ckey(cl);
+    const recs=stay[k]||{};
+    const daySubjNamesForCl=daySubjectNames(cl, wd);
+    Object.keys(recs).forEach(sname=>{
+      const rec=recs[sname];
+      if(!rec || !rec.stay) return;
+      const dedupKey=k+'|'+sname;
+      if(seenStay.has(dedupKey)) return;
+      const bySubjEntries = rec.bySubject ? Object.entries(rec.bySubject).filter(([,v])=>v) : [];
+      const doneSubjects = rec.doneSubjects || {};
+      let subjects;
+      if(bySubjEntries.length){
+        subjects = bySubjEntries.map(([sub,memo])=>({subj:sub, memo, done:!!doneSubjects[sub]}));
+      } else if(rec.memo){
+        const subjLabel = daySubjNamesForCl.length===1 ? daySubjNamesForCl[0] : cl.name;
+        subjects = [{subj:subjLabel, memo:rec.memo, done:!!rec.doneDate}];
+      } else {
+        subjects = [{subj:null, memo:'', done:!!rec.doneDate}];
+      }
+      if(!subjects.some(s=>!s.done)) return; // 전부 완료 처리됐으면 목록에서 뺀다 (과목별 완료 반영)
+      seenStay.add(dedupKey);
+      seenStayName.add(cl.academy+'|'+sname);
+      stayList.push({className:cl.name, academy:cl.academy, student:studentDisplayName(cl.academy,sname,cl.name), subjects, k, s:sname});
+    });
+  };
+  clsForAbsent.forEach(c=>{
+    collectStay(c);
+    // 합반 상대 반 학생도 같이 모아준다 (합반 카드 안에서 체크한 "오늘 남기"가 목록에서 누락되지 않도록)
+    const partner=mergedPartnerClass(c);
+    if(partner && classMeets(partner, wd) && partner.students && partner.students.length) collectStay(partner);
+  });
+ // 재시험 대상 학생도 "오늘 남는 학생"에 자동으로 합쳐서 보여준다 (재시험은 보통 남아서 다시 봐야 하므로)
+  store.wordTests.filter(r=>r.date===state.date && r.retestNeeded && !r.retestCompleted && !r.absent).forEach(r=>{
+    const st=store.students.find(x=>x.id===r.studentId); if(!st) return;
+    const nameKey=st.academy+'|'+st.nameKo;
+    const retestSubj={subj:'📖 재시험', memo:(r.wordbook?r.wordbook:'')+(r.range?' · '+r.range:''), done:false, isRetest:true, wtId:r.id};
+    const existing=stayList.find(x=>!x.isRetest && x.academy===st.academy && x.student===studentDisplayName(st.academy,st.nameKo,st.className));
+    if(existing){ existing.subjects.push(retestSubj); return; } // 이미 다른 이유로 남는 학생이면 같은 줄에 재시험 칸만 추가
+    seenStayName.add(nameKey);
+    stayList.push({className:st.className||'-', academy:st.academy, student:studentDisplayName(st.academy,st.nameKo,st.className), subjects:[retestSubj], k:'', s:''});
+  });
+  const staySection=isAdminRole()?`<div class="ysec" style="margin-top:16px;border-top:4px solid #b45309"><h3>🙋 오늘 남는 학생 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">${state.date} 전체 반 기준 (${stayList.length}명, 재시험 대상 포함)</span></h3>
+    <div style="padding:0 16px 14px">
+      ${stayList.length?stayList.map(x=>{
+        const openSubjects=x.subjects.filter(s=>!s.done);
+        const doneSubjects=x.subjects.filter(s=>s.done);
+        return `<div class="rowitem" style="align-items:flex-start"><span class="key">${esc(x.student)} ${MODE==='all'?bdg(x.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(x.className)}</span></span>
+          <span class="val" style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
+           ${openSubjects.map(s=>`<span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">${s.subj?`<b style="font-size:.76rem;color:${s.isRetest?'#b45309':'var(--sub)'}">${s.isRetest?'':'📚 '}${esc(s.subj)}</b>`:''} ${s.memo?esc(s.memo):'<span style="color:#c3c9d6">메모 없음</span>'} ${s.isRetest?`<button class="btn small" data-wtdone="${s.wtId}">✔ 완료</button>`:`<button class="btn small" data-staydonesub="${esc(x.k)}|${esc(x.s)}|${esc(s.subj||'')}">✔ 완료</button>`}</span>`).join('')}            ${doneSubjects.length?`<span style="font-size:.72rem;color:#8b93a7">✔ 완료: ${doneSubjects.map(s=>esc(s.subj||'')).join(', ')}</span>`:''}
+          </span></div>`;
+      }).join(''):'<div style="font-size:.82rem;color:#8b93a7">오늘 남는 학생이 없습니다.</div>'}
+    </div></div>`:'';
+// 🚨 오늘 결석생 — 오늘 결석 처리된 학생을 한 곳에 모아 사유 입력·과목별 숙제 카톡 전송 여부를 관리 (모든 선생님에게 표시)
+  const absentHwList=[]; const seenAbsent=new Set();
+  const collectAbsent=(cl)=>{
+    const k=ckey(cl);
+    let daySubjNames=[...new Set((cl.subjects||[]).filter(s=>subjOnDay(s,wd)&&!isWordTestSubject(s)).map(s=>s.subject).filter(Boolean))];
+    if(!daySubjNames.length){
+      const mp=mergedCounterpart(cl);
+      if(mp) daySubjNames=[...new Set((mp.subjects||[]).filter(s=>subjOnDay(s,wd)&&!isWordTestSubject(s)).map(s=>s.subject).filter(Boolean))];
+    }
+    activeStudentsForDate(cl, state.date).forEach(sname=>{
+      if(attStatusAgg(cl,wd,sname,at)!=='결') return;
+      const studentKey=k+'|'+sname;
+      if(seenAbsent.has(studentKey)) return;
+      seenAbsent.add(studentKey);
+      const hrecTop=(hw[k]||{})[sname]||{};
+      const bySubj=hrecTop.bySubject||{};
+      const subjects=daySubjNames.length
+        ? daySubjNames.map(subj=>({subj, kakaoSent:!!(bySubj[subj]&&bySubj[subj].kakaoSent)}))
+        : [{subj:null, kakaoSent:!!hrecTop.hwKakaoSent}];
+
+      absentHwList.push({
+        dept: cl.dept || '기타',
+        className: cl.name,
+        academy: cl.academy,
+        student: studentDisplayName(cl.academy, sname, cl.name),
+        k: k,
+        s: sname,
+        absReasonToday: hrecTop.absReasonToday || '',
+        subjects
+      });
+    });
+  };
+  clsForAbsent.forEach(c=>{
+    collectAbsent(c);
+    const partner=mergedPartnerClass(c);
+    if(partner && classMeets(partner, wd) && partner.students && partner.students.length) collectAbsent(partner);
+  });
+
+  const depts = ['초등', '중등', '고등', '기타'];
+  let absentGroupsHTML = '';
+
+  if (absentHwList.length) {
+    depts.forEach(deptName => {
+      const deptStudents = absentHwList.filter(x => x.dept === deptName)
+        .sort((a,b)=>(a.absReasonToday?1:0)-(b.absReasonToday?1:0)); // 결석 사유 미입력 학생이 맨 위로 오도록 정렬
+      if(deptStudents.length === 0) return;
+
+      absentGroupsHTML += `
+      <details ${state.absentDeptOpen&&state.absentDeptOpen[deptName]===false?'':'open'} data-absdept="${esc(deptName)}" style="margin-bottom:10px; border:1px solid #f5c6cb; border-radius:8px; padding:8px 12px; background:#fff;">
+        <summary style="cursor:pointer; font-weight:800; color:#c0392b; font-size:.95rem;">
+          ${deptName} (${deptStudents.length}명)
+        </summary>
+        <div style="margin-top:10px;">
+          ${deptStudents.map(x=>{
+            const reasonMissing=!x.absReasonToday;
+            const hrecTop=(hw[x.k]||{})[x.s]||{};
+            const bySubj=hrecTop.bySubject||{};
+            return `<div style="padding:10px 0;border-bottom:1px solid #f1f3f8;display:flex;flex-direction:column;gap:6px">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <b style="font-size:.92rem;color:#c0392b">${esc(x.student)}</b>
+                <span style="font-size:.78rem;font-weight:600;color:var(--sub)">[${esc(x.className)}] ${MODE==='all'?bdg(x.academy):''}</span>
+                ${reasonMissing?'<span style="font-size:.72rem;color:#c0392b;font-weight:700">⚠ 사유 미입력</span>':''}
+              </div>
+              <div style="display:flex;gap:8px;align-items:center">
+                <input type="text" class="absreasoninput" data-k="${esc(x.k)}" data-s="${esc(x.s)}" placeholder="결석 사유를 입력하세요 (예: 병원, 여행 등)" value="${esc(x.absReasonToday)}" style="flex:1;border:1.5px solid ${reasonMissing?'#e7b3ab':'#f1f3f8'};border-radius:8px;padding:6px 10px;font-family:inherit;font-size:.82rem;background:${reasonMissing?'#fff8f8':'#fbfcfe'}">
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px">
+                ${x.subjects.map(sj=>{
+                  const subjMemo = (sj.subj ? (bySubj[sj.subj] && bySubj[sj.subj].kakaoMemo) : hrecTop.kakaoMemo) || '';
+                  return `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                    <label class="hwlab" style="color:${sj.kakaoSent?'#27ae60':'#b45309'};font-weight:800;background:#fff;padding:3px 8px;border:1px solid ${sj.kakaoSent?'#27ae60':'#f5c6cb'};border-radius:6px;min-width:140px;text-align:center">
+                      <input type="checkbox" class="hwkakaochk" data-k="${esc(x.k)}" data-s="${esc(x.s)}" data-subj="${esc(sj.subj||'')}" ${sj.kakaoSent?'checked':''}> 💬 ${sj.subj?esc(sj.subj)+' - ':''}카톡 전송
+                    </label>
+                    <input type="text" class="hwkakaomemo" data-k="${esc(x.k)}" data-s="${esc(x.s)}" data-subj="${esc(sj.subj||'')}" placeholder="전송할 숙제/진도 내용 입력" value="${esc(subjMemo)}" style="flex:1;min-width:180px;border:1px solid #dcdde1;border-radius:6px;padding:4px 8px;font-family:inherit;font-size:.8rem;">
+                  </div>`;
+                }).join('')}
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      </details>`;
+    });
+  } else {
+    absentGroupsHTML = '<div style="font-size:.82rem;color:#8b93a7">오늘 결석 처리된 학생이 없습니다.</div>';
+  }
+
+  const reasonMissingCount = absentHwList.filter(x=>!x.absReasonToday).length;
+  const absentSecOpen = state.absentSectionOpen===true; // 기본값: 닫힘, 마지막으로 클릭한 상태를 유지
+  const absentTodaySection=`<details id="absentTodayDetails" ${absentSecOpen?'open':''} class="ysec" style="margin-top:16px;border-top:4px solid #c0392b;background:#fff8f8">
+    <summary style="cursor:pointer;list-style:none">
+    <h3 style="display:inline-flex;align-items:center;flex-wrap:wrap;gap:8px;width:100%">🚨 오늘 결석생 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">${state.date} 전체 반 기준 (${absentHwList.length}명)</span>${reasonMissingCount?` <span style="background:#c0392b;color:#fff;font-size:.68rem;font-weight:800;border-radius:6px;padding:2px 8px">⚠ 사유 미입력 ${reasonMissingCount}명</span>`:''}</h3>
+    </summary>
+    <div style="padding:0 16px 14px">
+      ${absentGroupsHTML}
+    </div></details>`;
+  if(!cls.length) return alertSection+h+'<div class="empty">이 요일에 수업하는 반이 없습니다.'+(lt&&state.myOnly?' ("내 수업만 보기"를 꺼보세요 — 담당 표기가 없는 반은 걸러집니다)':'')+'</div>'+staySection+absentTodaySection+wtSection;
   cls.forEach(c=>{
     const k=ckey(c);
     const mine = lt && teacherTeachesToday(c,lt,wd);
@@ -4327,172 +4498,6 @@ function renderToday(list){
         ${cStudents.length?`<span class="prg">출석 ${present}/${cStudents.length} · 숙제 ${hwdone}/${cStudents.length}</span>`:''}
       </div><div class="cbody">${body}</div></div>`;
   });
-  // 오늘 수업 있는 학생 중 "오늘 공지"(전화 상담 등으로 알게 된 급한 특이사항)가 걸려있는 학생을 모아서 맨 위에 보여준다
-  const alertList=[]; const seenAlert=new Set();
-  cls.forEach(c=>{
-    activeStudentsForDate(c, state.date).forEach(sname=>{
-      const key=c.academy+'|'+sname;
-      if(seenAlert.has(key)) return;
-      // 반 명단에는 "Kayla(유주)"·"호진(Jin)"처럼 순서가 다른 예전 자료도 있어서, 양쪽 다 비교해서 찾는다
-      const st=matchStudentByRosterName(c.academy, sname, c.name);
-      // 노출 기간(alertDate~alertDateEnd) 안에 오늘 날짜가 들어있을 때만 표시 (날짜를 안 정했으면 저장 시 자동으로 그날 하루로 채워짐)
-      const inRange = st && st.alertNote && (!st.alertDate || (state.date>=st.alertDate && state.date<=(st.alertDateEnd||st.alertDate)));
-      if(inRange){ seenAlert.add(key); alertList.push({id:st.id, student:studentDisplayName(c.academy,sname,c.name), academy:c.academy, className:c.name, note:st.alertNote}); }
-    });
-  });
-  const alertSection=alertList.length?`<div class="ysec" style="margin-bottom:16px;border-top:4px solid #e0a020;background:#fffaf0"><h3>🔔 오늘 학생 특이사항 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">(${alertList.length}명)</span></h3>
-    <div style="padding:0 16px 14px">
-      ${alertList.map(x=>`<div class="rowitem" style="align-items:flex-start"><span class="key">${esc(x.student)} ${MODE==='all'?bdg(x.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(x.className)}</span></span><span class="val" style="display:flex;gap:8px;align-items:flex-start"><span>${esc(x.note)}</span><button class="btn small" data-rsalertdone="${x.id}" style="white-space:nowrap">✔ 해제</button></span></div>`).join('')}
-    </div></div>`:'';
-  const stayList=[]; const seenStay=new Set(); const seenStayName=new Set();
-  const collectStay=(cl)=>{
-    const k=ckey(cl);
-    const recs=stay[k]||{};
-    const daySubjNamesForCl=daySubjectNames(cl, wd);
-    Object.keys(recs).forEach(sname=>{
-      const rec=recs[sname];
-      if(!rec || !rec.stay) return;
-      const dedupKey=k+'|'+sname;
-      if(seenStay.has(dedupKey)) return;
-      const bySubjEntries = rec.bySubject ? Object.entries(rec.bySubject).filter(([,v])=>v) : [];
-      const doneSubjects = rec.doneSubjects || {};
-      let subjects;
-      if(bySubjEntries.length){
-        subjects = bySubjEntries.map(([sub,memo])=>({subj:sub, memo, done:!!doneSubjects[sub]}));
-      } else if(rec.memo){
-        const subjLabel = daySubjNamesForCl.length===1 ? daySubjNamesForCl[0] : cl.name;
-        subjects = [{subj:subjLabel, memo:rec.memo, done:!!rec.doneDate}];
-      } else {
-        subjects = [{subj:null, memo:'', done:!!rec.doneDate}];
-      }
-      if(!subjects.some(s=>!s.done)) return; // 전부 완료 처리됐으면 목록에서 뺀다 (과목별 완료 반영)
-      seenStay.add(dedupKey);
-      seenStayName.add(cl.academy+'|'+sname);
-      stayList.push({className:cl.name, academy:cl.academy, student:studentDisplayName(cl.academy,sname,cl.name), subjects, k, s:sname});
-    });
-  };
-  cls.forEach(c=>{
-    collectStay(c);
-    // 합반 상대 반 학생도 같이 모아준다 (합반 카드 안에서 체크한 "오늘 남기"가 목록에서 누락되지 않도록)
-    const partner=mergedPartnerClass(c);
-    if(partner && classMeets(partner, wd) && partner.students && partner.students.length) collectStay(partner);
-  });
- // 재시험 대상 학생도 "오늘 남는 학생"에 자동으로 합쳐서 보여준다 (재시험은 보통 남아서 다시 봐야 하므로)
-  store.wordTests.filter(r=>r.date===state.date && r.retestNeeded && !r.retestCompleted && !r.absent).forEach(r=>{
-    const st=store.students.find(x=>x.id===r.studentId); if(!st) return;
-    const nameKey=st.academy+'|'+st.nameKo;
-    const retestSubj={subj:'📖 재시험', memo:(r.wordbook?r.wordbook:'')+(r.range?' · '+r.range:''), done:false, isRetest:true, wtId:r.id};
-    const existing=stayList.find(x=>!x.isRetest && x.academy===st.academy && x.student===studentDisplayName(st.academy,st.nameKo,st.className));
-    if(existing){ existing.subjects.push(retestSubj); return; } // 이미 다른 이유로 남는 학생이면 같은 줄에 재시험 칸만 추가
-    seenStayName.add(nameKey);
-    stayList.push({className:st.className||'-', academy:st.academy, student:studentDisplayName(st.academy,st.nameKo,st.className), subjects:[retestSubj], k:'', s:''});
-  });
-  const staySection=isAdminRole()?`<div class="ysec" style="margin-top:16px;border-top:4px solid #b45309"><h3>🙋 오늘 남는 학생 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">${state.date} 전체 반 기준 (${stayList.length}명, 재시험 대상 포함)</span></h3>
-    <div style="padding:0 16px 14px">
-      ${stayList.length?stayList.map(x=>{
-        const openSubjects=x.subjects.filter(s=>!s.done);
-        const doneSubjects=x.subjects.filter(s=>s.done);
-        return `<div class="rowitem" style="align-items:flex-start"><span class="key">${esc(x.student)} ${MODE==='all'?bdg(x.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(x.className)}</span></span>
-          <span class="val" style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
-           ${openSubjects.map(s=>`<span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">${s.subj?`<b style="font-size:.76rem;color:${s.isRetest?'#b45309':'var(--sub)'}">${s.isRetest?'':'📚 '}${esc(s.subj)}</b>`:''} ${s.memo?esc(s.memo):'<span style="color:#c3c9d6">메모 없음</span>'} ${s.isRetest?`<button class="btn small" data-wtdone="${s.wtId}">✔ 완료</button>`:`<button class="btn small" data-staydonesub="${esc(x.k)}|${esc(x.s)}|${esc(s.subj||'')}">✔ 완료</button>`}</span>`).join('')}            ${doneSubjects.length?`<span style="font-size:.72rem;color:#8b93a7">✔ 완료: ${doneSubjects.map(s=>esc(s.subj||'')).join(', ')}</span>`:''}
-          </span></div>`;
-      }).join(''):'<div style="font-size:.82rem;color:#8b93a7">오늘 남는 학생이 없습니다.</div>'}
-    </div></div>`:'';
-// 🚨 오늘 결석생 — 오늘 결석 처리된 학생을 한 곳에 모아 사유 입력·과목별 숙제 카톡 전송 여부를 관리 (모든 선생님에게 표시)
-  const absentHwList=[]; const seenAbsent=new Set();
-  const collectAbsent=(cl)=>{
-    const k=ckey(cl);
-    let daySubjNames=[...new Set((cl.subjects||[]).filter(s=>subjOnDay(s,wd)&&!isWordTestSubject(s)).map(s=>s.subject).filter(Boolean))];
-    if(!daySubjNames.length){
-      const mp=mergedCounterpart(cl);
-      if(mp) daySubjNames=[...new Set((mp.subjects||[]).filter(s=>subjOnDay(s,wd)&&!isWordTestSubject(s)).map(s=>s.subject).filter(Boolean))];
-    }
-    activeStudentsForDate(cl, state.date).forEach(sname=>{
-      if(attStatusAgg(cl,wd,sname,at)!=='결') return;
-      const studentKey=k+'|'+sname;
-      if(seenAbsent.has(studentKey)) return;
-      seenAbsent.add(studentKey);
-      const hrecTop=(hw[k]||{})[sname]||{};
-      const bySubj=hrecTop.bySubject||{};
-      const subjects=daySubjNames.length
-        ? daySubjNames.map(subj=>({subj, kakaoSent:!!(bySubj[subj]&&bySubj[subj].kakaoSent)}))
-        : [{subj:null, kakaoSent:!!hrecTop.hwKakaoSent}]; 
-      
-      absentHwList.push({
-        dept: cl.dept || '기타', 
-        className: cl.name,
-        academy: cl.academy,
-        student: studentDisplayName(cl.academy, sname, cl.name),
-        k: k,
-        s: sname,
-        absReasonToday: hrecTop.absReasonToday || '',
-        subjects
-      });
-    });
-  };
-  cls.forEach(c=>{
-    collectAbsent(c);
-    const partner=mergedPartnerClass(c);
-    if(partner && classMeets(partner, wd) && partner.students && partner.students.length) collectAbsent(partner);
-  });
-
-  const depts = ['초등', '중등', '고등', '기타'];
-  let absentGroupsHTML = '';
-  
-  if (absentHwList.length) {
-    depts.forEach(deptName => {
-      const deptStudents = absentHwList.filter(x => x.dept === deptName)
-        .sort((a,b)=>(a.absReasonToday?1:0)-(b.absReasonToday?1:0)); // 결석 사유 미입력 학생이 맨 위로 오도록 정렬
-      if(deptStudents.length === 0) return; 
-      
-      absentGroupsHTML += `
-      <details ${state.absentDeptOpen&&state.absentDeptOpen[deptName]===false?'':'open'} data-absdept="${esc(deptName)}" style="margin-bottom:10px; border:1px solid #f5c6cb; border-radius:8px; padding:8px 12px; background:#fff;">
-        <summary style="cursor:pointer; font-weight:800; color:#c0392b; font-size:.95rem;">
-          ${deptName} (${deptStudents.length}명)
-        </summary>
-        <div style="margin-top:10px;">
-          ${deptStudents.map(x=>{
-            const reasonMissing=!x.absReasonToday;
-            const hrecTop=(hw[x.k]||{})[x.s]||{};
-            const bySubj=hrecTop.bySubject||{};
-            return `<div style="padding:10px 0;border-bottom:1px solid #f1f3f8;display:flex;flex-direction:column;gap:6px">
-              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-                <b style="font-size:.92rem;color:#c0392b">${esc(x.student)}</b>
-                <span style="font-size:.78rem;font-weight:600;color:var(--sub)">[${esc(x.className)}] ${MODE==='all'?bdg(x.academy):''}</span>
-                ${reasonMissing?'<span style="font-size:.72rem;color:#c0392b;font-weight:700">⚠ 사유 미입력</span>':''}
-              </div>
-              <div style="display:flex;gap:8px;align-items:center">
-                <input type="text" class="absreasoninput" data-k="${esc(x.k)}" data-s="${esc(x.s)}" placeholder="결석 사유를 입력하세요 (예: 병원, 여행 등)" value="${esc(x.absReasonToday)}" style="flex:1;border:1.5px solid ${reasonMissing?'#e7b3ab':'#f1f3f8'};border-radius:8px;padding:6px 10px;font-family:inherit;font-size:.82rem;background:${reasonMissing?'#fff8f8':'#fbfcfe'}">
-              </div>
-              <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px">
-                ${x.subjects.map(sj=>{
-                  const subjMemo = (sj.subj ? (bySubj[sj.subj] && bySubj[sj.subj].kakaoMemo) : hrecTop.kakaoMemo) || '';
-                  return `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-                    <label class="hwlab" style="color:${sj.kakaoSent?'#27ae60':'#b45309'};font-weight:800;background:#fff;padding:3px 8px;border:1px solid ${sj.kakaoSent?'#27ae60':'#f5c6cb'};border-radius:6px;min-width:140px;text-align:center">
-                      <input type="checkbox" class="hwkakaochk" data-k="${esc(x.k)}" data-s="${esc(x.s)}" data-subj="${esc(sj.subj||'')}" ${sj.kakaoSent?'checked':''}> 💬 ${sj.subj?esc(sj.subj)+' - ':''}카톡 전송
-                    </label>
-                    <input type="text" class="hwkakaomemo" data-k="${esc(x.k)}" data-s="${esc(x.s)}" data-subj="${esc(sj.subj||'')}" placeholder="전송할 숙제/진도 내용 입력" value="${esc(subjMemo)}" style="flex:1;min-width:180px;border:1px solid #dcdde1;border-radius:6px;padding:4px 8px;font-family:inherit;font-size:.8rem;">
-                  </div>`;
-                }).join('')}
-              </div>
-            </div>`;
-          }).join('')}
-        </div>
-      </details>`;
-    });
-  } else {
-    absentGroupsHTML = '<div style="font-size:.82rem;color:#8b93a7">오늘 결석 처리된 학생이 없습니다.</div>';
-  }
-
-  const reasonMissingCount = absentHwList.filter(x=>!x.absReasonToday).length;
-  const absentSecOpen = state.absentSectionOpen===true; // 기본값: 닫힘, 마지막으로 클릭한 상태를 유지
-  const absentTodaySection=`<details id="absentTodayDetails" ${absentSecOpen?'open':''} class="ysec" style="margin-top:16px;border-top:4px solid #c0392b;background:#fff8f8">
-    <summary style="cursor:pointer;list-style:none">
-    <h3 style="display:inline-flex;align-items:center;flex-wrap:wrap;gap:8px;width:100%">🚨 오늘 결석생 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">${state.date} 전체 반 기준 (${absentHwList.length}명)</span>${reasonMissingCount?` <span style="background:#c0392b;color:#fff;font-size:.68rem;font-weight:800;border-radius:6px;padding:2px 8px">⚠ 사유 미입력 ${reasonMissingCount}명</span>`:''}</h3>
-    </summary>
-    <div style="padding:0 16px 14px">
-      ${absentGroupsHTML}
-    </div></details>`;
   return alertSection+h+staySection+absentTodaySection+wtSection;
 }
 function bindToday(){
@@ -6420,6 +6425,40 @@ function sylErrAlert(e, what){
   else alert(what+' 저장 중 예상치 못한 오류가 발생했습니다 (저장 공간 문제가 아닐 수 있어요). 다시 시도해보시고, 계속되면 이 메시지를 그대로 알려주세요.\n['+((e&&e.name)||'Error')+'] '+(e&&e.message||e));
 }
 function sylFmtBytes(n){ return n>1024*1024 ? (n/1024/1024).toFixed(1)+'MB' : (n/1024).toFixed(0)+'KB'; }
+// Firebase(Realtime DB)는 값 하나(문자열 하나)의 크기에 한도가 있어서, 큰 파일을 통째로 한 번에 저장하면 실패한다.
+// 그래서 base64 데이터를 여러 조각(6MB 단위)으로 쪼개 /syllabusFiles/{id}/p0, p1... 로 나눠 저장하고,
+// 내려받을 때 그 조각들을 순서대로 다시 이어붙인다. 미리보기는 필요 없고 업로드·다운로드만 되면 되는 "문제 파일" 첨부용.
+const SYL_CHUNK_CHARS=6*1024*1024;
+async function sylChunkPut(attId, fileName, fileDataUrl, onProgress){
+  const commaIdx=fileDataUrl.indexOf(',');
+  const prefix=fileDataUrl.slice(0,commaIdx+1); // "data:<mime>;base64,"
+  const payload=fileDataUrl.slice(commaIdx+1);
+  if(payload.length<=SYL_CHUNK_CHARS){
+    await fbPut('/syllabusFiles/'+attId, {fileName, fileData:fileDataUrl}, 60000);
+    return;
+  }
+  const total=Math.ceil(payload.length/SYL_CHUNK_CHARS);
+  for(let i=0;i<total;i++){
+    if(onProgress) onProgress(i+1, total);
+    await fbPut('/syllabusFiles/'+attId+'/p'+i, {d:payload.slice(i*SYL_CHUNK_CHARS,(i+1)*SYL_CHUNK_CHARS)}, 60000);
+  }
+  await fbPut('/syllabusFiles/'+attId+'/meta', {fileName, prefix, parts:total}, 30000);
+}
+async function sylChunkGet(attId){
+  const data=await fbGet('/syllabusFiles/'+attId, 90000); // 조각까지 전부 한 번에 받아온다(읽기는 값 크기 제한이 없음)
+  if(!data) throw new Error('파일을 찾을 수 없습니다');
+  if(data.meta){
+    let payload='';
+    for(let i=0;i<data.meta.parts;i++){
+      const part=data['p'+i];
+      if(!part) throw new Error('파일 일부가 누락되었습니다(재업로드가 필요할 수 있어요)');
+      payload+=part.d;
+    }
+    return {fileName:data.meta.fileName, fileData:data.meta.prefix+payload};
+  }
+  if(data.fileData) return {fileName:data.fileName, fileData:data.fileData};
+  throw new Error('파일을 찾을 수 없습니다');
+}
 function renderSyllabus(){
   const admin=isAdminRole();
   state.sylDept=state.sylDept||'전체';
@@ -6588,7 +6627,8 @@ function bindSyllabus(){
   });
   const SYL_MAX_BYTES=3*1024*1024; // 브라우저 저장 공간 한도를 고려한 파일당 상한(3MB) — 더 큰 파일은 '링크로 추가'를 이용
   // 첨부 자료(문제 파일 등)는 이 기기 로컬 저장소에 쌓아두지 않고 Firebase에만 저장했다가 열 때 그때 불러옵니다 — 그래서 본문 자료보다 훨씬 큰 파일도 안전합니다.
-  const SYL_ATT_MAX_BYTES = syncOn() ? 10*1024*1024 : SYL_MAX_BYTES; // 동기화 켜짐: 10MB · 꺼짐(로컬 전용): 3MB(로컬 저장소에 그대로 들어가므로)
+  // 30MB 안팎의 큰 파일도 문제없이 올라가도록, 큰 파일은 여러 조각으로 쪼개서 저장합니다(sylChunkPut/sylChunkGet).
+  const SYL_ATT_MAX_BYTES = syncOn() ? 50*1024*1024 : SYL_MAX_BYTES; // 동기화 켜짐: 50MB(서버에 조각내어 저장) · 꺼짐(로컬 전용): 3MB(로컬 저장소에 그대로 들어가므로)
   if(upFile) upFile.onchange=async()=>{
     if(!isAdminRole()) return;
     const files=[...upFile.files]; if(!files.length) return;
@@ -6672,6 +6712,7 @@ function bindSyllabus(){
     const en=store.syllabus.find(x=>x.id===inp.dataset.id); if(!en) return;
     const files=[...inp.files]; if(!files.length) return;
     en.attachments=en.attachments||[];
+    const attBtn=v.querySelector('.sylAttBtn[data-id="'+inp.dataset.id+'"]'); // 업로드 중 진행 상황(N/M 조각) 표시용 — 끝나면 render(true)로 재생성되어 라벨은 자동 복구됨
     const tooBig=[], failed=[];
     for(const f of files){
       if(f.size>SYL_ATT_MAX_BYTES){ tooBig.push(f.name); continue; }
@@ -6679,8 +6720,9 @@ function bindSyllabus(){
       try{
         const fileData=await readAsDataURL(f);
         if(syncOn()){
-          // 이 기기 저장소엔 안 쌓아두고 서버에만 저장 — 볼 때 그때 불러온다
-          await fbPut('/syllabusFiles/'+attId, {fileName:f.name, fileData}, 30000);
+          // 이 기기 저장소엔 안 쌓아두고 서버에만 저장 — 볼 때 그때 불러온다. 큰 파일은 여러 조각으로 나눠 올림.
+          if(attBtn) attBtn.textContent='⏳ 업로드 중...';
+          await sylChunkPut(attId, f.name, fileData, (i,total)=>{ if(attBtn && total>1) attBtn.textContent=`⏳ 업로드 중... (${i}/${total})`; });
           en.attachments.push({id:attId, fileName:f.name, remote:true, size:f.size});
         } else {
           en.attachments.push({id:attId, fileName:f.name, fileData});
@@ -6700,9 +6742,8 @@ function bindSyllabus(){
     const origLabel=b.textContent;
     b.disabled=true; b.textContent='⏳ 불러오는 중...';
     try{
-      const data=await fbGet('/syllabusFiles/'+b.dataset.attid, 30000);
-      if(!data || !data.fileData) throw new Error('파일을 찾을 수 없습니다');
-      const a=document.createElement('a'); a.href=data.fileData; a.download=data.fileName||b.dataset.name||'file';
+      const {fileData, fileName}=await sylChunkGet(b.dataset.attid); // 여러 조각으로 저장된 큰 파일도 자동으로 합쳐서 내려받는다
+      const a=document.createElement('a'); a.href=fileData; a.download=fileName||b.dataset.name||'file';
       document.body.appendChild(a); a.click(); a.remove();
     }catch(e){ alert('파일을 불러오지 못했습니다: '+(e.message||e)); }
     finally{ b.disabled=false; b.textContent=origLabel; }
