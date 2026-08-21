@@ -7541,7 +7541,20 @@ function applyTtGridUpdate(){
 }
 function renderSet(){
   let h='';
+  h+=`<div style="font-size:.7rem;color:#c7cbd6;text-align:right;margin-bottom:6px">build: MONTHFORK-2</div>`;
   const isTeacher=!!loginTeacher() && !isMgr();
+  // 이 달 자료를 최근 자료로 통째로 다시 시작 — 혹시 자료가 꼬였을 때(다른 달 자료가 섞였거나 비어있는데 채워야 할 때) 수동으로 복구하는 안전판
+  if(!isTeacher){
+    h+=`<div class="setsec" style="border:2px solid #6366f1"><h3>🔁 이 달 자료 초기화 (최근 자료로 다시 시작)</h3>
+      <div class="desc">특정 달의 반·학생 자료가 꼬였을 때, 그 달 자료를 통째로 지우고 그 전 달의 최신 자료를 그대로 복사해서 새로 시작합니다. 이 달에서 그동안 따로 고친 내용은 전부 사라지니 신중하게 사용하세요.</div>
+      ${academies().map(a=>`<div class="cbtns" style="margin-bottom:6px">
+        <span class="badge ${AC[a].cls}" style="font-size:.8rem;padding:6px 12px">${AC[a].label}</span>
+        <select id="rmMonth_${a}" style="padding:6px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
+          ${monthOptions().map(m=>`<option value="${m}">${mLabel(m)}</option>`).join('')}
+        </select>
+        <button class="btn small" style="color:#c0392b;border-color:#e7b3ab" data-resetmonth="${a}">🔁 이 달 자료 다시 시작</button></div>`).join('')}
+    </div>`;
+  }
   // 중복 반 정리 (관리자·실장만)
   if(!isTeacher){
     const dupGroups=findDuplicateClasses();
@@ -7869,11 +7882,33 @@ function bindTtGrid(){
   };
   const ttgCancel=document.getElementById('ttgCancel'); if(ttgCancel) ttgCancel.onclick=()=>{ state.ttGrid=null; render(true); };
 }
+function resetMonthFromPrev(a, m){
+  const prevMonths=monthsOf(a).filter(x=>x<m);
+  const prevMonth=prevMonths[prevMonths.length-1];
+  const prevArr=prevMonth ? editArr(a,prevMonth) : null;
+  const idMap={};
+  const cloned = (prevArr&&prevArr.length) ? JSON.parse(JSON.stringify(prevArr)).filter(c=>!c._deleted).map(c=>{
+    const newId=genClassId(); if(c._id) idMap[c._id]=newId; return {...c, _id:newId};
+  }) : [];
+  cloned.forEach(c=>{ if(c.mergedWith) c.mergedWith = idMap[c.mergedWith] || ''; });
+  store.uploads[m+'|'+a]=cloned;
+  delete store.uploadTombstones[m+'|'+a];
+  save();
+}
 function bindSet(){
   const examTabToggle=document.getElementById('examTabToggle');
   if(examTabToggle) examTabToggle.onchange=()=>{ store.examTabOn=examTabToggle.checked; save(); goTab(store.examTabOn?'exam':'set'); };
   bindTtGrid();
   const v=document.getElementById('view');
+  v.querySelectorAll('[data-resetmonth]').forEach(b=>b.onclick=()=>{
+    const a=b.dataset.resetmonth;
+    const sel=document.getElementById('rmMonth_'+a);
+    const m=sel?sel.value:state.month;
+    if(!confirm(`${AC[a].label} ${mLabel(m)} 자료를 지우고, 그 전 달의 최신 자료로 다시 시작할까요?\n(이 달에서 따로 고친 내용은 전부 사라집니다)`)) return;
+    resetMonthFromPrev(a, m);
+    render(true);
+    alert('다시 시작했습니다.');
+  });
   v.querySelectorAll('[data-dupdel]').forEach(b=>b.onclick=()=>{
     if(!isAdminRole())return;
     const [a,m,id]=b.dataset.dupdel.split('|');
