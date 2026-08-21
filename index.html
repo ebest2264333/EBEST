@@ -408,7 +408,7 @@ function reconcileClassRosters(){
     targetSyncMonths(a).forEach(month=>{
       const arr=editArr(a, month);
       store.students.filter(s=>s.academy===a && !s._deleted && s.status==='재원' && s.className).forEach(s=>{
-        const c=arr.find(x=>x.name===s.className);
+        const c=arr.find(x=>x.name===s.className && !x.examOnly);
         if(c){
           c.students=c.students||[];
           if(!c.students.includes(s.nameKo)){ c.students.push(s.nameKo); c.count=c.students.length; c.updatedAt=Date.now(); changed++; }
@@ -907,7 +907,7 @@ function deleteClassAction(a,m,id){
   arr[idx].updatedAt=Date.now();
   // 이 학원에 같은 이름의 반이 더 이상 남아있지 않으면, 학생 명단에 그 반으로 등록된 학생들의 배정도 같이 풀어줄지 물어본다
   // (안 그러면 반·교재 탭에서는 반이 사라졌는데 학생 명단 [반별] 보기에는 그 반 이름이 유령처럼 계속 남아있게 됨)
-  const stillExists = classesFor(state.month).some(c=>c.academy===a && c.name===className && c._id!==id);
+  const stillExists = classesFor(state.month).some(c=>c.academy===a && !c.examOnly && c.name===className && c._id!==id);
   if(!stillExists){
     const affected=store.students.filter(s=>!s._deleted && s.academy===a && (s.className||'').trim()===className);
     if(affected.length && confirm(`학생 명단에 "${className}" 반으로 등록된 학생이 ${affected.length}명 있습니다.\n이 학생들의 반 배정도 함께 해제(미배정)할까요?\n(취소하면 학생 명단은 그대로 두고 반만 삭제됩니다)`)){
@@ -2147,7 +2147,7 @@ function syncStudentClassRoster(student, oldClassName, oldNameKo){
     }
     // 현재 반에 (현재 이름으로) 없으면 추가 / 이름이 바뀐 경우 옛 이름이 남아있으면 새 이름으로 교체
     if(student.className){
-      let newC=arr.find(c=>c.name===student.className);
+      let newC=arr.find(c=>c.name===student.className && !c.examOnly);
       if(!newC){
         // 반·교재 탭에 아직 없는 반 이름을 학생 명단에서 입력한 경우 → 그 반을 새로 만들어 준다
         // (예전에는 기존 반에만 넣어줘서, 새 반 이름을 적으면 반·교재 탭에 아무것도 안 생겼음)
@@ -2753,7 +2753,7 @@ function prevTwoWordTests(studentId, beforeDate){
   return prev.slice(0,2).reverse(); // 오래된 순으로
 }
 function studentIsHigh(s){
-  const c=classesFor(state.month).find(x=>x.academy===s.academy && x.name===String(s.className||'').trim());
+  const c=classesFor(state.month).find(x=>x.academy===s.academy && !x.examOnly && x.name===String(s.className||'').trim());
   if(c && c.dept==='고등') return true;
   return String(s.school||'').trim().endsWith('고');
 }
@@ -2882,7 +2882,7 @@ function renderWordTestToday(){
 function classDeptForName(academy, className){
   // 학생의 반 이름으로 그 반의 부서(초등/중등/고등)를 찾아준다 — 재시험 명단·통계 정렬에 사용
   if(!className) return '';
-  const c=classesFor(state.month).find(x=>x.academy===academy && x.name===className);
+  const c=classesFor(state.month).find(x=>x.academy===academy && !x.examOnly && x.name===className);
   return c ? (c.dept||'') : '';
 }
 const DEPT_SORT_ORDER={'초등':0,'중등':1,'고등':2};
@@ -3278,7 +3278,7 @@ function studentRow(k, s, showClass, c, readOnly){
 }
 function goToStudentConsult(id){
   const s=store.students.find(x=>x.id===id); if(!s) return;
-  const cls=classesFor(state.month).find(c=>c.academy===s.academy && c.name===s.className);
+  const cls=classesFor(state.month).find(c=>c.academy===s.academy && !c.examOnly && c.name===s.className);
   if(!cls){ alert('이 학생이 속한 반을 이번 달 자료에서 찾을 수 없습니다.'); return; }
   const k=ckey(cls);
   const ti=mAssign()[k];
@@ -3323,7 +3323,7 @@ function teacherCards(list){
 /* ---------- 신입생 상담 (관리자·실장 등록 → 담당 선생님 작성) ---------- */
 function subjectTeachersForClass(a, className){
   if(!className) return [];
-  const c=classesFor(state.month).find(x=>x.academy===a && x.name===className);
+  const c=classesFor(state.month).find(x=>x.academy===a && !x.examOnly && x.name===className);
   if(!c) return [];
   const excludeNames=new Set();
   const days=cdays(c).split(',').map(x=>x.trim()).filter(Boolean);
