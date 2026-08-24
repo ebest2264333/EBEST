@@ -2247,8 +2247,18 @@ function rosterNameMatchesStudent(raw, nameKo, nameEn){
   }
   return false;
 }
+// 학생 명단(store.students)의 className 필드는 달별로 안 나뉘고 하나뿐이라, 반·교재 쪽처럼 달마다 분리된 자료와는 안 맞을 수 있다.
+// [학생 명단] 탭에서 "이 학생이 지금 보고 있는 달에 실제로 어느 반에 들어있는지"를 정확히 보여주려면, className 필드를 그냥 믿지 말고
+// 그 달의 반·교재 자료(각 반의 students 배열)를 직접 뒤져서 이 학생이 들어있는 반을 찾아야 한다 — 그래야 월을 바꾸면 반 표시도 같이 바뀐다.
+function classNameInMonth(s, month){
+  if(!s) return '';
+  const cls=classesFor(month).find(c=>c.academy===s.academy && !c.examOnly && (c.students||[]).some(sname=>rosterNameMatchesStudent(sname, s.nameKo, s.nameEn)));
+  if(cls) return cls.name;
+  // 그 달 반 자료 어디에도 아직 안 들어있으면(예: 방금 만든 학생이라 반·교재 쪽에 반영 전) 학생 쪽 필드를 그대로 보여준다
+  return s.className||'';
+}
 function removeStudentFromActiveRosters(academy, nameKo, nameEn){
-  // 휴원·퇴원 시 "현재 활성" 배정만 취소한다 (최신 달 + 지금 보고 있는 달) — 지난 달 반 명단·기록은 그대로 남겨 히스토리를 보존한다
+  // 휴원·퇴원 시 "현재 활성" 배정만 취소한다(지금 보고 있는 달 기준) — 지난 달 반 명단·기록은 그대로 남겨 히스토리를 보존한다
   targetSyncMonths(academy).forEach(month=>{
     const arr=editArr(academy, month);
     arr.forEach(c=>{
@@ -2414,7 +2424,7 @@ function studentCard(s, admin){
       <h2>${esc(s.nameKo)}${s.nameEn?' <span style="font-weight:400;color:var(--sub)">('+esc(s.nameEn)+')</span>':''}
         <span class="badge" style="background:${statusColor};color:#fff">${esc(s.status)}</span>
         ${admin?`<button class="btn small" style="float:right;font-size:.72rem;padding:4px 9px" data-rstoggle="${s.id}">✎ 편집</button>`:''}</h2>
-      <div class="meta">${esc(s.className||'미배정')}${s.grade?' · '+esc(s.grade):''}${s.school?' · '+esc(s.school):''}${s.parentPhone?' · 📞 '+esc(s.parentPhone):''}</div>
+      <div class="meta">${esc(classNameInMonth(s,state.month)||'미배정')}${s.grade?' · '+esc(s.grade):''}${s.school?' · '+esc(s.school):''}${s.parentPhone?' · 📞 '+esc(s.parentPhone):''}</div>
       ${s.preCheck?`<div class="rnote">🔎 상담 전 확인: ${esc(s.preCheck)}</div>`:''}
       ${s.status!=='재원'&&s.statusReason?`<div class="rnote">${esc(s.status)} 사유: ${esc(s.statusReason)}</div>`:''}
       ${sibs.length?`<div style="font-size:.78rem;color:var(--sub);margin-top:4px">👨‍👩‍👧‍👦 형제자매: ${sibLinks}</div>`:''}
@@ -2430,7 +2440,7 @@ function studentCard(s, admin){
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
       <input type="text" value="${esc(s.nameKo)}" placeholder="한글이름" data-rsfield="${s.id}|nameKo" style="width:110px;font-weight:800;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
       <input type="text" value="${esc(s.nameEn||'')}" placeholder="영어이름" data-rsfield="${s.id}|nameEn" style="width:110px;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
-      <input type="text" value="${esc(s.className||'')}" placeholder="반" list="dl_cls_${s.academy}" data-rsfield="${s.id}|className" style="width:110px;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
+      <input type="text" value="${esc(classNameInMonth(s,state.month))}" placeholder="반" list="dl_cls_${s.academy}" data-rsfield="${s.id}|className" style="width:110px;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
       <input type="text" value="${esc(s.grade||'')}" placeholder="학년" data-rsfield="${s.id}|grade" style="width:80px;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
       <input type="text" value="${esc(s.school||'')}" placeholder="학교" data-rsfield="${s.id}|school" style="width:110px;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
       <input type="text" value="${esc(s.parentPhone||'')}" placeholder="부모님 번호" data-rsfield="${s.id}|parentPhone" style="width:130px;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
@@ -2496,7 +2506,7 @@ function renderRosterStats(){
   }
   // 반별 (재원생 기준)
   const byClass={};
-  all.filter(s=>s.status==='재원').forEach(s=>{ const k=(s.className||'').trim()||'미배정'; byClass[k]=(byClass[k]||0)+1; });
+  all.filter(s=>s.status==='재원').forEach(s=>{ const k=(classNameInMonth(s,state.month)||'').trim()||'미배정'; byClass[k]=(byClass[k]||0)+1; });
   const classKeys=Object.keys(byClass).sort((a,b)=>{ if(a==='미배정')return 1; if(b==='미배정')return -1; return a.localeCompare(b,'ko',{numeric:true}); });
   h+=`<details class="ysec" style="margin-bottom:14px"><summary style="cursor:pointer;padding:10px 16px;font-weight:800;font-size:.95rem">반별 재원생 (${classKeys.length}개 반)</summary><div style="padding:0 16px 14px">
     ${classKeys.map(k=>`<div class="rowitem"><span class="key">${esc(k)}</span><span class="val"><b>${byClass[k]}명</b></span></div>`).join('')}
@@ -2632,7 +2642,7 @@ function renderRoster(list){
   }
   if(state.rosterView==='class'){
     const groups={};
-    rows.forEach(s=>{ const k=(s.className||'').trim()||'미배정'; (groups[k]=groups[k]||[]).push(s); });
+    rows.forEach(s=>{ const k=(classNameInMonth(s,state.month)||'').trim()||'미배정'; (groups[k]=groups[k]||[]).push(s); });
     const keys=Object.keys(groups).sort((a,b)=>{
       if(a==='미배정') return 1; if(b==='미배정') return -1;
       return a.localeCompare(b,'ko',{numeric:true});
