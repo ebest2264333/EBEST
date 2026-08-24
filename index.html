@@ -3398,10 +3398,27 @@ function mRecords(){ return store.records[state.month]=store.records[state.month
 function mCmemo(){ return store.cmemo[state.month]=store.cmemo[state.month]||{}; }
 // 상담은 매달 새로 쓰는 자료라 이번 달 칸은 비어있는 게 정상이지만, 바로 지난달에 뭐라고 적었는지 옆에서 바로 볼 수 있으면 편해서
 // (달을 왔다갔다 안 해도 되게) — 수정은 안 되는 참고용 표시만 붙여준다. 지난달 자료를 건드리진 않는다.
-function prevConsultMemoFor(k, s){
+function prevConsultMemoFor(c, s){
   const pm=shiftMonth(state.month,-1);
-  const r=((store.records[pm]||{})[k]||{})[s];
-  return (r&&r.memo)?{memo:r.memo,date:r.date||''}:null;
+  const pmRecords=store.records[pm]||{};
+  const k=ckey(c);
+  // 1) 반 이름이 그대로면 바로 찾아진다
+  const r=(pmRecords[k]||{})[s];
+  if(r&&r.memo) return {memo:r.memo,date:r.date||''};
+  // 2) 반 이름이 바뀌었을 수 있으니(학기마다 반 이름을 다시 짓는 경우가 많음), 지난달 이 학원의 다른 반들도
+  //    이 학생의 이름(한글·영어)으로 뒤져서 찾는다 — 그래야 반 이름이 바뀌어도 학생 상담 이력이 안 끊긴다
+  const stRec=matchStudentByRosterName(c.academy, s, c.name);
+  for(const key in pmRecords){
+    if(key===k || !key.startsWith(c.academy+'|')) continue;
+    const bucket=pmRecords[key];
+    for(const sname in bucket){
+      const same = sname===s || (stRec && rosterNameMatchesStudent(sname, stRec.nameKo, stRec.nameEn));
+      if(!same) continue;
+      const rr=bucket[sname];
+      if(rr&&rr.memo) return {memo:rr.memo, date:rr.date||'', prevClass:key.slice(c.academy.length+1).replace(/␟exam$/,'')};
+    }
+  }
+  return null;
 }
 function prevConsultCmemoFor(k){
   const pm=shiftMonth(state.month,-1);
@@ -3430,7 +3447,7 @@ function studentRow(k, s, showClass, c, readOnly){
     <div style="display:flex;flex-direction:column;gap:5px">
       ${preCheck?`<div style="font-size:.76rem;color:#b45309;background:#fff8ec;border:1px solid #f0dcae;border-radius:7px;padding:5px 8px">🔎 상담 전 확인: ${esc(preCheck)}</div>`:''}
       ${stRec&&stRec.note?`<div style="font-size:.76rem;color:#2e5fb7;background:#eef4ff;border:1px solid #cfe0fb;border-radius:7px;padding:5px 8px">📝 특이사항 코멘트(다른 선생님 포함): ${esc(stRec.note)}</div>`:''}
-      ${(()=>{ const pv=prevConsultMemoFor(k,s); return pv?`<div style="font-size:.76rem;color:#5a6478;background:#f4f6fb;border:1px solid #dde1ea;border-radius:7px;padding:5px 8px">🕘 ${esc(mLabel(shiftMonth(state.month,-1)))} 상담(${esc(pv.date||'날짜 미기재')}): ${esc(pv.memo)}</div>`:''; })()}
+      ${(()=>{ const pv=prevConsultMemoFor(c,s); return pv?`<div style="font-size:.76rem;color:#5a6478;background:#f4f6fb;border:1px solid #dde1ea;border-radius:7px;padding:5px 8px">🕘 ${esc(mLabel(shiftMonth(state.month,-1)))} 상담${pv.prevClass&&pv.prevClass!==c.name?`(당시 ${esc(pv.prevClass)}반)`:''}(${esc(pv.date||'날짜 미기재')}): ${esc(pv.memo)}</div>`:''; })()}
       <textarea placeholder="상담 내역…" data-k="${esc(k)}" data-s="${esc(s)}" ${dis}>${esc(r.memo||'')}</textarea>
     </div>
     <input type="date" class="dtin" title="상담일자" data-k="${esc(k)}" data-s="${esc(s)}" value="${esc(r.date||'')}" ${dis} style="border:1px solid var(--line);border-radius:8px;padding:5px 7px;font-family:inherit;font-size:.78rem;color:var(--sub)"></div>`;
