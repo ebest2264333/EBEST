@@ -5742,6 +5742,19 @@ const HG_COLS=[
   {key:'prevTeacher', w:78}, {key:'targetTeacher', w:78}, {key:'book', w:150},
   {key:'lastHw', w:150}, {key:'progress', w:78}, {key:'note', w:150}, {key:'targetProgress', w:78}
 ];
+// 합치기 한 행들이 원래 표에서 서로 떨어져 있어도, 화면엔 항상 나란히 모아서 보여준다(저장된 순서 자체는 안 건드림)
+function hgDisplayOrder(rows){
+  const placed=new Set(); const out=[];
+  rows.forEach((r,i)=>{
+    if(placed.has(r.id)) return;
+    if(r.mergeGroup){
+      rows.forEach(r2=>{ if(r2.mergeGroup===r.mergeGroup && !placed.has(r2.id)){ out.push(r2); placed.add(r2.id); } });
+    } else {
+      out.push(r); placed.add(r.id);
+    }
+  });
+  return out;
+}
 // 여러 과목 행을 "합치기" 했을 때, 같은 mergeGroup을 가진 연속된 행들을 하나의 세로 병합(rowspan) 블록으로 묶어준다
 function hgClusterInfo(groupRows){
   const info=new Array(groupRows.length);
@@ -5792,6 +5805,19 @@ function renderHandoverGrid(){
     g.updatedAt=Date.now();
     save();
   }
+  // 예전(과목명 중복 방지 기능 적용 전)에 만들어진 표에 같은 반+같은 과목명 중복 행이 남아있으면, 먼저 나온 한 줄만 남기고 자동 정리한다
+  // (합치기로 묶인 행들은 원래 과목명이 서로 다르므로 여기서 건드리지 않음)
+  if(g.rows && g.rows.length){
+    const seenDup=new Set(); let dupChanged=false;
+    const cleaned=[];
+    g.rows.forEach(r=>{
+      const dk=r.prevClass+'␟'+norm(r.subject);
+      if(r.subject && !r.mergeGroup && seenDup.has(dk)){ dupChanged=true; return; }
+      if(r.subject && !r.mergeGroup) seenDup.add(dk);
+      cleaned.push(r);
+    });
+    if(dupChanged){ g.rows=cleaned; g.updatedAt=Date.now(); save(); }
+  }
   const rows=g.rows||[];
   const prevLabel=mLabel(prevMonth), targetLabel=mLabel(targetMonth);
   const hgLt=loginTeacher();
@@ -5833,8 +5859,9 @@ function renderHandoverGrid(){
   <thead><tr>${HG_COLS.map((c,ci)=>`<th style="position:relative;background:var(--ink);color:#fff;padding:7px 14px 7px 8px;font-size:.76rem;text-align:center;border:1px solid #333;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${esc(colLabels[ci])}">${colLabels[ci]}<span class="hg-resizer" data-col="${c.key}" title="드래그해서 칸 너비 조절 (이 화면에서만 적용)" style="position:absolute;right:0;top:0;bottom:0;width:8px;cursor:col-resize;user-select:none"></span></th>`).join('')}</tr></thead><tbody>
   ${groups.map(g2=>{
     const curTarget=(g2.rows[0]||{}).targetClass||'';
-    const cinfo=hgClusterInfo(g2.rows);
-    return g2.rows.map((r,ri)=>{
+    const displayRows=hgDisplayOrder(g2.rows); // 합쳐진 행들은 원래 떨어져 있어도 화면에선 나란히 모아서 보여준다
+    const cinfo=hgClusterInfo(displayRows);
+    return displayRows.map((r,ri)=>{
       const ci=cinfo[ri];
       const unmergeBtn=(ci.span>1)?`<button type="button" data-hgunmerge="${esc(ci.mergeGroup)}" title="합치기 해제" style="position:absolute;top:2px;right:2px;border:none;background:#e6e9f0;color:#5a6478;border-radius:4px;width:16px;height:16px;line-height:16px;font-size:.66rem;cursor:pointer;padding:0">✕</button>`:'';
       // 합쳐지지 않은 낱개 행에서만 "지난달 과목명 그대로 가져오기" 버튼을 보여준다(합친 행은 어느 과목을 가져올지 애매해서 제외)
@@ -5904,7 +5931,7 @@ function bindHandoverGrid(){
     const idxs=checked.map(rid=>g.rows.findIndex(r=>r.id===rid)).filter(i=>i>=0).sort((x,y)=>x-y);
     const prevClass=g.rows[idxs[0]].prevClass;
     if(!idxs.every(i=>g.rows[i].prevClass===prevClass)){ alert('같은 반(전달 반) 소속 과목 행끼리만 합칠 수 있어요.'); return; }
-    for(let k=1;k<idxs.length;k++){ if(idxs[k]!==idxs[k-1]+1){ alert('표에서 서로 붙어있는(연속된) 과목 행끼리만 합칠 수 있어요.'); return; } }
+    // 표에서 붙어있지 않고 떨어져 있는 과목 행끼리 골라도 합칠 수 있다 — 합쳐진 행들은 화면에 표시될 때 자동으로 나란히 모아서 보여준다
     // 선택한 행이 이미 다른 병합 그룹에 속해있었다면, 그 그룹은 통째로 해제하고 새로 합친다(어중간하게 걸치는 것 방지)
     const existingGroups=new Set(idxs.map(i=>g.rows[i].mergeGroup).filter(Boolean));
     existingGroups.forEach(mgid=>{ g.rows.forEach(r=>{ if(r.mergeGroup===mgid) r.mergeGroup=null; }); });
