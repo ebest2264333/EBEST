@@ -5704,7 +5704,8 @@ function genHandoverRows(academy, targetMonth){
         lastHw: s.hw||'N/A',
         progress: wpProgress||s.progress||'',
         note: s.note||'',
-        targetProgress: ''
+        targetProgress: '',
+        mergeGroup: null // 여러 과목 행을 체크해서 "합치기" 하면 같은 값이 들어가고, 그 행들의 이번달 칸(과목명·담당·교재·진도)이 하나로 합쳐져 보인다
       });
     });
   });
@@ -5734,10 +5735,29 @@ function regenHandoverGrid(academy, targetMonth, onlyTeacherName){
 }
 // 인수인계표 칸 너비 — 보는 사람 화면(이 브라우저)에서만 적용, 저장/동기화 안 됨(다른 선생님에게 영향 없음)
 const HG_COLS=[
-  {key:'prevClass', w:90}, {key:'targetClass', w:90}, {key:'subject', w:74}, {key:'targetSubject', w:74},
+  {key:'sel', w:36}, {key:'prevClass', w:90}, {key:'targetClass', w:90}, {key:'subject', w:74}, {key:'targetSubject', w:74},
   {key:'prevTeacher', w:78}, {key:'targetTeacher', w:78}, {key:'book', w:150},
   {key:'lastHw', w:150}, {key:'progress', w:78}, {key:'note', w:150}, {key:'targetProgress', w:78}
 ];
+// 여러 과목 행을 "합치기" 했을 때, 같은 mergeGroup을 가진 연속된 행들을 하나의 세로 병합(rowspan) 블록으로 묶어준다
+function hgClusterInfo(groupRows){
+  const info=new Array(groupRows.length);
+  let i=0;
+  while(i<groupRows.length){
+    const mg=groupRows[i].mergeGroup;
+    if(mg){
+      let j=i+1;
+      while(j<groupRows.length && groupRows[j].mergeGroup===mg) j++;
+      const span=j-i;
+      for(let k=i;k<j;k++) info[k]={isHead:k===i, span, mergeGroup:mg};
+      i=j;
+    } else {
+      info[i]={isHead:true, span:1, mergeGroup:null};
+      i++;
+    }
+  }
+  return info;
+}
 function hgColWidths(){
   let saved={};
   try{ saved=JSON.parse(localStorage.getItem('hgColWidths')||'{}'); }catch(e){}
@@ -5783,6 +5803,7 @@ function renderHandoverGrid(){
     </select>
     <button class="btn small" id="hgNext">다음 달 ▶</button>
     <button class="btn small" id="hgRegen" title="${regenTitle}">${regenLabel}</button>
+    <button class="btn small" id="hgMergeBtn" title="같은 반(전달 반)의 연속된 과목 행들을 체크한 뒤 누르면, 이번달 과목명·담당·교재·진도 칸이 하나로 합쳐집니다 (예: 여러 과목 → 내신 한 칸)">🔗 체크한 과목 행 합치기</button>
     <span style="font-size:.76rem;color:#8b93a7;margin-left:auto">모든 선생님이 같이 보고 같이 수정하는 표입니다 · 선생님별로 구분되지 않습니다 · 칸 경계를 드래그하면 너비를 조절할 수 있어요(내 화면에만 적용)</span>
   </div>`;
   if(!rows.length){
@@ -5792,34 +5813,51 @@ function renderHandoverGrid(){
   // 같은 반(prevClass) 묶음끼리 반명 칸을 세로로 합쳐서 보여준다 (원본 인수인계표 양식처럼)
   const groups=[]; let curKey=null, curGroup=null;
   rows.forEach(r=>{ if(r.prevClass!==curKey){ curKey=r.prevClass; curGroup={key:curKey, rows:[]}; groups.push(curGroup); } curGroup.rows.push(r); });
-  const teaCell=(name, field, rid)=>{
+  const teaCell=(name, field, rid, mergeGroup)=>{
     const color=teacherColorByName(a, name);
-    return `<input type="text" list="dl_teachers_${a}" value="${esc(name||'')}" data-hgfield="${rid}|${field}" style="width:100%;min-width:64px;border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-family:inherit;font-size:.8rem;font-weight:800;text-align:center;color:#fff;background:${color||'#8b93a7'}">`;
+    const dataAttr=mergeGroup?`data-hgmergefield="${mergeGroup}|${field}"`:`data-hgfield="${rid}|${field}"`;
+    return `<input type="text" list="dl_teachers_${a}" value="${esc(name||'')}" ${dataAttr} style="width:100%;min-width:64px;border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-family:inherit;font-size:.8rem;font-weight:800;text-align:center;color:#fff;background:${color||'#8b93a7'}">`;
   };
-  const txtCell=(val, field, rid, wide)=>`<input type="text" value="${esc(val||'')}" data-hgfield="${rid}|${field}" style="width:100%;border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-family:inherit;font-size:.8rem">`;
+  const txtCell=(val, field, rid, wide, mergeGroup)=>{
+    const dataAttr=mergeGroup?`data-hgmergefield="${mergeGroup}|${field}"`:`data-hgfield="${rid}|${field}"`;
+    return `<input type="text" value="${esc(val||'')}" ${dataAttr} style="width:100%;border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-family:inherit;font-size:.8rem">`;
+  };
   const colw=hgColWidths();
-  const colLabels=[`${prevLabel} 반명`,`${targetLabel} 반명`,`${prevLabel} 과목명`,`${targetLabel} 과목명`,`${prevLabel} 담당`,`${targetLabel} 담당`,`${targetLabel} 교재`,'지난 과제','진도','특이사항',`${targetLabel} 진도`];
+  const colLabels=['선택',`${prevLabel} 반명`,`${targetLabel} 반명`,`${prevLabel} 과목명`,`${targetLabel} 과목명`,`${prevLabel} 담당`,`${targetLabel} 담당`,`${targetLabel} 교재`,'지난 과제','진도','특이사항',`${targetLabel} 진도`];
   const hgOpts=hgClassOptions(a,targetMonth);
   h+=`${teacherDatalist(a)}<datalist id="dl_hgclass_${a}">${hgOpts.map(nm=>`<option value="${esc(nm)}">`).join('')}</datalist><div style="overflow-x:auto"><table style="border-collapse:collapse;table-layout:fixed;width:max-content;min-width:100%">
   <colgroup>${HG_COLS.map(c=>`<col style="width:${colw[c.key]}px">`).join('')}</colgroup>
   <thead><tr>${HG_COLS.map((c,ci)=>`<th style="position:relative;background:var(--ink);color:#fff;padding:7px 14px 7px 8px;font-size:.76rem;text-align:center;border:1px solid #333;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${esc(colLabels[ci])}">${colLabels[ci]}<span class="hg-resizer" data-col="${c.key}" title="드래그해서 칸 너비 조절 (이 화면에서만 적용)" style="position:absolute;right:0;top:0;bottom:0;width:8px;cursor:col-resize;user-select:none"></span></th>`).join('')}</tr></thead><tbody>
   ${groups.map(g2=>{
     const curTarget=(g2.rows[0]||{}).targetClass||'';
-    return g2.rows.map((r,ri)=>`<tr>
+    const cinfo=hgClusterInfo(g2.rows);
+    return g2.rows.map((r,ri)=>{
+      const ci=cinfo[ri];
+      const unmergeBtn=(ci.span>1)?`<button type="button" data-hgunmerge="${esc(ci.mergeGroup)}" title="합치기 해제" style="position:absolute;top:2px;right:2px;border:none;background:#e6e9f0;color:#5a6478;border-radius:4px;width:16px;height:16px;line-height:16px;font-size:.66rem;cursor:pointer;padding:0">✕</button>`:'';
+      const targetCells = ci.isHead ? `
+    <td rowspan="${ci.span}" style="border:1px solid var(--line);padding:6px;text-align:center;font-weight:700;position:relative;vertical-align:middle">${unmergeBtn}${txtCell(r.targetSubject,'targetSubject',r.id,false,ci.span>1?ci.mergeGroup:null)}</td>
+    <td style="border:1px solid var(--line);padding:6px;text-align:center">${teaCell(r.prevTeacher,'prevTeacher',r.id)}</td>
+    <td rowspan="${ci.span}" style="border:1px solid var(--line);padding:6px;text-align:center;vertical-align:middle">${teaCell(r.targetTeacher,'targetTeacher',r.id,ci.span>1?ci.mergeGroup:null)}</td>
+    <td rowspan="${ci.span}" style="border:1px solid var(--line);padding:6px;background:#fff3cd;vertical-align:middle">${txtCell(r.book,'book',r.id,true,ci.span>1?ci.mergeGroup:null)}</td>
+    <td style="border:1px solid var(--line);padding:6px">${txtCell(r.lastHw,'lastHw',r.id,true)}</td>
+    <td style="border:1px solid var(--line);padding:6px;text-align:center">${txtCell(r.progress,'progress',r.id)}</td>
+    <td style="border:1px solid var(--line);padding:6px">${txtCell(r.note,'note',r.id,true)}</td>
+    <td rowspan="${ci.span}" style="border:1px solid var(--line);padding:6px;text-align:center;vertical-align:middle">${txtCell(r.targetProgress,'targetProgress',r.id,false,ci.span>1?ci.mergeGroup:null)}</td>`
+      : `
+    <td style="border:1px solid var(--line);padding:6px;text-align:center">${teaCell(r.prevTeacher,'prevTeacher',r.id)}</td>
+    <td style="border:1px solid var(--line);padding:6px">${txtCell(r.lastHw,'lastHw',r.id,true)}</td>
+    <td style="border:1px solid var(--line);padding:6px;text-align:center">${txtCell(r.progress,'progress',r.id)}</td>
+    <td style="border:1px solid var(--line);padding:6px">${txtCell(r.note,'note',r.id,true)}</td>`;
+      return `<tr>
+    <td style="border:1px solid var(--line);padding:6px;text-align:center"><input type="checkbox" data-hgmergesel="${r.id}"></td>
     ${ri===0?`<td rowspan="${g2.rows.length}" style="border:1px solid var(--line);padding:6px;text-align:center;font-weight:800;background:#f6f8fc;vertical-align:middle">${esc(r.prevClass)}</td>
     <td rowspan="${g2.rows.length}" style="border:1px solid var(--line);padding:6px;text-align:center;vertical-align:middle">
       <input type="text" list="dl_hgclass_${a}" data-hggroupclass="${esc(g2.key)}" value="${esc(curTarget)}" placeholder="반 선택·직접 입력" style="width:100%;min-width:90px;border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-family:inherit;font-size:.8rem;font-weight:800;text-align:center;${curTarget?'':'color:#c0392b'}">
     </td>`:''}
     <td style="border:1px solid var(--line);padding:6px;text-align:center;font-weight:700;color:var(--sub)" title="지난달 과목명 — 참고용, 수정 안 됨">${esc(r.subject)}</td>
-    <td style="border:1px solid var(--line);padding:6px;text-align:center;font-weight:700">${txtCell(r.targetSubject,'targetSubject',r.id)}</td>
-    <td style="border:1px solid var(--line);padding:6px;text-align:center">${teaCell(r.prevTeacher,'prevTeacher',r.id)}</td>
-    <td style="border:1px solid var(--line);padding:6px;text-align:center">${teaCell(r.targetTeacher,'targetTeacher',r.id)}</td>
-    <td style="border:1px solid var(--line);padding:6px;background:#fff3cd">${txtCell(r.book,'book',r.id,true)}</td>
-    <td style="border:1px solid var(--line);padding:6px">${txtCell(r.lastHw,'lastHw',r.id,true)}</td>
-    <td style="border:1px solid var(--line);padding:6px;text-align:center">${txtCell(r.progress,'progress',r.id)}</td>
-    <td style="border:1px solid var(--line);padding:6px">${txtCell(r.note,'note',r.id,true)}</td>
-    <td style="border:1px solid var(--line);padding:6px;text-align:center">${txtCell(r.targetProgress,'targetProgress',r.id)}</td>
-  </tr>`).join('');
+    ${targetCells}
+  </tr>`;
+    }).join('');
   }).join('')}
   </tbody></table></div>`;
   return h;
@@ -5844,6 +5882,38 @@ function bindHandoverGrid(){
     const g=handoverGridFor(a, state.hgMonth); if(!g) return;
     const row=g.rows.find(r=>r.id===rid); if(!row) return;
     row[field]=inp.value; g.updatedAt=Date.now();
+    save(); render(true);
+  });
+  // 합쳐진(병합된) 칸 — 값을 고치면 같은 mergeGroup에 속한 행 전체에 똑같이 반영된다
+  v.querySelectorAll('[data-hgmergefield]').forEach(inp=>inp.onchange=()=>{
+    const [mg,field]=inp.dataset.hgmergefield.split('|');
+    const g=handoverGridFor(a, state.hgMonth); if(!g) return;
+    g.rows.forEach(r=>{ if(r.mergeGroup===mg) r[field]=inp.value; });
+    g.updatedAt=Date.now();
+    save(); render(true);
+  });
+  const mergeBtn=v.querySelector('#hgMergeBtn'); if(mergeBtn) mergeBtn.onclick=()=>{
+    const checked=[...v.querySelectorAll('[data-hgmergesel]:checked')].map(cb=>cb.dataset.hgmergesel);
+    if(checked.length<2){ alert('합칠 과목 행을 2개 이상 체크해주세요.'); return; }
+    const g=handoverGridFor(a, state.hgMonth); if(!g) return;
+    const idxs=checked.map(rid=>g.rows.findIndex(r=>r.id===rid)).filter(i=>i>=0).sort((x,y)=>x-y);
+    const prevClass=g.rows[idxs[0]].prevClass;
+    if(!idxs.every(i=>g.rows[i].prevClass===prevClass)){ alert('같은 반(전달 반) 소속 과목 행끼리만 합칠 수 있어요.'); return; }
+    for(let k=1;k<idxs.length;k++){ if(idxs[k]!==idxs[k-1]+1){ alert('표에서 서로 붙어있는(연속된) 과목 행끼리만 합칠 수 있어요.'); return; } }
+    // 선택한 행이 이미 다른 병합 그룹에 속해있었다면, 그 그룹은 통째로 해제하고 새로 합친다(어중간하게 걸치는 것 방지)
+    const existingGroups=new Set(idxs.map(i=>g.rows[i].mergeGroup).filter(Boolean));
+    existingGroups.forEach(mgid=>{ g.rows.forEach(r=>{ if(r.mergeGroup===mgid) r.mergeGroup=null; }); });
+    const mg='mg_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
+    idxs.forEach(i=>{ g.rows[i].mergeGroup=mg; });
+    g.updatedAt=Date.now();
+    save(); render(true);
+  };
+  v.querySelectorAll('[data-hgunmerge]').forEach(btn=>btn.onclick=(e)=>{
+    e.preventDefault(); e.stopPropagation();
+    const mg=btn.dataset.hgunmerge;
+    const g=handoverGridFor(a, state.hgMonth); if(!g) return;
+    g.rows.forEach(r=>{ if(r.mergeGroup===mg) r.mergeGroup=null; });
+    g.updatedAt=Date.now();
     save(); render(true);
   });
   // 이번달(대상 월) 반명은 아직 그 반이 안 만들어졌으면 자동으로 못 채우므로 직접 입력 — 같은 전달 반(prevClass) 소속 과목행 전체에 반영
