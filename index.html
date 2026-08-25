@@ -5688,9 +5688,12 @@ function genHandoverRows(academy, targetMonth){
   const rows=[];
   prevClasses.forEach(pc=>{
     const tc=targetClasses.find(x=>x.prev && norm(x.prev)===norm(pc.name)) || targetClasses.find(x=>norm(x.name)===norm(pc.name));
+    const seenSubj=new Set(); // 같은 반 안에 똑같은 과목명이 여러 줄 있으면 한 줄만 남긴다
     (pc.subjects||[]).forEach(s=>{
       if(!s.subject && !s.book && !s.teacher) return; // 빈 과목행은 건너뜀
       if(isHandoverExcludedSubj(s.subject)) return; // IBT·단어시험처럼 인수인계 대상이 아닌 과목은 제외
+      const subjKey=norm(s.subject);
+      if(subjKey){ if(seenSubj.has(subjKey)) return; seenSubj.add(subjKey); }
       const ts=tc?(tc.subjects||[]).find(x=>norm(x.subject)===norm(s.subject)):null;
       const wpProgress=latestMprogForClassSubj(academy, pc.name, s.subject, prevMonth+'-31');
       rows.push({
@@ -5834,8 +5837,10 @@ function renderHandoverGrid(){
     return g2.rows.map((r,ri)=>{
       const ci=cinfo[ri];
       const unmergeBtn=(ci.span>1)?`<button type="button" data-hgunmerge="${esc(ci.mergeGroup)}" title="합치기 해제" style="position:absolute;top:2px;right:2px;border:none;background:#e6e9f0;color:#5a6478;border-radius:4px;width:16px;height:16px;line-height:16px;font-size:.66rem;cursor:pointer;padding:0">✕</button>`:'';
+      // 합쳐지지 않은 낱개 행에서만 "지난달 과목명 그대로 가져오기" 버튼을 보여준다(합친 행은 어느 과목을 가져올지 애매해서 제외)
+      const restoreBtn=(ci.span===1)?`<button type="button" data-hgrestoreprev="${r.id}" title="지난달 과목명(${esc(r.subject)}) 그대로 가져오기" style="flex:none;border:none;background:#e6e9f0;color:#5a6478;border-radius:4px;padding:2px 5px;font-size:.66rem;cursor:pointer;white-space:nowrap">↺</button>`:'';
       const targetCells = ci.isHead ? `
-    <td rowspan="${ci.span}" style="border:1px solid var(--line);padding:6px;text-align:center;font-weight:700;position:relative;vertical-align:middle">${unmergeBtn}${txtCell(r.targetSubject,'targetSubject',r.id,false,ci.span>1?ci.mergeGroup:null)}</td>
+    <td rowspan="${ci.span}" style="border:1px solid var(--line);padding:6px;text-align:center;font-weight:700;position:relative;vertical-align:middle"><div style="display:flex;align-items:center;gap:3px">${unmergeBtn}<div style="flex:1;min-width:0">${txtCell(r.targetSubject,'targetSubject',r.id,false,ci.span>1?ci.mergeGroup:null)}</div>${restoreBtn}</div></td>
     <td style="border:1px solid var(--line);padding:6px;text-align:center">${teaCell(r.prevTeacher,'prevTeacher',r.id)}</td>
     <td rowspan="${ci.span}" style="border:1px solid var(--line);padding:6px;text-align:center;vertical-align:middle">${teaCell(r.targetTeacher,'targetTeacher',r.id,ci.span>1?ci.mergeGroup:null)}</td>
     <td rowspan="${ci.span}" style="border:1px solid var(--line);padding:6px;background:#fff3cd;vertical-align:middle">${txtCell(r.book,'book',r.id,true,ci.span>1?ci.mergeGroup:null)}</td>
@@ -5913,6 +5918,16 @@ function bindHandoverGrid(){
     const mg=btn.dataset.hgunmerge;
     const g=handoverGridFor(a, state.hgMonth); if(!g) return;
     g.rows.forEach(r=>{ if(r.mergeGroup===mg) r.mergeGroup=null; });
+    g.updatedAt=Date.now();
+    save(); render(true);
+  });
+  // "↺" 버튼 — 이번달 과목명 칸을 지난달 과목명 그대로 되돌려 받아온다
+  v.querySelectorAll('[data-hgrestoreprev]').forEach(btn=>btn.onclick=(e)=>{
+    e.preventDefault(); e.stopPropagation();
+    const rid=btn.dataset.hgrestoreprev;
+    const g=handoverGridFor(a, state.hgMonth); if(!g) return;
+    const row=g.rows.find(r=>r.id===rid); if(!row) return;
+    row.targetSubject=row.subject;
     g.updatedAt=Date.now();
     save(); render(true);
   });
