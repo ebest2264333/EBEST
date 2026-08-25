@@ -5696,7 +5696,9 @@ function genHandoverRows(academy, targetMonth){
       rows.push({
         id: genStudentId(),
         prevClass: pc.name, targetClass: tc?tc.name:'',
-        subject: s.subject||'',
+        subject: s.subject||'', // 지난달 과목명 — 참고용, 수정 안 됨
+        targetSubject: ts?(ts.subject||s.subject||''):(s.subject||''), // 이번달 과목명 — 지난달과 다르게 바뀌었으면 직접 고쳐 적는 칸
+        matchKey: s.subject||'', // "자료로 다시 채우기" 할 때 행을 다시 찾아 짝짓는 기준(지난달 원래 과목명, 화면엔 안 보임)
         prevTeacher: s.teacher||'', targetTeacher: ts?(ts.teacher||''):'',
         book: ts?(ts.book||''):'',
         lastHw: s.hw||'N/A',
@@ -5719,7 +5721,7 @@ function regenHandoverGrid(academy, targetMonth, onlyTeacherName){
   const freshRows=genHandoverRows(academy,targetMonth);
   let rows=onlyTeacherName ? freshRows.map(fr=>{
     if(norm(fr.prevTeacher)===norm(onlyTeacherName)) return fr; // 내가 담당했던 과목 → 최신 자료로 새로 채움
-    const match=old.find(o=>norm(o.prevClass)===norm(fr.prevClass) && norm(o.subject)===norm(fr.subject));
+    const match=old.find(o=>norm(o.prevClass)===norm(fr.prevClass) && norm(o.matchKey||o.subject)===norm(fr.matchKey||fr.subject));
     return match ? {...match} : fr; // 다른 선생님 과목 → 예전에 저장된(직접 수정한) 값 유지, 새로 생긴 행이면 새 값 사용
   }) : freshRows;
   // 반명(targetClass)은 직접 입력해둔 적이 있으면 새로고침 범위(내 것만/전체)와 상관없이 절대 되돌아가지 않게 강제로 유지한다
@@ -5732,7 +5734,7 @@ function regenHandoverGrid(academy, targetMonth, onlyTeacherName){
 }
 // 인수인계표 칸 너비 — 보는 사람 화면(이 브라우저)에서만 적용, 저장/동기화 안 됨(다른 선생님에게 영향 없음)
 const HG_COLS=[
-  {key:'prevClass', w:90}, {key:'targetClass', w:90}, {key:'subject', w:74},
+  {key:'prevClass', w:90}, {key:'targetClass', w:90}, {key:'subject', w:74}, {key:'targetSubject', w:74},
   {key:'prevTeacher', w:78}, {key:'targetTeacher', w:78}, {key:'book', w:150},
   {key:'lastHw', w:150}, {key:'progress', w:78}, {key:'note', w:150}, {key:'targetProgress', w:78}
 ];
@@ -5796,23 +5798,20 @@ function renderHandoverGrid(){
   };
   const txtCell=(val, field, rid, wide)=>`<input type="text" value="${esc(val||'')}" data-hgfield="${rid}|${field}" style="width:100%;border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-family:inherit;font-size:.8rem">`;
   const colw=hgColWidths();
-  const colLabels=[`${prevLabel} 반명`,`${targetLabel} 반명`,'과목명',`${prevLabel} 담당`,`${targetLabel} 담당`,`${targetLabel} 교재`,'지난 과제','진도','특이사항',`${targetLabel} 진도`];
-  h+=`${teacherDatalist(a)}<div style="overflow-x:auto"><table style="border-collapse:collapse;table-layout:fixed;width:max-content;min-width:100%">
+  const colLabels=[`${prevLabel} 반명`,`${targetLabel} 반명`,`${prevLabel} 과목명`,`${targetLabel} 과목명`,`${prevLabel} 담당`,`${targetLabel} 담당`,`${targetLabel} 교재`,'지난 과제','진도','특이사항',`${targetLabel} 진도`];
+  const hgOpts=hgClassOptions(a,targetMonth);
+  h+=`${teacherDatalist(a)}<datalist id="dl_hgclass_${a}">${hgOpts.map(nm=>`<option value="${esc(nm)}">`).join('')}</datalist><div style="overflow-x:auto"><table style="border-collapse:collapse;table-layout:fixed;width:max-content;min-width:100%">
   <colgroup>${HG_COLS.map(c=>`<col style="width:${colw[c.key]}px">`).join('')}</colgroup>
   <thead><tr>${HG_COLS.map((c,ci)=>`<th style="position:relative;background:var(--ink);color:#fff;padding:7px 14px 7px 8px;font-size:.76rem;text-align:center;border:1px solid #333;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${esc(colLabels[ci])}">${colLabels[ci]}<span class="hg-resizer" data-col="${c.key}" title="드래그해서 칸 너비 조절 (이 화면에서만 적용)" style="position:absolute;right:0;top:0;bottom:0;width:8px;cursor:col-resize;user-select:none"></span></th>`).join('')}</tr></thead><tbody>
   ${groups.map(g2=>{
-    const hgOpts=hgClassOptions(a,targetMonth);
     const curTarget=(g2.rows[0]||{}).targetClass||'';
-    const optsHtml=[`<option value="">— 미배정 —</option>`,
-      ...(curTarget && !hgOpts.includes(curTarget) ? [`<option value="${esc(curTarget)}" selected>${esc(curTarget)} (목록에 없음)</option>`] : []),
-      ...hgOpts.map(nm=>`<option value="${esc(nm)}" ${curTarget===nm?'selected':''}>${esc(nm)}</option>`)
-    ].join('');
     return g2.rows.map((r,ri)=>`<tr>
     ${ri===0?`<td rowspan="${g2.rows.length}" style="border:1px solid var(--line);padding:6px;text-align:center;font-weight:800;background:#f6f8fc;vertical-align:middle">${esc(r.prevClass)}</td>
     <td rowspan="${g2.rows.length}" style="border:1px solid var(--line);padding:6px;text-align:center;vertical-align:middle">
-      <select data-hggroupclass="${esc(g2.key)}" style="width:100%;min-width:90px;border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-family:inherit;font-size:.8rem;font-weight:800;text-align:center;${curTarget?'':'color:#c0392b'}">${optsHtml}</select>
+      <input type="text" list="dl_hgclass_${a}" data-hggroupclass="${esc(g2.key)}" value="${esc(curTarget)}" placeholder="반 선택·직접 입력" style="width:100%;min-width:90px;border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-family:inherit;font-size:.8rem;font-weight:800;text-align:center;${curTarget?'':'color:#c0392b'}">
     </td>`:''}
-    <td style="border:1px solid var(--line);padding:6px;text-align:center;font-weight:700">${esc(r.subject)}</td>
+    <td style="border:1px solid var(--line);padding:6px;text-align:center;font-weight:700;color:var(--sub)" title="지난달 과목명 — 참고용, 수정 안 됨">${esc(r.subject)}</td>
+    <td style="border:1px solid var(--line);padding:6px;text-align:center;font-weight:700">${txtCell(r.targetSubject,'targetSubject',r.id)}</td>
     <td style="border:1px solid var(--line);padding:6px;text-align:center">${teaCell(r.prevTeacher,'prevTeacher',r.id)}</td>
     <td style="border:1px solid var(--line);padding:6px;text-align:center">${teaCell(r.targetTeacher,'targetTeacher',r.id)}</td>
     <td style="border:1px solid var(--line);padding:6px;background:#fff3cd">${txtCell(r.book,'book',r.id,true)}</td>
