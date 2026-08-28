@@ -3889,6 +3889,10 @@ function stayFor(d){ return store.stayback[d]=store.stayback[d]||{}; }
 function cdays(c){ return store.daysedit[ckey(c)] || c.days || ''; }
 function subjOnDay(s,d){ return !s.day || String(s.day).includes(d); } // s.day는 "화,목"처럼 여러 요일 가능
 function isWordTestSubject(s){ return !!(s && s.subject && String(s.subject).replace(/\s/g,'')==='단어시험'); } // 단어시험 일정은 출석·업무일지 집계에서 제외
+function isSelfStudySubj(subj){ // IBT·L/C는 어학실에서 자체적으로 진행돼 업무일지·주간 진도계획표 자동 생성 대상이 아님
+  const sn=String(subj||'').trim().toUpperCase().replace(/\s+/g,'');
+  return sn==='IBT' || sn==='L/C' || sn==='LC';
+}
 // 출석은 이제 "반" 단위가 아니라 "그날 그 반의 과목(수업)" 단위로 기록한다 (예: RC는 결석, 뒤 GR 수업엔 출석 — 그런 경우 반영)
 function daySubjectNames(c, wd){
   const daySubjects=(c.subjects||[]).filter(s=>subjOnDay(s,wd)&&!isWordTestSubject(s));
@@ -5121,7 +5125,7 @@ function autoLessons(who, date){
       const asn=(store.assign[month]||{})[ckey(c)];
       subs=(asn===w.i) ? daySubs.filter(s=>(s.subject||s.book)) : [];
     }
-    subs=subs.filter(s=>String(s.subject||'').trim().toUpperCase()!=='IBT'); // IBT는 수업내용·진도 자동 채움 대상에서 제외
+    subs=subs.filter(s=>!isSelfStudySubj(s.subject)); // IBT·L/C는 어학실에서 자체 진행돼 수업내용·진도 자동 채움 대상에서 제외
     if(!subs.length) return;
     const asg=((((store.homework[date]||{})[ckey(c)])||{})['_assign']||{}).note||'';
     if(c.examOnly){
@@ -5417,7 +5421,7 @@ function latestMprogFor(who, cls, beforeDate){
     const lessons=(existing && existing.lessons && existing.lessons.length) ? existing.lessons : autoLessons(who,d);
     lessons.forEach(L=>{
       const lesson=L.lesson!=null?L.lesson:L.subject;
-      if(String(lesson||'').trim().toUpperCase()==='IBT') return; // IBT는 주간 진도계획표 작성 대상에서 제외
+      if(isSelfStudySubj(lesson)) return; // IBT·L/C는 주간 진도계획표 작성 대상에서 제외
       const [p1,p2]=splitProg(L.prog);
      rows.push({date:d, cls:L.cls, book:L.book, subj:L.subj||L.subject||'', prog:p1, test:'', hw:L.hw, mprog:p2||latestMprogFor(who, L.cls, d)});
     });
@@ -5660,10 +5664,12 @@ function handoverGridFor(academy, targetMonth){
   store.handoverGrid[academy]=store.handoverGrid[academy]||{};
   return store.handoverGrid[academy][targetMonth];
 }
-// 인수인계표에 넣지 않을 과목(수업이 아니라 관리성 항목이라 반별 진도 인계 대상이 아님)
-const HANDOVER_EXCLUDE_SUBJ=['ibt','단어시험'];
+// 인수인계표에 넣지 않을 과목(수업이 아니라 관리성 항목·어학실 자체 진행 과목이라 반별 진도 인계 대상이 아님)
+const HANDOVER_EXCLUDE_SUBJ=['ibt','단어시험','l/c'];
+const HANDOVER_EXCLUDE_SUBJ_EXACT=['lc']; // 'lc'는 부분일치로 걸면 다른 과목명(예: "calc")까지 잘못 걸릴 수 있어 완전히 같을 때만 제외
 function isHandoverExcludedSubj(subj){
   const sn=norm(subj);
+  if(HANDOVER_EXCLUDE_SUBJ_EXACT.includes(sn)) return true;
   return HANDOVER_EXCLUDE_SUBJ.some(x=>sn===x || sn.includes(x));
 }
 // 그 반(academy 전체 선생님 대상)의 주간 진도계획표에서, 지정한 날짜까지 가장 최근에 적힌 "○월 진도"(mprog)를 찾는다
