@@ -7511,7 +7511,40 @@ function ttgColorKey(fill){
   if(!c||c==='00000000') return null;
   return c.toUpperCase();
 }
+// ARGB 8자리 헥스 두 개의 RGB 유클리드 거리(0~441). 엑셀 셀 색이 등록된 선생님 색과 완전히 똑같지 않아도
+// (색상표에서 살짝 다른 톤을 골랐거나, 저장 과정에서 미세하게 값이 바뀐 경우 등) 비슷한 색이면 같은 선생님으로 인식하기 위함.
+function ttgColorDist(a,b){
+  const pa=[parseInt(a.substr(2,2),16),parseInt(a.substr(4,2),16),parseInt(a.substr(6,2),16)];
+  const pb=[parseInt(b.substr(2,2),16),parseInt(b.substr(4,2),16),parseInt(b.substr(6,2),16)];
+  return Math.sqrt((pa[0]-pb[0])**2+(pa[1]-pb[1])**2+(pa[2]-pb[2])**2);
+}
+const TTG_COLOR_MATCH_THRESHOLD=40; // 경험적 기준값 — 너무 크면 서로 다른 선생님 색끼리 혼동될 수 있어 적당히 보수적으로 잡음
+function ttgResolveColorTeacher(ck, colorMap){
+  if(colorMap[ck]) return colorMap[ck]; // 정확히 일치하면 그대로 사용
+  let best=null, bestDist=Infinity;
+  Object.keys(colorMap).forEach(k=>{
+    const d=ttgColorDist(ck,k);
+    if(d<bestDist){ bestDist=d; best=colorMap[k]; }
+  });
+  return (best!==null && bestDist<=TTG_COLOR_MATCH_THRESHOLD) ? best : null;
+}
+// 마지막 시간표 블록은 뒤에 다음 블록 마커("반"/"반명")가 없어서 원래는 시트 끝(maxCol)까지를 전부 반 이름 칸으로 봤는데,
+// 실제 파일들 중엔 시간표 오른쪽에 "선생님 범례"나 "합반 메모" 같은 전혀 다른 내용이 있는 경우가 있어서(예: 그 안에
+// 우연히 사람 이름이나 "OO1,2"처럼 반 이름과 비슷하게 생긴 텍스트가 적혀 있으면 그게 새 반·과목으로 잘못 인식됨).
+// 진짜 반 이름들 사이엔 여백 칸이 하나 정도 있을 수 있지만(반 그룹 사이 간격), 두 칸 이상 연달아 비면 거기서부터는
+// 시간표가 아니라고 보고 잘라낸다.
+function ttgTrimTrailingZone(ws, headerRow, classStart, maxCol){
+  let end=classStart-1, blanks=0;
+  for(let c=classStart;c<=maxCol;c++){
+    const v=String(ws.getCell(headerRow,c).value||'').trim();
+    if(v){ end=c; blanks=0; }
+    else{ blanks++; if(blanks>=2) break; }
+  }
+  return end;
+}
+const TTG_LEGEND_COL=26; // Z열(26번째 칸)부터는 시간표가 아니라 항상 "선생님 이름" 범례 칸이라, 그 오른쪽은 반·과목 인식 대상에서 아예 제외한다
 function ttgFindZones(ws, headerRow, maxCol){
+  maxCol=Math.min(maxCol, TTG_LEGEND_COL-1);
   const markers=[];
   // 실제 학원 파일들은 두번째 이후 시간표 블록의 표시가 "반명"이 아니라 그냥 "반"으로 되어있는 경우가 많아 둘 다 인식
   for(let c=1;c<=maxCol;c++){ const v=String(ws.getCell(headerRow,c).value||'').trim(); if(v==='반명'||v==='반') markers.push(c); }
@@ -7520,7 +7553,8 @@ function ttgFindZones(ws, headerRow, maxCol){
     let cs=timeCol+(i===0?2:1);
     // 헤더 칸이 비어있으면(포맷에 따라 시간 칸 하나가 더 끼어있는 경우) 실제 반명이 나오는 칸까지 건너뛴다
     while(cs<=maxCol && !String(ws.getCell(headerRow,cs).value||'').trim()) cs++;
-    return { timeCol, classStart: cs, classEnd: (i+1<starts.length? starts[i+1]-1 : maxCol) };
+    const isLast=(i+1>=starts.length);
+    return { timeCol, classStart: cs, classEnd: isLast ? ttgTrimTrailingZone(ws,headerRow,cs,maxCol) : (starts[i+1]-1) };
   });
 }
 function ttgParseWorkbook(ws, colorMap, codeMap){
@@ -7542,32 +7576,30 @@ function ttgParseWorkbook(ws, colorMap, codeMap){
       zones.forEach(z=>{ for(let c=z.classStart;c<=z.classEnd;c++){ const v=String(ws.getCell(headerRow,c).value||'').trim(); if(v) classNameOf[c]=v; } });
       let r2=r+1; while(r2<=maxRow && !isDayHeader(r2)) r2++;
       const blockEnd=r2-1;
-      const running={};
-      const flush=(col)=>{ const run=running[col]; if(run){ results.push({day, className:classNameOf[col], subject:run.subject, room:run.room, teacher:run.teacher, time:run.startTime+'-'+run.endTime, isWordTest:!!run.isWordTest}); delete running[col]; } };
+      // 시간표 격자에서 같은 과목·강의실·담당이 옆 시간 칸에도 이어져 있으면(예: 7:40~8:20, 8:20~9:00, 9:00~9:45가 전부 같은 수업),
+      // 예전엔 이걸 하나로 합쳐 "7:40~9:45" 한 줄로 만들었는데, 실제로는 칸에 적힌 시간 구간 그대로 각각 따로 입력해야 한다고
+      // 해서 합치지 않고 격자 한 칸(시간 구간)마다 결과를 하나씩 그대로 만든다.
       for(let rr=headerRow+1; rr<=blockEnd; rr++){
         for(const z of zones){
           const tr=ttgTimeRange(ws.getCell(rr,z.timeCol).value);
-          if(!tr){ for(let c=z.classStart;c<=z.classEnd;c++) flush(c); continue; }
+          if(!tr) continue;
           for(let c=z.classStart;c<=z.classEnd;c++){
             if(!classNameOf[c]) continue;
             const cell=ws.getCell(rr,c);
             const parsed=ttgParseCell(cell.value);
-            if(!parsed){ flush(c); continue; }
+            if(!parsed) continue;
             let teacher=null;
             if(parsed.code){
               teacher=codeMap[parsed.code.toUpperCase()]||null;
               if(!teacher) unresolved.push({day,className:classNameOf[c],reason:'code',code:parsed.code,text:cell.value});
             } else if(!parsed.isWordTest){
               const ck=ttgColorKey(cell.fill);
-              if(ck){ teacher=colorMap[ck]||null; if(!teacher) unresolved.push({day,className:classNameOf[c],reason:'color',color:ck,text:cell.value}); }
+              if(ck){ teacher=ttgResolveColorTeacher(ck,colorMap)||null; if(!teacher) unresolved.push({day,className:classNameOf[c],reason:'color',color:ck,text:cell.value}); }
             }
-            const run=running[c];
-            if(run && run.subject===parsed.subject && run.room===parsed.room && run.teacher===teacher){ run.endTime=tr.end; }
-            else{ flush(c); running[c]={subject:parsed.subject, room:parsed.room, teacher, startTime:tr.start, endTime:tr.end, isWordTest:parsed.isWordTest}; }
+            results.push({day, className:classNameOf[c], subject:parsed.subject, room:parsed.room, teacher, time:tr.start+'-'+tr.end, isWordTest:!!parsed.isWordTest});
           }
         }
       }
-      Object.keys(running).forEach(c=>flush(Number(c)));
       r=r2;
     } else r++;
   }
@@ -7908,7 +7940,9 @@ function applyTtGridUpdate(){
     targets.forEach(target=>{
       perTarget[target]=perTarget[target]||[];
       byKey[key].forEach(x=>{
-        let group=perTarget[target].find(gr=>gr.subject===x.subject && gr.time===x.time && (gr.room||'')===(x.room||'') && (gr.teacher||'')===(x.teacher||''));
+        // 과목명은 대소문자·띄어쓰기 차이(예: "Gr" vs "GR")가 있어도 같은 과목으로 보고 묶는다 — 엑셀이 요일 구역마다
+        // 따로 입력돼 있어서 같은 과목인데 표기가 살짝 다르게 적히는 경우가 실제로 많았음.
+        let group=perTarget[target].find(gr=>norm(gr.subject)===norm(x.subject) && gr.time===x.time && (gr.room||'')===(x.room||'') && (gr.teacher||'')===(x.teacher||''));
         if(!group){ group={subject:x.subject, time:x.time, room:x.room||'', teacher:x.teacher||'', days:new Set()}; perTarget[target].push(group); }
         group.days.add(x.day);
       });
@@ -7923,13 +7957,17 @@ function applyTtGridUpdate(){
     const origSubjects=c.subjects.slice(); // 합치기 전 원본 스냅샷 — 기존에 적어둔 교재·과제·진도를 그대로 이어가기 위해 씀
     perTarget[target].forEach(group=>{
       const dayStr=[...group.days].sort((a,b)=>TTG_DAYS.indexOf(a)-TTG_DAYS.indexOf(b)).join(',');
-      const sameKey=sub=>(sub.subject||'')===group.subject && (sub.time||'')===group.time && (sub.room||'')===group.room && (sub.teacher||'')===group.teacher;
-      const oldMatch=origSubjects.find(sameKey) || origSubjects.find(sub=>(sub.subject||'')===group.subject) || origSubjects.find(sub=>subjSimilar(sub.subject, group.subject));
+      // 과목명은 대소문자·띄어쓰기가 완전히 같지 않아도(norm 기준) 같은 과목으로 보고 예전 줄을 찾는다 —
+      // "지난달 Gr"이 이번 업로드에 "GR"로 적혀 있어도 새 과목으로 취급되지 않도록.
+      const sameKey=sub=>norm(sub.subject||'')===norm(group.subject) && (sub.time||'')===group.time && (sub.room||'')===group.room && (sub.teacher||'')===group.teacher;
+      const oldMatch=origSubjects.find(sameKey) || origSubjects.find(sub=>norm(sub.subject||'')===norm(group.subject)) || origSubjects.find(sub=>subjSimilar(sub.subject, group.subject));
       // 지금 이 요일 묶음으로 새로 합쳐질 항목과 겹치던(같은 과목·시간·강의실·담당이라 요일 조각으로 남아있던) 예전 줄들은 지우고, 합쳐진 한 줄로 대체한다.
       // c.subjects 배열 자체가 store에 저장된 실제 배열이므로(재할당하면 그 연결이 끊어져 저장이 안 됨) splice로 제자리에서 지운다.
       for(let i=c.subjects.length-1;i>=0;i--){ if(sameKey(c.subjects[i])) c.subjects.splice(i,1); }
       c.subjects.push({
-        subject:group.subject, day:dayStr, time:group.time, room:group.room, teacher:group.teacher,
+        // 과목명 표기는 원래 적혀있던 것(oldMatch)이 있으면 그걸 그대로 이어가고, 아예 새 과목일 때만 이번에 올라온 표기를 쓴다
+        // — 이래야 매번 업로드할 때마다 대소문자가 바뀌는 엑셀 표기 때문에 계속 새 과목처럼 보이는 일이 없다.
+        subject:(oldMatch&&oldMatch.subject)||group.subject, day:dayStr, time:group.time, room:group.room, teacher:group.teacher,
         book:(oldMatch&&oldMatch.book)||'', hw:(oldMatch&&oldMatch.hw)||'', progress:(oldMatch&&oldMatch.progress)||'', note:(oldMatch&&oldMatch.note)||''
       });
       subN++;
