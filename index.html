@@ -5429,6 +5429,10 @@ function wpGet(who, wkStart, days){
   if(!store.weekplan[who][wkStart]){
     store.weekplan[who][wkStart]={rows:autoWeekRows(who,days), updatedAt:0}; // updatedAt:0 — 빈 초안이 다른 기기의 실제 내용을 덮어쓰지 않도록
     save();
+  } else if(!Array.isArray(store.weekplan[who][wkStart].rows)){
+    // 예전 제출물 등으로 rows가 없는 손상된 자료가 들어와 있으면(화면이 하얗게 깨지는 원인), 자동으로 다시 채워 복구한다
+    store.weekplan[who][wkStart].rows=autoWeekRows(who,days);
+    save();
   }
   return store.weekplan[who][wkStart];
 }
@@ -5449,7 +5453,7 @@ function weekPlanForm(who, days, readOnly){
       <span style="margin-left:auto;display:flex;gap:8px;align-items:center">${readOnly?'':submitBtn('weekplan',who,days[0],w.t.color)+'<button class="btn small" id="wpRefill">자료로 다시 채우기</button>'}</span></h2>
     <div style="overflow-x:auto;margin-top:8px"><table style="min-width:900px;border-collapse:collapse">
     <thead><tr>${['날짜','반명','교재','과목','진도','테스트','과제',mo+'월 진도',''].map(x=>`<th style="background:var(--ink);color:#fff;padding:6px 8px;font-size:.72rem;text-align:center">${x}</th>`).join('')}</tr></thead><tbody>`;
-  wp.rows.forEach((r,i)=>{
+  (wp.rows||[]).forEach((r,i)=>{
     const wd=r.date?wdOf(r.date):'';
     const cell=(f,w2)=>`<td style="border:1px solid #e7eaf2;padding:2px"><input type="text" class="wp-c" data-i="${i}" data-f="${f}" value="${esc(r[f]||'')}" ${readOnly?'disabled':''} style="width:${w2||'100%'};border:none;padding:5px 7px;font-family:inherit;font-size:.8rem;background:transparent;text-align:center"></td>`;
     const subjOpts=subjectOptionsForClass(w.a, r.cls, r.date);
@@ -5589,7 +5593,7 @@ function repWeekPlan(who, days){
     <div style="height:8px"></div>`;
   h+=`<table style="width:100%;border-collapse:collapse;${rF}"><tr>
     ${['YYYY-MM-DD','강사명','반명','교재','진도','테스트','과제',mo+'월 진도'].map(x=>`<td style="${BD}background:#16233b;color:#ffffff;font-weight:bold;font-size:8.5pt;text-align:center;padding:5px">${x}</td>`).join('')}</tr>`;
-  const rows=[...wp.rows].filter(r=>r.cls||r.book).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  const rows=[...(wp.rows||[])].filter(r=>r.cls||r.book).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
   rows.forEach(r=>{
     const wd=r.date?wdOf(r.date):'';
     h+=`<tr><td style="${BD}background:${WDCOLOR[wd]||'#fff'};text-align:center;font-size:9pt;font-weight:bold;padding:4px;white-space:nowrap">${esc(r.date||'')}</td>
@@ -5617,7 +5621,7 @@ function handoverForm(who, month, readOnly){
   const w=whoTeacher(who); const hd=handoverGet(who,month);
   const days=weekOf(todayISO());
   const wp=wpGet(who,days[0],days); // 이번 주 진도계획표 (선생님이 직접 쓴 내용까지 반영된, 살아있는 자료)
-  const rows=[...wp.rows].filter(r=>r.cls||r.book).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  const rows=[...(wp.rows||[])].filter(r=>r.cls||r.book).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
   const savedLabel = hd.updatedAt ? '마지막 작성 · '+new Date(hd.updatedAt).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Seoul'}) : '이번 달 아직 작성 안 됨';
   let h=`<div class="mypanel" style="border-top-color:${w.t.color}">
     <h2><span class="tdot" style="background:${w.t.color}"></span>인수인계표 — ${esc(w.t.name)} 선생님
@@ -6383,7 +6387,7 @@ function submitDoc(kind, who, ref){
   } else if(kind==='weekplan'){
     payload=store.weekplan[who]&&store.weekplan[who][ref];
     label=`주간 진도계획표 ${ref} 주간`;
-    summary=`수업 계획 ${(payload?payload.rows.filter(r=>r.cls).length:0)}줄`;
+    summary=`수업 계획 ${(payload&&Array.isArray(payload.rows)?payload.rows.filter(r=>r.cls).length:0)}줄`;
   } else if(kind==='consult'){
     const asn=store.assign[ref]||{}; const rec=store.records[ref]||{}; const cm=(store.cmemo[ref]||{});
     const recs={}, cms={}; let n=0;
@@ -6474,7 +6478,11 @@ function importSubmission(pack){
     const p=pack.payload||{};
     store.worklog[who][pack.ref]={monthly:p.monthly||[], weekly:p.weekly||[], today:p.today||[], tomorrow:p.tomorrow||[], lessons:p.lessons||[], updatedAt:p.updatedAt||Date.now()};
   }
-  else if(pack.kind==='weekplan'){ store.weekplan[who]=store.weekplan[who]||{}; store.weekplan[who][pack.ref]=pack.payload; }
+  else if(pack.kind==='weekplan'){
+    store.weekplan[who]=store.weekplan[who]||{};
+    const p=pack.payload||{};
+    store.weekplan[who][pack.ref]={rows:Array.isArray(p.rows)?p.rows:[], updatedAt:p.updatedAt||Date.now()}; // rows가 없는 손상된 제출물이 들어와도 화면이 안 깨지게 항상 배열로 채워둠
+  }
   else if(pack.kind==='consult'){
     const mo=pack.ref;
     store.records[mo]=store.records[mo]||{}; store.cmemo[mo]=store.cmemo[mo]||{}; store.assign[mo]=store.assign[mo]||{};
