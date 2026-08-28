@@ -7609,6 +7609,14 @@ function ttgMergedNameCandidates(nm){
 }
 const TTG_KEY_SEP='␟'; // 반이름과 요일을 합쳐 매칭 대상 선택의 단위 키로 쓴다("이름" 하나가 아니라 "이름+요일" 단위로 반영할 반을 따로 고를 수 있도록)
 function ttgKey(nm, day){ return nm+TTG_KEY_SEP+day; }
+// 과목명이 완전히 똑같지 않아도(띄어쓰기·오타·약간의 표기 차이 등) 한쪽 이름이 다른 쪽을 포함하면 "같은 과목"으로 보고
+// 예전에 적어둔 담당·교재·과제·진도를 이어받는다 — 그리드 시간표 업로드마다 매번 새로 적어야 하는 번거로움을 줄이기 위함.
+function subjSimilar(a,b){
+  const na=norm(a), nb=norm(b);
+  if(!na||!nb) return false;
+  if(na===nb) return true;
+  return na.includes(nb) || nb.includes(na);
+}
 function ttgAutoMatchClasses(nm, existing){
   // 1) 원본 이름과 완전히 똑같은 반이 실제로 있으면(이름 자체를 합반명으로 쓰는 경우) 그것만 사용
   const exact=existing.find(c=>c.name.trim()===nm.trim());
@@ -7630,6 +7638,15 @@ function ttgParseSheet(academy, wb, sheetName, examOnly){
     });
     const {results, unresolved}=ttgParseWorkbook(ws, colorMap, codeMap);
     if(!results.length){ if(statusEl) statusEl.textContent='시간표 형식을 인식하지 못했습니다. (시트: '+sheetName+')'; return; }
+    // L/C·IBT는 실제로는 어학실 선생님이 공통으로 담당하는 경우가 많은데, 엑셀에 색상·코드로 담당이 안 적혀 있으면 담당 없이 빈 채로 들어온다.
+    // [환경설정]에 어학실 기본 담당을 적어뒀으면, 담당이 비어있는 L/C·IBT 항목에 한해 자동으로 채워준다.
+    const ttgLangTeacher=(store.ttgLangTeacher||'').trim();
+    if(ttgLangTeacher){
+      results.forEach(x=>{
+        const su=String(x.subject||'').trim().toUpperCase();
+        if((su==='L/C'||su==='LC'||su==='IBT') && !String(x.teacher||'').trim()) x.teacher=ttgLangTeacher;
+      });
+    }
     // 반명 자동 매칭 (해당 학원 · 이번 달 기존 반과 이름이 정확히 같으면 자동 연결). 한 칸에 여러 반이 합반으로 적혀있을 수도 있고,
     // 같은 이름이라도 요일마다 합반 여부가 다를 수 있어서(예: 금요일만 합반) — 반영할 반은 "이름+요일" 단위로 각각 따로 고를 수 있게 한다.
     const existing=ttgExistingClasses(academy, examOnly);
@@ -7877,20 +7894,41 @@ function applyTtGridUpdate(){
   // "이름+요일" 단위로 묶어서, 각 (이름,요일)에 실제로 선택된 반들에게만 그 요일 항목을 반영한다
   const byKey={};
   g.results.forEach(x=>{ const k=ttgKey(x.className,x.day); (byKey[k]=byKey[k]||[]).push(x); });
+  // 반(target)별로 실제 반영할 항목을 먼저 모아서, 같은 과목·시간·강의실·담당이면 요일만 달라도 한 줄로 합친다
+  // (엑셀이 요일별 구역으로 나뉘어 있어서 그냥 두면 "월","수","금"이 각각 별도 줄로 계속 쌓이는 문제가 있었음)
+  const perTarget={};
   Object.keys(byKey).forEach(key=>{
     const targets=g.classMap[key]||[]; if(!targets.length) return;
     targets.forEach(target=>{
-      const c=existing.find(x=>x.name===target); if(!c) return;
-      c.subjects=c.subjects||[];
-      touchedClasses.add(c);
+      perTarget[target]=perTarget[target]||[];
       byKey[key].forEach(x=>{
-        let s=c.subjects.find(sub=>(sub.subject||'')===x.subject && (sub.day||'')===x.day);
-        if(!s){ s={subject:x.subject, day:x.day, book:'', hw:'', progress:'', note:''}; c.subjects.push(s); }
-        s.time=x.time; s.room=x.room||''; s.teacher=x.teacher||'';
-        subN++;
+        let group=perTarget[target].find(gr=>gr.subject===x.subject && gr.time===x.time && (gr.room||'')===(x.room||'') && (gr.teacher||'')===(x.teacher||''));
+        if(!group){ group={subject:x.subject, time:x.time, room:x.room||'', teacher:x.teacher||'', days:new Set()}; perTarget[target].push(group); }
+        group.days.add(x.day);
       });
-      c.updatedAt=Date.now();
     });
+  });
+  const realArr=editArr(g.academy, state.month); // classesFor()가 넘겨주는 건 사본이라, 실제 저장 배열에서 같은 반을 다시 찾아 거기에 직접 반영한다
+  Object.keys(perTarget).forEach(target=>{
+    const c0=existing.find(x=>x.name===target); if(!c0) return;
+    const c=realArr.find(x=>x._id===c0._id)||c0;
+    c.subjects=c.subjects||[];
+    touchedClasses.add(c);
+    const origSubjects=c.subjects.slice(); // 합치기 전 원본 스냅샷 — 기존에 적어둔 교재·과제·진도를 그대로 이어가기 위해 씀
+    perTarget[target].forEach(group=>{
+      const dayStr=[...group.days].sort((a,b)=>TTG_DAYS.indexOf(a)-TTG_DAYS.indexOf(b)).join(',');
+      const sameKey=sub=>(sub.subject||'')===group.subject && (sub.time||'')===group.time && (sub.room||'')===group.room && (sub.teacher||'')===group.teacher;
+      const oldMatch=origSubjects.find(sameKey) || origSubjects.find(sub=>(sub.subject||'')===group.subject) || origSubjects.find(sub=>subjSimilar(sub.subject, group.subject));
+      // 지금 이 요일 묶음으로 새로 합쳐질 항목과 겹치던(같은 과목·시간·강의실·담당이라 요일 조각으로 남아있던) 예전 줄들은 지우고, 합쳐진 한 줄로 대체한다.
+      // c.subjects 배열 자체가 store에 저장된 실제 배열이므로(재할당하면 그 연결이 끊어져 저장이 안 됨) splice로 제자리에서 지운다.
+      for(let i=c.subjects.length-1;i>=0;i--){ if(sameKey(c.subjects[i])) c.subjects.splice(i,1); }
+      c.subjects.push({
+        subject:group.subject, day:dayStr, time:group.time, room:group.room, teacher:group.teacher,
+        book:(oldMatch&&oldMatch.book)||'', hw:(oldMatch&&oldMatch.hw)||'', progress:(oldMatch&&oldMatch.progress)||'', note:(oldMatch&&oldMatch.note)||''
+      });
+      subN++;
+    });
+    c.updatedAt=Date.now();
   });
   const clsN=touchedClasses.size;
   save();
@@ -7979,6 +8017,10 @@ function renderSet(){
   if(!isTeacher){
     h+=`<div class="setsec" style="border:2px solid #6366f1"><h3>🕒 그리드 시간표 엑셀 업로드</h3>
       <div class="desc">요일별로 시간×반이 격자로 그려진 시간표 엑셀(수기로 만드시는 그 형식)을 그대로 올리면, 과목·시간·강의실·담당 선생님을 자동으로 읽어 반영합니다. 학생 명단·교재·진도 등 다른 자료는 건드리지 않습니다. 담당 선생님은 위 "${AC[academies()[0]].label} 선생님" 표에서 설정한 <b>시간표 코드·색상</b>으로 인식합니다 — 먼저 설정해두세요.</div>
+      <div class="cbtns">
+        <label style="font-size:.82rem;font-weight:700;color:var(--sub);display:flex;align-items:center;gap:6px">L/C·IBT 기본 담당(어학실) <input type="text" id="ttgLangTeacher" value="${esc(store.ttgLangTeacher||'')}" placeholder="예: 김어학" style="padding:6px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;width:120px"></label>
+      </div>
+      <div class="desc" style="margin-top:2px">엑셀에 담당 색상·코드가 없어 L/C·IBT 과목의 담당이 비어 있으면, 여기 적어둔 이름을 자동으로 채웁니다.</div>
       <div class="cbtns">
         <select id="ttgAcSel" style="padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${academies().map(a=>`<option value="${a}">${AC[a].label}</option>`).join('')}</select>
         <button class="btn primary" id="ttgBtn">🕒 그리드 시간표 엑셀 업로드</button><input type="file" id="ttgFile" accept=".xlsx,.xls" style="display:none">
@@ -8205,6 +8247,8 @@ function parseWorkbook(wb){
 }
 function bindTtGrid(){
   // 일반 업로드(설정 탭)와 내신반 전용 업로드([🎓 내신] 탭)가 시트 선택·미리보기·적용 로직을 그대로 공유한다
+  const ttgLangTeacher=document.getElementById('ttgLangTeacher');
+  if(ttgLangTeacher) ttgLangTeacher.onchange=()=>{ store.ttgLangTeacher=ttgLangTeacher.value.trim(); save(); };
   const ttgBtn=document.getElementById('ttgBtn'), ttgFile=document.getElementById('ttgFile');
   if(ttgBtn) ttgBtn.onclick=()=>ttgFile.click();
   const ttgDlBtn=document.getElementById('ttgDlBtn');
