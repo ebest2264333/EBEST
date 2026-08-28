@@ -5686,6 +5686,9 @@ function genHandoverRows(academy, targetMonth){
   const prevClasses=editArr(academy, prevMonth).filter(c=>!c._deleted && !c.examOnly);
   const targetClasses=editArr(academy, targetMonth).filter(c=>!c._deleted && !c.examOnly);
   const rows=[];
+  // 지난달 교재는 [반·교재] 탭의 반 카드에 적힌 교재명이 아니라, 지난달 인수인계표에서 그 반 담당 선생님이 직접 적어넣은
+  // "그 달 교재" 값을 우선으로 가져온다 — 실제로는 [반·교재] 카드의 교재 칸을 안 쓰고 인수인계표에만 적어두는 경우가 많기 때문
+  const prevGridDoc=(store.handoverGrid[academy]||{})[prevMonth];
   prevClasses.forEach(pc=>{
     const tc=targetClasses.find(x=>x.prev && norm(x.prev)===norm(pc.name)) || targetClasses.find(x=>norm(x.name)===norm(pc.name));
     const seenSubj=new Set(); // 같은 반 안에 똑같은 과목명이 여러 줄 있으면 한 줄만 남긴다
@@ -5696,6 +5699,7 @@ function genHandoverRows(academy, targetMonth){
       if(subjKey){ if(seenSubj.has(subjKey)) return; seenSubj.add(subjKey); }
       const ts=tc?(tc.subjects||[]).find(x=>norm(x.subject)===norm(s.subject)):null;
       const wpProgress=latestMprogForClassSubj(academy, pc.name, s.subject, prevMonth+'-31');
+      const prevGridRow=prevGridDoc ? (prevGridDoc.rows||[]).find(pr=>norm(pr.targetClass)===norm(pc.name) && norm(pr.matchKey||pr.subject)===norm(s.subject)) : null;
       rows.push({
         id: genStudentId(),
         prevClass: pc.name, targetClass: tc?tc.name:'',
@@ -5703,7 +5707,7 @@ function genHandoverRows(academy, targetMonth){
         targetSubject: ts?(ts.subject||s.subject||''):(s.subject||''), // 이번달 과목명 — 지난달과 다르게 바뀌었으면 직접 고쳐 적는 칸
         matchKey: s.subject||'', // "자료로 다시 채우기" 할 때 행을 다시 찾아 짝짓는 기준(지난달 원래 과목명, 화면엔 안 보임)
         prevTeacher: s.teacher||'', targetTeacher: ts?(ts.teacher||''):'',
-        prevBook: s.book||'', // 지난달 교재 — 참고용, 수정 안 됨
+        prevBook: (prevGridRow && prevGridRow.book) || s.book || '', // 지난달 교재 — 지난달 인수인계표에 적힌 값이나 반 카드의 교재명을 기본으로 채워주되, 직접 고쳐 입력할 수도 있음
         book: ts?(ts.book||''):'',
         lastHw: s.hw||'N/A',
         progress: wpProgress||s.progress||'',
@@ -5914,7 +5918,7 @@ function renderHandoverGrid(){
     ${targetSubjectTd}
     <td style="border:1px solid var(--line);padding:6px;text-align:center">${teaCell(r.prevTeacher,'prevTeacher',r.id)}</td>
     ${targetTeacherTd}
-    <td style="border:1px solid var(--line);padding:6px;color:var(--sub)" title="지난달 교재 — 참고용, 수정 안 됨">${esc(r.prevBook)}</td>
+    <td style="border:1px solid var(--line);padding:6px">${txtCell(r.prevBook,'prevBook',r.id,true)}</td>
     ${bookTd}
     <td style="border:1px solid var(--line);padding:6px">${txtCell(r.lastHw,'lastHw',r.id,true)}</td>
     <td style="border:1px solid var(--line);padding:6px;text-align:center">${txtCell(r.progress,'progress',r.id)}</td>
