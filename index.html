@@ -3874,7 +3874,14 @@ function updateWordDutyDay(a,m,id,day,value){
   c.updatedAt=Date.now();
   save(); render(true);
 }
-function classMeets(c, wd){ return cdays(c).includes(wd); }
+function classMeets(c, wd){
+  const cd=cdays(c);
+  if(cd) return cd.includes(wd);
+  // 반 자체의 요일(cdays)이 아예 설정 안 돼 있으면(그리드 시간표 업로드로 새로 생긴 반 등 — 과목마다는
+  // 요일이 붙어있는데 반 전체 요일은 따로 지정된 적이 없는 경우) 과목들에 실제로 붙어있는 요일을 대신 본다.
+  // 이게 없으면 시간표엔 분명 그 요일 수업이 있는데도 업무일지·주간 진도계획표에 그 반이 통째로 안 뜨게 된다.
+  return (c.subjects||[]).some(s=>s.day && String(s.day).split(',').map(x=>x.trim()).includes(wd));
+}
 function matchStudentByRosterName(academy, sname, className){
   // 반 명단 이름 문자열("영어(한글)" 또는 "한글(영어)" 둘 다 존재)로 학생 명단의 실제 학생 레코드를 찾는다.
   // 동명이인이 있을 수 있어 className이 주어지면 그 반 소속 학생을 우선한다.
@@ -5261,9 +5268,14 @@ function latestMprogFor(who, cls, beforeDate){
     // 실제로 적어서 제출한 내용을 그대로 가져온다 (간접적으로 반·과목 데이터에 동기화되길 기다리지 않음)
     const existing=(store.worklog[who]||{})[d];
     const lessons=(existing && existing.lessons && existing.lessons.length) ? existing.lessons : autoLessons(who,d);
+    // 같은 반의 같은 과목이 시간표상 여러 시간 칸(예: 7:40~8:20, 8:20~9:00처럼 연속된 칸)으로 나뉘어 있어도,
+    // 주간 진도계획표는 시간 단위가 아니라 반+과목 단위로 한 줄만 있으면 되므로 중복으로 줄이 쌓이지 않게 합친다.
+    const seen=new Set();
     lessons.forEach(L=>{
       const lesson=L.lesson!=null?L.lesson:L.subject;
       if(isSelfStudySubj(lesson)) return; // IBT·L/C는 주간 진도계획표 작성 대상에서 제외
+      const subjKey=(L.cls||'')+'␟'+norm(L.subj||L.subject||'');
+      if(seen.has(subjKey)) return; seen.add(subjKey);
       const [p1,p2]=splitProg(L.prog);
      rows.push({date:d, cls:L.cls, book:L.book, subj:L.subj||L.subject||'', prog:p1, test:'', hw:L.hw, mprog:p2||latestMprogFor(who, L.cls, d)});
     });
@@ -7825,6 +7837,11 @@ function applyTtGridUpdate(){
       });
       subN++;
     });
+    // 반 자체의 요일(c.days)도 과목들에 실제로 붙은 요일들을 모아서 같이 갱신해준다 — 안 그러면 그리드 업로드로
+    // 새로 생긴 반은 과목마다 요일이 있어도 반 전체 요일이 비어있어서 업무일지·주간 진도계획표에 통째로 안 뜬다.
+    const allDays=new Set();
+    c.subjects.forEach(s=>{ String(s.day||'').split(',').map(x=>x.trim()).filter(Boolean).forEach(d=>allDays.add(d)); });
+    if(allDays.size) c.days=[...allDays].sort((a,b)=>TTG_DAYS.indexOf(a)-TTG_DAYS.indexOf(b)).join(',');
     c.updatedAt=Date.now();
   });
   const clsN=touchedClasses.size;
