@@ -7964,6 +7964,23 @@ function applyTtGridUpdate(){
       // 지금 이 요일 묶음으로 새로 합쳐질 항목과 겹치던(같은 과목·시간·강의실·담당이라 요일 조각으로 남아있던) 예전 줄들은 지우고, 합쳐진 한 줄로 대체한다.
       // c.subjects 배열 자체가 store에 저장된 실제 배열이므로(재할당하면 그 연결이 끊어져 저장이 안 됨) splice로 제자리에서 지운다.
       for(let i=c.subjects.length-1;i>=0;i--){ if(sameKey(c.subjects[i])) c.subjects.splice(i,1); }
+      // 같은 반에 이미 그 시간(요일+시간대가 겹치는)에 다른 과목이 등록돼 있으면, 시간표를 여러 번 업로드하면서 중복으로
+      // 쌓이지 않도록 그 겹치는 요일만큼은 예전 항목에서 빼준다(겹치지 않는 요일이 남으면 그 요일만 유지, 하나도 안 남으면 통째로 삭제).
+      const groupRange=parseRange(group.time);
+      if(groupRange){
+        for(let i=c.subjects.length-1;i>=0;i--){
+          const sub=c.subjects[i];
+          if(sameKey(sub)) continue;
+          const subDays=String(sub.day||'').split(',').map(x=>x.trim()).filter(Boolean);
+          if(!subDays.length) continue; // 요일 지정이 없는 과목(항상 적용되는 특강 등)은 함부로 지우면 위험하니 건드리지 않는다
+          const overlapDays=subDays.filter(d=>group.days.has(d));
+          if(!overlapDays.length) continue;
+          const subRange=parseRange(sub.time);
+          if(!subRange || !(subRange[0]<groupRange[1] && groupRange[0]<subRange[1])) continue;
+          const remainDays=subDays.filter(d=>!overlapDays.includes(d));
+          if(remainDays.length) sub.day=remainDays.join(','); else c.subjects.splice(i,1);
+        }
+      }
       c.subjects.push({
         // 과목명 표기는 원래 적혀있던 것(oldMatch)이 있으면 그걸 그대로 이어가고, 아예 새 과목일 때만 이번에 올라온 표기를 쓴다
         // — 이래야 매번 업로드할 때마다 대소문자가 바뀌는 엑셀 표기 때문에 계속 새 과목처럼 보이는 일이 없다.
