@@ -3822,7 +3822,7 @@ function mySubjectKeys(c, wd, lt){
   const baseKey=hashIdx>=0?k.slice(0,hashIdx):k;
   const parts=baseKey.split('|'); const academy=parts[0]; const className=parts.slice(1).join('|');
   const wd=wdOf(date);
-  const c=classesFor(date.slice(0,7)).find(x=>x.academy===academy && x.name===className);
+  const c=classesFor(monthForDate(date)).find(x=>x.academy===academy && x.name===className);
   if(!c) return;
   const keys=attKeysFor(c, wd); // 이미 시간 순서로 정렬되어 있음
   const idx=keys.findIndex(x=>x.key===k);
@@ -5303,7 +5303,7 @@ function wpGet(who, wkStart, days){
 }
   function subjectOptionsForClass(academy, className, dateForMonth){
   // 그 반(합반이면 관련 반 전부)에 실제로 등록된 과목 목록을 뽑아서 드롭다운 후보로 쓴다
-  const month=(dateForMonth||state.month||'').slice(0,7)||state.month;
+  const month=dateForMonth ? monthForDate(dateForMonth) : state.month;
   const list=classesMatchingName(academy, month, className);
   const names=new Set();
   list.forEach(c=>(c.subjects||[]).forEach(s=>{ if(s.subject) names.add(s.subject); }));
@@ -5668,7 +5668,7 @@ function hgClassOptions(a, targetMonth){
   return editArr(a, targetMonth).filter(c=>!c._deleted).map(c=>c.name).sort((x,y)=>x.localeCompare(y,'ko'));
 }
 function renderHandoverGrid(){
-  state.hgMonth=state.hgMonth||shiftMonth(todayISO().slice(0,7),1); // 기본값: 다음 달 인수인계표(이번 달에 다음 달 걸 작성하는 게 보통이므로)
+  state.hgMonth=state.hgMonth||shiftMonth(effectiveCurrentMonth(),1); // 기본값: 다음 달 인수인계표(이번 달에 다음 달 걸 작성하는 게 보통이므로) — 강제 지정된 달이 있으면 그 달 기준 다음 달
   const targetMonth=state.hgMonth, prevMonth=shiftMonth(targetMonth,-1);
   const a=academies()[0];
   let g=handoverGridFor(a,targetMonth);
