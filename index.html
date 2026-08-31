@@ -376,6 +376,97 @@ if(store.adminEmail==null) store.adminEmail='';
 if(!store.daysedit) store.daysedit={};
 if(!store.calendar) store.calendar=[];
 if(!store.meetings) store.meetings=[];
+// Firebase 실시간DB의 객체 키에는 . $ # [ ] / 를 쓸 수 없다(예: "L/C" 과목명을 그대로 키로 쓰면 동기화가 실패한다).
+// 과목명을 객체의 키로 써야 하는 곳(교재 배부, 결석 숙제·오늘 남는 학생의 과목별 기록)에서는 저장용 키로 쓸 때 이걸로
+// 안전하게 바꾸고, 화면에 보여줄 땐 subjKeyDecode로 다시 원래 글자로 되돌린다.
+const SUBJKEY_MAP=[['.','‹dot›'],['$','‹dollar›'],['#','‹hash›'],['[','‹lb›'],[']','‹rb›'],['/','‹slash›']];
+function subjKey(s){ let out=String(s||''); SUBJKEY_MAP.forEach(([ch,rep])=>{ out=out.split(ch).join(rep); }); return out; }
+function subjKeyDecode(s){ let out=String(s||''); SUBJKEY_MAP.forEach(([ch,rep])=>{ out=out.split(rep).join(ch); }); return out; }
+// 위 규칙이 생기기 전에 이미 "L/C"처럼 금지된 글자가 그대로 키로 저장돼버린 기기가 있으면, 그 뒤로는 서버 전송(pushShared)
+// 자체가 통째로 계속 실패해서 다른 걸 고쳐도 똑같은 전송 오류가 반복된다 — 여기서 기존 자료를 한 번 안전한 키로 옮겨준다.
+(function migrateInvalidSubjKeys(){
+  const BAD=/[.$#\[\]\/]/;
+  let changed=false;
+  function fixMap(obj){
+    if(!obj || typeof obj!=='object') return;
+    Object.keys(obj).forEach(k=>{
+      if(BAD.test(k)){
+        const nk=subjKey(k);
+        if(nk!==k){
+          if(obj[nk]===undefined) obj[nk]=obj[k]; else Object.assign(obj[nk], obj[k]);
+          delete obj[k];
+          changed=true;
+        }
+      }
+    });
+  }
+  for(const ck in store.bookGiven){ fixMap(store.bookGiven[ck]); }
+  for(const d in store.homework){
+    const byClass=store.homework[d]||{};
+    for(const ck in byClass){
+      const byStu=byClass[ck]||{};
+      for(const sn in byStu){ const rec=byStu[sn]; if(rec && rec.bySubject) fixMap(rec.bySubject); }
+    }
+  }
+  for(const d in store.stayback){
+    const byClass=store.stayback[d]||{};
+    for(const ck in byClass){
+      const byStu=byClass[ck]||{};
+      for(const sn in byStu){
+        const rec=byStu[sn];
+        if(rec && rec.bySubject) fixMap(rec.bySubject);
+        if(rec && rec.doneSubjects) fixMap(rec.doneSubjects);
+      }
+    }
+  }
+  if(changed){ try{ localStorage.setItem(KEY, JSON.stringify(store)); }catch(e){} }
+})();
+// "L/C" 과목은 이제 별도로 관리하지 않고 전부 "IBT"로 합치기로 함(선생님 요청) — 이미 저장돼 있던 예전 자료도
+// 한 번 IBT로 옮겨준다(과목명 자체는 물론, 교재 배부·결석 숙제 카톡·오늘 남는 학생 메모처럼 과목별로 따로 저장된
+// 기록도 L/C 쪽 값을 IBT 쪽으로 합쳐서 이어준다). 새로 업로드/입력되는 L/C는 앞으로 자동으로 IBT로 들어간다(normalizeLCtoIBT).
+if(!store.lcMergedIntoIbt2609){
+  let lcChanged=false;
+  const isLCText=s=>{ const sn=String(s||'').trim().toUpperCase().replace(/\s+/g,''); return sn==='L/C'||sn==='LC'; };
+  for(const key in store.uploads){
+    const arr=store.uploads[key]; if(!Array.isArray(arr)) continue;
+    arr.forEach(c=>{
+      if(!c.subjects) return;
+      c.subjects.forEach(s=>{ if(isLCText(s.subject)){ s.subject='IBT'; lcChanged=true; } });
+    });
+  }
+  const lcKey=subjKey('L/C'), lcKey2=subjKey('LC'), ibtKey=subjKey('IBT');
+  function mergeLcKeyInto(obj){
+    if(!obj) return;
+    [lcKey,lcKey2].forEach(k=>{
+      if(k in obj){
+        if(obj[ibtKey]===undefined || obj[ibtKey]===null || obj[ibtKey]==='') obj[ibtKey]=obj[k];
+        else if(typeof obj[ibtKey]==='object' && typeof obj[k]==='object') obj[ibtKey]=Object.assign({}, obj[k], obj[ibtKey]);
+        delete obj[k]; lcChanged=true;
+      }
+    });
+  }
+  for(const ck in store.bookGiven){ mergeLcKeyInto(store.bookGiven[ck]); }
+  for(const d in store.homework){
+    const byClass=store.homework[d]||{};
+    for(const ck in byClass){
+      const byStu=byClass[ck]||{};
+      for(const sn in byStu){ const rec=byStu[sn]; if(rec && rec.bySubject) mergeLcKeyInto(rec.bySubject); }
+    }
+  }
+  for(const d in store.stayback){
+    const byClass=store.stayback[d]||{};
+    for(const ck in byClass){
+      const byStu=byClass[ck]||{};
+      for(const sn in byStu){
+        const rec=byStu[sn];
+        if(rec && rec.bySubject) mergeLcKeyInto(rec.bySubject);
+        if(rec && rec.doneSubjects) mergeLcKeyInto(rec.doneSubjects);
+      }
+    }
+  }
+  store.lcMergedIntoIbt2609=true;
+  try{ localStorage.setItem(KEY, JSON.stringify(store)); }catch(e){}
+}
 // [내신전용반 기능 폐지] 예전엔 "내신전용반"(별도 반 레코드)·내신 기간·🎓내신 탭이 있었는데 기능을 통째로 없앴다.
 // 이미 각 기기·서버에 저장돼 있을 수 있는 예전 자료(내신전용반 반 레코드, 내신 기간, 탭 켬 여부)를 여기서 한 번 정리한다.
 // 매번(새로고침마다) 실행되지만 지울 게 없으면 아무 것도 안 건드리므로 안전하다.
@@ -523,6 +614,27 @@ function fbFetch(url, opts, timeoutMs){
 async function fbGet(path, timeoutMs){ let r; try{ r=await fbFetch(syncBase()+path+'.json', null, timeoutMs); }catch(e){ throw (e&&e.name==='AbortError') ? new Error('서버 응답 시간초과(네트워크 확인)') : e; } if(!r.ok){ let body=''; try{ body=await r.text(); }catch(e){} throw new Error('HTTP '+r.status+(body?' — '+body.slice(0,200):'')); } return r.json(); }
 async function fbPut(path, data, timeoutMs){ let r; try{ r=await fbFetch(syncBase()+path+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}, timeoutMs); }catch(e){ throw (e&&e.name==='AbortError') ? new Error('서버 응답 시간초과(네트워크 확인)') : e; } if(!r.ok){ let body=''; try{ body=await r.text(); }catch(e){} throw new Error('HTTP '+r.status+(body?' — '+body.slice(0,200):'')); } return r.json(); }
 async function fbDel(path){ try{ await fbFetch(syncBase()+path+'.json',{method:'DELETE'}); }catch(e){} }
+// 서버로 보내기 직전 마지막 안전장치: 객체 키 어딘가에 Firebase가 금지하는 글자(. $ # [ ] /)가 들어있으면
+// (과목명뿐 아니라 반 이름·학생 이름 등 예상 못한 곳에 생겨도) 그 키만 안전하게 바꿔서 보낸다.
+// 이게 없으면 그런 글자가 하나만 있어도 이후 전송 전체가 계속 똑같은 오류로 실패하게 된다.
+function sanitizeKeysForFirebase(obj){
+  const BAD=/[.$#\[\]\/]/;
+  const seen=new WeakMap();
+  function walk(v){
+    if(Array.isArray(v)) return v.map(walk);
+    if(v && typeof v==='object'){
+      if(seen.has(v)) return seen.get(v);
+      const out={}; seen.set(v, out);
+      for(const k in v){
+        const nk=BAD.test(k) ? subjKey(k) : k;
+        out[nk]=walk(v[k]);
+      }
+      return out;
+    }
+    return v;
+  }
+  return walk(obj);
+}
 function toast(msg){ const el=document.getElementById('saved'); el.textContent=msg; el.classList.add('show');
   clearTimeout(saveTimer); saveTimer=setTimeout(()=>{el.classList.remove('show'); el.textContent='저장됨 ✓';},2200); }
 
@@ -622,7 +734,7 @@ async function pushShared(){
     }
     const pack={updatedAt:Date.now(), fieldStamps:store.fieldStamps||{}};
     SHARE_FIELDS.forEach(f=>pack[f]=store[f]);
-    await fbPut('/shared', pack);
+    await fbPut('/shared', sanitizeKeysForFirebase(pack));
     store.sharedAt=pack.updatedAt;
     localStorage.setItem(KEY, JSON.stringify(store));
     lastSyncError=null; lastSyncOkAt=Date.now();
@@ -643,7 +755,7 @@ async function forcePushShared(){
     REPLACE_FIELDS.forEach(f=>{ store.fieldStamps[f]=Date.now(); });
     const pack={updatedAt:Date.now(), fieldStamps:store.fieldStamps};
     SHARE_FIELDS.forEach(f=>pack[f]=store[f]);
-    await fbPut('/shared', pack);
+    await fbPut('/shared', sanitizeKeysForFirebase(pack));
     store.sharedAt=pack.updatedAt;
     localStorage.setItem(KEY, JSON.stringify(store));
     toast('☁ 서버 자료를 이 기기 자료로 완전히 덮어썼습니다');
@@ -1032,6 +1144,7 @@ function removeSubjectAction(a,m,id,idx){
 function updateSubjectField(a,m,id,idx,field,value){
   const c=findClassById(a,m,id); if(!c||!c.subjects||!c.subjects[idx]) return;
   const subjNameBefore=c.subjects[idx].subject;
+  if(field==='subject') value=normalizeLCtoIBT(value);
   c.subjects[idx][field]=value; c.updatedAt=Date.now();
   if(field==='book'){
     const subjName=c.subjects[idx].subject||'-';
@@ -1110,12 +1223,13 @@ const matches = s => s && String(s).toLowerCase().includes(state.q.toLowerCase()
 const mLabel = m => m.replace('-','년 ')+'월';
 const ckey = c => c.academy+'|'+c.name+(c.examOnly?'␟exam':''); // 내신전용반은 이름이 같은 일반 반과 자료(상담 배정·메모·출결 등)가 섞이지 않도록 구분해서 키를 만든다
 function bookGivenFor(k, subject){
+  const sk=subjKey(subject); // "L/C"처럼 객체 키로 못 쓰는 글자가 있으면 안전한 키로 바꿔서 저장(동기화 실패 방지)
   store.bookGiven[k]=store.bookGiven[k]||{};
-  const rec=store.bookGiven[k][subject];
+  const rec=store.bookGiven[k][sk];
   // 예전 자료 중엔(또는 여러 기기 동기화가 겹치는 과정에서) students가 아예 없는 손상된 레코드가 저장돼 있을 수 있다 —
   // 그런 경우 g.students[학생명]에서 바로 에러가 나므로, 여기서 한 번 스스로 고쳐서 항상 students가 있게 보장한다.
-  if(!rec || !rec.students){ store.bookGiven[k][subject]=Object.assign({students:{}}, rec); }
-  return store.bookGiven[k][subject];
+  if(!rec || !rec.students){ store.bookGiven[k][sk]=Object.assign({students:{}}, rec); }
+  return store.bookGiven[k][sk];
 }
 function bookGiveBadge(c, s){
   const g=bookGivenFor(ckey(c), s.subject||'-');
@@ -3179,40 +3293,40 @@ function bindBookGive(){
     save(); render(true);
   });
   v.querySelectorAll('.bgchk').forEach(cb=>cb.onchange=()=>{
-    const k=cb.dataset.k, subj=cb.dataset.subj, stu=cb.dataset.stu;
+    const k=cb.dataset.k, subj=cb.dataset.subj, stu=cb.dataset.stu, sk=subjKey(subj);
     store.bookGiven[k]=store.bookGiven[k]||{};
-    store.bookGiven[k][subj]=store.bookGiven[k][subj]||{students:{}};
-    if(cb.checked) store.bookGiven[k][subj].students[stu]=true; else delete store.bookGiven[k][subj].students[stu];
-    store.bookGiven[k][subj].updatedAt=Date.now();
+    store.bookGiven[k][sk]=store.bookGiven[k][sk]||{students:{}};
+    if(cb.checked) store.bookGiven[k][sk].students[stu]=true; else delete store.bookGiven[k][sk].students[stu];
+    store.bookGiven[k][sk].updatedAt=Date.now();
     save(); render(true);
   });
   v.querySelectorAll('[data-bgall]').forEach(b=>b.onclick=()=>{
-    const parts=b.dataset.bgall.split('|'); const subj=parts.pop(); const k=parts.join('|');
+    const parts=b.dataset.bgall.split('|'); const subj=parts.pop(); const k=parts.join('|'); const sk=subjKey(subj);
     const checks=[...v.querySelectorAll('.bgchk')].filter(cb=>cb.dataset.k===k && cb.dataset.subj===subj);
     store.bookGiven[k]=store.bookGiven[k]||{};
-    store.bookGiven[k][subj]=store.bookGiven[k][subj]||{students:{}};
-    checks.forEach(cb=>{ store.bookGiven[k][subj].students[cb.dataset.stu]=true; });
-    store.bookGiven[k][subj].updatedAt=Date.now();
+    store.bookGiven[k][sk]=store.bookGiven[k][sk]||{students:{}};
+    checks.forEach(cb=>{ store.bookGiven[k][sk].students[cb.dataset.stu]=true; });
+    store.bookGiven[k][sk].updatedAt=Date.now();
     const {label,book}=resolveBookGiveLabel(v,k,subj);
     logBookGiveToJournal(k, label, book, checks.length);
     save(); render(true);
     toast('☑ 반 전체 배부 처리 완료 · '+checks.length+'명');
   });
   v.querySelectorAll('[data-bgnone]').forEach(b=>b.onclick=()=>{
-    const parts=b.dataset.bgnone.split('|'); const subj=parts.pop(); const k=parts.join('|');
-    if(!store.bookGiven[k] || !store.bookGiven[k][subj]) return;
-    store.bookGiven[k][subj].students={};
-    store.bookGiven[k][subj].updatedAt=Date.now();
+    const parts=b.dataset.bgnone.split('|'); const subj=parts.pop(); const k=parts.join('|'); const sk=subjKey(subj);
+    if(!store.bookGiven[k] || !store.bookGiven[k][sk]) return;
+    store.bookGiven[k][sk].students={};
+    store.bookGiven[k][sk].updatedAt=Date.now();
     save(); render(true);
     toast('☐ 반 전체 배부 해제됨');
   });
   v.querySelectorAll('[data-bgapply]').forEach(b=>b.onclick=()=>{
-    const parts=b.dataset.bgapply.split('|'); const subj=parts.pop(); const k=parts.join('|');
+    const parts=b.dataset.bgapply.split('|'); const subj=parts.pop(); const k=parts.join('|'); const sk=subjKey(subj);
     const checks=[...v.querySelectorAll('.bgchk')].filter(cb=>cb.dataset.k===k && cb.dataset.subj===subj && cb.checked);
     store.bookGiven[k]=store.bookGiven[k]||{};
-    store.bookGiven[k][subj]=store.bookGiven[k][subj]||{students:{}};
-    checks.forEach(cb=>{ store.bookGiven[k][subj].students[cb.dataset.stu]=true; });
-    store.bookGiven[k][subj].updatedAt=Date.now();
+    store.bookGiven[k][sk]=store.bookGiven[k][sk]||{students:{}};
+    checks.forEach(cb=>{ store.bookGiven[k][sk].students[cb.dataset.stu]=true; });
+    store.bookGiven[k][sk].updatedAt=Date.now();
     const {label,book}=resolveBookGiveLabel(v,k,subj);
     logBookGiveToJournal(k, label, book, checks.length);
     save(); render(true);
@@ -3760,6 +3874,10 @@ function isWordTestSubject(s){ return !!(s && s.subject && String(s.subject).rep
 function isSelfStudySubj(subj){ // IBT·L/C는 어학실에서 자체적으로 진행돼 업무일지·주간 진도계획표 자동 생성 대상이 아님
   const sn=String(subj||'').trim().toUpperCase().replace(/\s+/g,'');
   return sn==='IBT' || sn==='L/C' || sn==='LC';
+}
+function normalizeLCtoIBT(subj){ // "L/C"는 이제 별도 과목으로 두지 않고 전부 "IBT"로 합쳐서 관리한다(선생님 요청)
+  const sn=String(subj||'').trim().toUpperCase().replace(/\s+/g,'');
+  return (sn==='L/C'||sn==='LC') ? 'IBT' : subj;
 }
 // 출석은 이제 "반" 단위가 아니라 "그날 그 반의 과목(수업)" 단위로 기록한다 (예: RC는 결석, 뒤 GR 수업엔 출석 — 그런 경우 반영)
 function daySubjectNames(c, wd){
@@ -4312,7 +4430,7 @@ function renderToday(list){
       const doneSubjects = rec.doneSubjects || {};
       let subjects;
       if(bySubjEntries.length){
-        subjects = bySubjEntries.map(([sub,memo])=>({subj:sub, memo, done:!!doneSubjects[sub]}));
+        subjects = bySubjEntries.map(([sub,memo])=>({subj:subjKeyDecode(sub), memo, done:!!doneSubjects[sub]}));
       } else if(rec.memo){
         const subjLabel = daySubjNamesForCl.length===1 ? daySubjNamesForCl[0] : cl.name;
         subjects = [{subj:subjLabel, memo:rec.memo, done:!!rec.doneDate}];
@@ -4369,7 +4487,7 @@ function renderToday(list){
       const hrecTop=(hw[k]||{})[sname]||{};
       const bySubj=hrecTop.bySubject||{};
       const subjects=daySubjNames.length
-        ? daySubjNames.map(subj=>({subj, kakaoSent:!!(bySubj[subj]&&bySubj[subj].kakaoSent)}))
+        ? daySubjNames.map(subj=>({subj, kakaoSent:!!(bySubj[subjKey(subj)]&&bySubj[subjKey(subj)].kakaoSent)}))
         : [{subj:null, kakaoSent:!!hrecTop.hwKakaoSent}];
 
       absentHwList.push({
@@ -4420,7 +4538,7 @@ function renderToday(list){
               </div>
               <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px">
                 ${x.subjects.map(sj=>{
-                  const subjMemo = (sj.subj ? (bySubj[sj.subj] && bySubj[sj.subj].kakaoMemo) : hrecTop.kakaoMemo) || '';
+                  const subjMemo = (sj.subj ? (bySubj[subjKey(sj.subj)] && bySubj[subjKey(sj.subj)].kakaoMemo) : hrecTop.kakaoMemo) || '';
                   return `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
                     <label class="hwlab" style="color:${sj.kakaoSent?'#27ae60':'#b45309'};font-weight:800;background:#fff;padding:3px 8px;border:1px solid ${sj.kakaoSent?'#27ae60':'#f5c6cb'};border-radius:6px;min-width:140px;text-align:center">
                       <input type="checkbox" class="hwkakaochk" data-k="${esc(x.k)}" data-s="${esc(x.s)}" data-subj="${esc(sj.subj||'')}" ${sj.kakaoSent?'checked':''}> 💬 ${sj.subj?esc(sj.subj)+' - ':''}카톡 전송
@@ -4510,7 +4628,7 @@ function renderToday(list){
             <label class="hwlab" style="color:${srec.stay?'#b45309':'var(--sub)'}"><input type="checkbox" class="staychk" data-k="${esc(ownerK)}" data-s="${esc(s)}" ${srec.stay?'checked':''}>🙋 오늘 남기</label>
             <div style="display:flex;flex-direction:column;gap:4px;margin-top:4px">
               ${ownerAttKeys.map(({subject})=>{
-                const subMemo=(srec.bySubject&&srec.bySubject[subject])||'';
+                const subMemo=(srec.bySubject&&srec.bySubject[subjKey(subject)])||'';
                 return `<div style="display:flex;gap:6px;align-items:center">
                   <b style="font-size:.68rem;color:var(--sub);font-weight:800;min-width:44px">${esc(subject)}</b>
                   <input type="text" class="staynote-sub" data-k="${esc(ownerK)}" data-s="${esc(s)}" data-subj="${esc(subject)}" placeholder="이 과목 남는 이유" value="${esc(subMemo)}" style="flex:1;max-width:260px;border:1px solid var(--line);border-radius:7px;padding:4px 9px;font-family:inherit;font-size:.76rem;background:#fbfcfe">
@@ -4664,7 +4782,7 @@ function bindToday(){
   v.querySelectorAll('.staynote-sub').forEach(inp=>inp.onchange=()=>{
     const k=inp.dataset.k, st=inp.dataset.s, subj=inp.dataset.subj, st2=stayFor(state.date);
     st2[k]=st2[k]||{}; st2[k][st]=st2[k][st]||{}; st2[k][st].bySubject=st2[k][st].bySubject||{};
-    st2[k][st].bySubject[subj]=inp.value; save(); render(true);
+    st2[k][st].bySubject[subjKey(subj)]=inp.value; save(); render(true);
   });
   v.querySelectorAll('[data-staydone]').forEach(b=>b.onclick=()=>{
     if(!isAdminRole())return;
@@ -4679,7 +4797,7 @@ function bindToday(){
     st2[k]=st2[k]||{}; st2[k][sname]=st2[k][sname]||{};
     if(subj && st2[k][sname].bySubject){
       st2[k][sname].doneSubjects=st2[k][sname].doneSubjects||{};
-      st2[k][sname].doneSubjects[subj]=true;
+      st2[k][sname].doneSubjects[subjKey(subj)]=true;
     } else {
       st2[k][sname].doneDate=todayISO();
     }
@@ -4696,9 +4814,10 @@ function bindToday(){
     hw2[k]=hw2[k]||{}; hw2[k][s]=hw2[k][s]||{};
     if(subj){
       // 과목별로 따로 저장 — 다른 과목 담당 선생님 체크에 영향받지 않는다
+      const sk=subjKey(subj);
       hw2[k][s].bySubject=hw2[k][s].bySubject||{};
-      hw2[k][s].bySubject[subj]=hw2[k][s].bySubject[subj]||{};
-      hw2[k][s].bySubject[subj].kakaoSent=cb.checked;
+      hw2[k][s].bySubject[sk]=hw2[k][s].bySubject[sk]||{};
+      hw2[k][s].bySubject[sk].kakaoSent=cb.checked;
     } else {
       hw2[k][s].hwKakaoSent=cb.checked; // 과목 정보가 없는 반(예전 방식)
     }
@@ -4722,9 +4841,10 @@ function bindToday(){
     hw2[k]=hw2[k]||{}; hw2[k][s]=hw2[k][s]||{};
     
     if(subj){
+      const sk=subjKey(subj);
       hw2[k][s].bySubject=hw2[k][s].bySubject||{};
-      hw2[k][s].bySubject[subj]=hw2[k][s].bySubject[subj]||{};
-      hw2[k][s].bySubject[subj].kakaoMemo=inp.value;
+      hw2[k][s].bySubject[sk]=hw2[k][s].bySubject[sk]||{};
+      hw2[k][s].bySubject[sk].kakaoMemo=inp.value;
     } else {
       hw2[k][s].kakaoMemo=inp.value; 
     }
@@ -7542,6 +7662,8 @@ function ttgParseSheet(academy, wb, sheetName, examOnly){
     });
     const {results, unresolved}=ttgParseWorkbook(ws, colorMap, codeMap);
     if(!results.length){ if(statusEl) statusEl.textContent='시간표 형식을 인식하지 못했습니다. (시트: '+sheetName+')'; return; }
+    // "L/C"는 이제 별도 과목으로 두지 않고 전부 "IBT"로 합쳐서 관리한다 — 엑셀에 L/C로 적혀 있어도 자동으로 IBT로 반영
+    results.forEach(x=>{ x.subject=normalizeLCtoIBT(x.subject); });
     // L/C·IBT는 실제로는 어학실 선생님이 공통으로 담당하는 경우가 많은데, 엑셀에 색상·코드로 담당이 안 적혀 있으면 담당 없이 빈 채로 들어온다.
     // [환경설정]에 어학실 기본 담당을 적어뒀으면, 담당이 비어있는 L/C·IBT 항목에 한해 자동으로 채워준다.
     const ttgLangTeacher=(store.ttgLangTeacher||'').trim();
