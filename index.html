@@ -1060,6 +1060,13 @@ const todayISO = ()=>{ const kst=new Date(Date.now()+9*60*60*1000); return kst.t
 function effectiveCurrentMonth(){
   return (store.monthOverride && /^\d{4}-\d{2}$/.test(store.monthOverride)) ? store.monthOverride : todayISO().slice(0,7);
 }
+// 업무일지·주간 진도계획표처럼 "오늘 무슨 수업이 있었는지"를 반·시간표 자료에서 자동으로 끌어올 때 쓰는 기준 달.
+// 기록 자체의 날짜(date)는 실제 오늘 날짜 그대로 두되(그래서 이 함수는 date 필드를 바꾸지 않음), 그 날짜가 "실제 오늘"이면
+// 강제 지정된 달(effectiveCurrentMonth)의 반 구성을 따르고, 달력에서 다른 날짜를 직접 골라 지난 기록을 보거나 고칠 때는
+// 그 날짜가 원래 속했던 진짜 달을 그대로 쓴다(옛 기록을 지금 강제 지정한 달 기준으로 잘못 바꿔치기하지 않도록).
+function monthForDate(date){
+  return date===todayISO() ? effectiveCurrentMonth() : String(date||'').slice(0,7);
+}
 function kstTimestamp(){ const kst=new Date(Date.now()+9*60*60*1000); return kst.toISOString().slice(0,16).replace('T',' '); } // "YYYY-MM-DD HH:MM" 형태, 항상 KST 기준
 function ymd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); } // Date 객체를 (그 객체가 나타내는 지역 날짜 그대로) "YYYY-MM-DD"로 — toISOString()은 UTC로 변환하면서 하루가 밀릴 수 있어 쓰지 않는다
 const LASTTAB_KEY='academy-dash-lasttab-'+MODE;
@@ -4032,7 +4039,7 @@ function todayClasses(list){
 }
 function absentReasonMissingCount(academy, dateISO){
   const wd=wdOf(dateISO);
-  const clsToday=classesFor(dateISO.slice(0,7)).filter(c=>c.academy===academy && classMeets(c,wd));
+  const clsToday=classesFor(monthForDate(dateISO)).filter(c=>c.academy===academy && classMeets(c,wd));
   const atRec=atFor(dateISO), hwRec=hwFor(dateISO);
   let n=0; const seen=new Set();
   clsToday.forEach(c=>{
@@ -4828,7 +4835,7 @@ function bindAttend(){
 /* ---------- 업무보고 (일간·주간) ---------- */
 function classesOn(dateISO){
   const wd=wdOf(dateISO);
-  const month=dateISO.slice(0,7);
+  const month=monthForDate(dateISO);
   let cls=classesFor(month).filter(c=>{
     if(state.ac!=='all' && c.academy!==state.ac) return false;
     if(state.dept!=='all' && c.dept!==state.dept) return false;
@@ -4968,7 +4975,7 @@ function curWho(){
 function whoTeacher(who){ if(!who) return null; const [a,i]=who.split('|'); const t=(store.teachers[a]||[])[Number(i)]; return t?{a,i:Number(i),t}:null; }
 function autoLessons(who, date){
   const w=whoTeacher(who); if(!w) return [];
-  const wd=wdOf(date); const month=date.slice(0,7);
+  const wd=wdOf(date); const month=monthForDate(date);
   let cls=dedupeMergedClasses(classesFor(month).filter(c=>c.academy===w.a && classMeets(c,wd)));
   const rows=[];
   cls.forEach(c=>{
@@ -5161,11 +5168,11 @@ function bindJournal(who, date, readOnly){
     e.lessons[i][f]=inp.value; touch(); save();
     if(f==='book'){
       const L=e.lessons[i]; const w=whoTeacher(who);
-      if(w && L.cls && (L.subj||L.lesson)){ syncBookToClass(w.a, L.cls, L.subj||L.lesson, date.slice(0,7), inp.value, wdOf(date)); save(); }
+      if(w && L.cls && (L.subj||L.lesson)){ syncBookToClass(w.a, L.cls, L.subj||L.lesson, monthForDate(date), inp.value, wdOf(date)); save(); }
     }
     if(f==='prog'){
       const L=e.lessons[i]; const w=whoTeacher(who);
-      if(w && L.cls && (L.subj||L.lesson)){ syncProgressToClass(w.a, L.cls, L.subj||L.lesson, date.slice(0,7), inp.value, wdOf(date)); save(); }
+      if(w && L.cls && (L.subj||L.lesson)){ syncProgressToClass(w.a, L.cls, L.subj||L.lesson, monthForDate(date), inp.value, wdOf(date)); save(); }
     }
   });
   v.querySelectorAll('.wl-ldel').forEach(b=>b.onclick=()=>{ e.lessons.splice(Number(b.dataset.i),1); touch(); save(); render(true); });
@@ -5374,11 +5381,11 @@ function bindWeekPlan(who, days, readOnly){
                 // 진도·교재는 반·교재(시간표) 칸에도 매일 자동으로 반영한다 (과목 식별은 안정적인 subj 필드 기준 — "수업" 칸은 비어있어도 됨)
                 if(field === 'prog' && (targetLesson.subj||targetLesson.lesson)){
                     const w=whoTeacher(who);
-                    if(w) syncProgressToClass(w.a, rCls, targetLesson.subj||targetLesson.lesson, rDate.slice(0,7), val, wdOf(rDate));
+                    if(w) syncProgressToClass(w.a, rCls, targetLesson.subj||targetLesson.lesson, monthForDate(rDate), val, wdOf(rDate));
                 }
                 if(field === 'book' && (targetLesson.subj||targetLesson.lesson)){
                     const w=whoTeacher(who);
-                    if(w) syncBookToClass(w.a, rCls, targetLesson.subj||targetLesson.lesson, rDate.slice(0,7), val, wdOf(rDate));
+                    if(w) syncBookToClass(w.a, rCls, targetLesson.subj||targetLesson.lesson, monthForDate(rDate), val, wdOf(rDate));
                 }
             }
         } catch(err) {
