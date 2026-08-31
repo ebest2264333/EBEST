@@ -2731,8 +2731,12 @@ function prevTwoWordTests(studentId, beforeDate){
     .sort((a,b)=>b.date.localeCompare(a.date));
   return prev.slice(0,2).reverse(); // 오래된 순으로
 }
-function classOfStudent(s){
-  return classesFor(state.month).find(x=>x.academy===s.academy && x.name===String(s.className||'').trim());
+function classOfStudent(s, month){
+  // 학생 필드(s.className)가 예전 달 값 그대로 남아있을 수 있어서, 단순히 그 이름과 같은 반을 찾으면 안 되고
+  // classNameInMonth와 똑같이 "그 달 반 명단에 이 학생이 실제로 들어있는지"로 정확한 반을 찾는다.
+  month=month||state.month;
+  const name=classNameInMonth(s, month);
+  return classesFor(month).find(x=>x.academy===s.academy && x.name===name);
 }
 function studentIsHigh(s){
   const c=classOfStudent(s);
@@ -2795,7 +2799,8 @@ function setTpOptions(a, arr){
 const WORDLANG_OPTIONS=['한글','믹스','영어'];
 const MOCKEXAM_ROUND_OPTIONS=Array.from({length:10},(_,i)=>String(i+1));
 function wtStudentRow(s, date){
-  const cls=classOfStudent(s);
+  const wtMonth=String(date||'').slice(0,7)||state.month;
+  const cls=classOfStudent(s, wtMonth);
   const isMock=!!(cls && cls.mockExamOn);
   let r=store.wordTests.find(x=>x.studentId===s.id && x.date===date);
   if(!r){
@@ -2804,7 +2809,7 @@ function wtStudentRow(s, date){
     r = prev ? {wordbook:prev.wordbook||'', lang:prev.lang||''} : {};
   }
   const dim = r.absent ? 'opacity:.5' : '';
-  const nameCol=`<span class="key">${esc(s.nameKo)}${s.nameEn?' <span style="font-weight:400;color:var(--sub)">('+esc(s.nameEn)+')</span>':''} ${MODE==='all'?bdg(s.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(s.className||'')}</span></span>`;
+  const nameCol=`<span class="key">${esc(s.nameKo)}${s.nameEn?' <span style="font-weight:400;color:var(--sub)">('+esc(s.nameEn)+')</span>':''} ${MODE==='all'?bdg(s.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(classNameInMonth(s,wtMonth)||'')}</span></span>`;
   if(isMock){
     // 🎓 모의고사반: 단어장·유형·범위·점수·누적 없이, 회차(1~10) 선택 + 미응시 체크만 매일 기록한다
     const roundSel=`<select data-wtfield="${s.id}|round" ${r.absent?'disabled':''} style="width:96px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
