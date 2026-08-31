@@ -376,8 +376,22 @@ if(store.adminEmail==null) store.adminEmail='';
 if(!store.daysedit) store.daysedit={};
 if(!store.calendar) store.calendar=[];
 if(!store.meetings) store.meetings=[];
-if(!store.examPeriod) store.examPeriod={}; // 학원별 내신 기간(시작~종료 날짜) — 이 기간 동안 내신전용반에 든 학생은 원래 반 대신 내신반 수업만 듣는다
-if(store.examTabOn==null) store.examTabOn=false; // 설정에서 켜면 상단에 "🎓 내신" 탭이 나타난다(기간·반·명단·점수표를 한 곳에서 관리)
+// [내신전용반 기능 폐지] 예전엔 "내신전용반"(별도 반 레코드)·내신 기간·🎓내신 탭이 있었는데 기능을 통째로 없앴다.
+// 이미 각 기기·서버에 저장돼 있을 수 있는 예전 자료(내신전용반 반 레코드, 내신 기간, 탭 켬 여부)를 여기서 한 번 정리한다.
+// 매번(새로고침마다) 실행되지만 지울 게 없으면 아무 것도 안 건드리므로 안전하다.
+(function cleanupExamOnlyLegacy(){
+  let changed=false;
+  for(const key in store.uploads){
+    const arr=store.uploads[key];
+    if(Array.isArray(arr) && arr.some(c=>c && c.examOnly)){
+      store.uploads[key]=arr.filter(c=>!(c && c.examOnly));
+      changed=true;
+    }
+  }
+  if(store.examPeriod!==undefined){ delete store.examPeriod; changed=true; }
+  if(store.examTabOn!==undefined){ delete store.examTabOn; changed=true; }
+  if(changed){ try{ localStorage.setItem(KEY, JSON.stringify(store)); }catch(e){} }
+})();
 // [수정] meetings는 이베스트·아이콘이 공용 서버 자료(SHARE_FIELDS)를 같이 쓰기 때문에, 이 학원 전용 화면(단일 학원 파일)에서는
 // 다른 학원 것까지 전부 섞여서 알림·목록에 뜨는 문제가 있었다 — 이 학원(MODE) 것과 "공통"(a 없음/all)만 걸러서 보여준다.
 function meetingsForAcademy(){ return store.meetings.filter(m=>!m.a||m.a==='all'||m.a===MODE); }
@@ -385,6 +399,7 @@ if(!store.meetingReadIds) store.meetingReadIds={}; // 기기별 로컬 읽음 �
 if(!store.sync) store.sync={url:'https://ebest-b41ce-default-rtdb.asia-southeast1.firebasedatabase.app',code:'icon-3s3t5o2u6q1e2nux6r1y1l3w',on:true}; // 새 기기에서 열면 자동으로 동기화 연결됨 (배포 편의를 위한 의도된 동작)
 else { if(!store.sync.url) store.sync.url='https://ebest-b41ce-default-rtdb.asia-southeast1.firebasedatabase.app'; if(!store.sync.code) store.sync.code='icon-3s3t5o2u6q1e2nux6r1y1l3w'; if(store.sync.on==null) store.sync.on=true; }
 if(store.adminPw==null) store.adminPw='';
+if(store.monthOverride===undefined) store.monthOverride=''; // 관리자가 강제로 지정한 "지금 달"— 켜두면 실제 오늘 날짜와 상관없이 선생님 로그인도 이 달 자료를 기본으로 봄
 if(!store.timeedit) store.timeedit={};
 if(!store.enrollment) store.enrollment={};
 if(!store.newStudents) store.newStudents=[];
@@ -426,7 +441,7 @@ if(!store.inboxDone) store.inboxDone={};
 if(!store.boardPosts) store.boardPosts=[]; // 게시판(오류 제보·1:1 문의·공지) — {id, kind:'issue'|'ask'|'notice', title, body, authorName, authorAcademy, private, createdAt, replies:[{body,authorName,createdAt}], resolved}
 if(!store.syllabus) store.syllabus=[]; //  Syllabus(교재별 진도표) — {id, title, book, dept, academy, sheets:[{name,html}], uploadedBy, uploadedAt} · 모든 선생님 열람, 실장 이상만 업로드/삭제
 if(!store.syllabusSeeded && store.syllabus.length===0){ store.syllabus=[{"id": "seedsyl001", "title": "Spider Phonics Syllabus", "dept": "초등", "sheets": [{"name": "Phonic 1 Yellow", "html": "<table class=\"ytable\"><tr><td colspan=\"5\" style=\"font-weight:800;background:#f4f6fb\">Phonics 1-YELLOW (3 Days)</td></tr><tr><td>Day</td><td>Lesson</td><td>Test</td><td>Pages</td><td>HW</td></tr><tr><td>Day 1</td><td>달러파티 영상, OT: A~Z</td><td>&nbsp;</td><td>2-5</td><td>2025-02-05</td></tr><tr><td>Day 2</td><td>Unit 1. B,V</td><td>&nbsp;</td><td>6-7</td><td>2025-08-09</td></tr><tr><td>Day 3</td><td>Unit 1. B,V</td><td>&nbsp;</td><td>10-13</td><td>14-15, B/V 단어시험 공부</td></tr><tr><td>Day 4</td><td>Unit 2. P,F</td><td>B/V 시험</td><td>16-17</td><td>18-19</td></tr><tr><td>Day 5</td><td>Unit 2. P,F</td><td>&nbsp;</td><td>20-23</td><td>24-25, P/F 단어시험 공부</td></tr><tr><td>Day 6</td><td>Unit 3. L,R</td><td>P/F 시험</td><td>26-27</td><td>28-29</td></tr><tr><td>Day 7</td><td>Unit 3. L,R</td><td>&nbsp;</td><td>30-33</td><td>34-35, L/R 단어시험 공부</td></tr><tr><td>Day 8</td><td>Unit 4. J,Z</td><td>L/R 시험</td><td>36-37</td><td>38-39</td></tr><tr><td>Day 9</td><td>Unit 4. J,Z</td><td>&nbsp;</td><td>40-43</td><td>44-45, J/Z 단어시험 공부</td></tr><tr><td>Day 10</td><td>Unit 5. D,T</td><td>J/Z 시험</td><td>46-47</td><td>48-49</td></tr><tr><td>Day 11</td><td>Unit 5. D,T</td><td>&nbsp;</td><td>50-53</td><td>54-55, D/T 시험공부 <br>알파벳 시험공부</td></tr><tr><td>Day 12</td><td>Review</td><td>D/T 시험</td><td>Review</td><td>&nbsp;</td></tr></table>"}, {"name": "Phonic 1 Pink", "html": "<table class=\"ytable\"><tr><td colspan=\"5\" style=\"font-weight:800;background:#f4f6fb\">Phonics 1-PINK (2 Days)</td></tr><tr><td>Day</td><td>Lesson</td><td>Test</td><td>Pages</td><td>HW</td></tr><tr><td>Day 1</td><td>Unit 6. S,X</td><td>&nbsp;</td><td>56-57</td><td>58-59</td></tr><tr><td>Day 2</td><td>Unit 6. S,X</td><td>&nbsp;</td><td>60-63</td><td>64-65, S,X 시험준비</td></tr><tr><td>Day 3</td><td>Unit 7. M,N,G</td><td>S,X 시험</td><td>66-67</td><td>68-69</td></tr><tr><td>Day 4</td><td>Unit 7. M,N,G</td><td>&nbsp;</td><td>70-73</td><td>74-75, M,N,G 시험준비</td></tr><tr><td>Day 5</td><td>Unit 8. C,K,Q</td><td>M,N,G 시험</td><td>76-77</td><td>78-79</td></tr><tr><td>Day 6</td><td>Unit 8. C,K,Q</td><td>&nbsp;</td><td>80-83</td><td>84-85, C,K,Q 시험준비</td></tr><tr><td>Day 7</td><td>Unit 9. W,Y,H</td><td>C,K,Q 시험</td><td>86-87</td><td>88-89</td></tr><tr><td>Day 8</td><td>Unit 9. W,Y,H</td><td>&nbsp;</td><td>90-93</td><td>94-95</td></tr></table>"}, {"name": "Phonic 2 Green", "html": "<table class=\"ytable\"><tr><td colspan=\"5\" style=\"font-weight:800;background:#f4f6fb\">Phonics 2 - Green Book</td></tr><tr><td>Day</td><td>Lesson</td><td>Test</td><td>Pages</td><td>HW</td></tr><tr><td>Day 1</td><td>OT, Unit 1(short A)</td><td>&nbsp;</td><td>2-5</td><td>2025-06-07</td></tr><tr><td>Day 2</td><td>Unit 1(short A)</td><td>&nbsp;</td><td>8-11</td><td>12-13, Unit 1 시험공부</td></tr><tr><td>Day 3</td><td>Unit 2 (short I)</td><td>Unit 1 <br>short A 단어시험</td><td>14-15</td><td>16-17</td></tr><tr><td>Day 4</td><td>Unit 2 (short I)</td><td>&nbsp;</td><td>18-21</td><td>22-23, Unit 2 시험공부</td></tr><tr><td>Day 5</td><td>Unit 1-2 조합판</td><td>Unit 2 <br>Short I 시험</td><td>92, 94</td><td>93, 95</td></tr><tr><td>Day 6</td><td>Unit 3 (Short U)</td><td>&nbsp;</td><td>26-27</td><td>28-29</td></tr><tr><td>Day 7</td><td>Unit 3 (Short U)</td><td>&nbsp;</td><td>30-33</td><td>34-35, Unit 3 시험공부</td></tr><tr><td>Day 8</td><td>Unit 4 (Short O)</td><td>Unit 3<br>Short U 시험</td><td>36-37</td><td>38-39</td></tr><tr><td>Day 9</td><td>Unit 4 (Short O)</td><td>&nbsp;</td><td>40-43</td><td>44-45, Unit 4 시험공부</td></tr><tr><td>Day 10</td><td>Unit 3-4 조합판</td><td>Unit 4<br>Short O 시험</td><td>96,98</td><td>97,99</td></tr><tr><td>Day 11</td><td>Unit 5 (Short E)</td><td>&nbsp;</td><td>48-49</td><td>50-51</td></tr><tr><td>Day 12</td><td>Unit 5 (Short E)</td><td>&nbsp;</td><td>52-55</td><td>56-57, Unit 5 시험공부</td></tr><tr><td>Day 13</td><td>Unit 6 (ar, or)</td><td>Unit 5 <br>Short E 시험</td><td>58-59</td><td>60-61</td></tr><tr><td>Day 14</td><td>Unit 6 (ar, or)</td><td>&nbsp;</td><td>62-65</td><td>66-67, Unit 6 시험공부</td></tr><tr><td>Day 15</td><td>Unit 5-6 조합판</td><td>Unit 6  <br>ar, or 시험</td><td>100</td><td>101</td></tr><tr><td>Day 16</td><td>Unit 7 (aw, au)</td><td>&nbsp;</td><td>70-71</td><td>72-73</td></tr><tr><td>Day 17</td><td>Unit 7 (aw, au)</td><td>&nbsp;</td><td>74-77</td><td>78-79, Unit 7 시험공부</td></tr><tr><td>Day 18</td><td>Unit 8 (er, ir, ur)</td><td>Unit 7 <br>aw, au 시험</td><td>80-81</td><td>82-83</td></tr><tr><td>Day 19</td><td>Unit 8 (er, ir, ur)</td><td>&nbsp;</td><td>84-87</td><td>88-89, Unit 8 시험공부</td></tr><tr><td>Day 20</td><td>Unit 7-8 review</td><td>Unit 8 <br>er, ir, ur 시험</td><td>90-91</td><td>N/A</td></tr></table>"}, {"name": "Phonic 3 Blue", "html": "<table class=\"ytable\"><tr><td colspan=\"5\" style=\"font-weight:800;background:#f4f6fb\">Phonics 3 - Blue Book</td></tr><tr><td>Day</td><td>Lesson</td><td>Test</td><td>Pages</td><td>HW</td></tr><tr><td>Day 1</td><td>OT, Unit 1(Long A)</td><td>&nbsp;</td><td>2-5</td><td>2025-06-07</td></tr><tr><td>Day 2</td><td>Unit 1(Long A)</td><td>&nbsp;</td><td>8-11</td><td>12-13, Unit 1 시험공부</td></tr><tr><td>Day 3</td><td>Unit 2 (Long I)</td><td>Unit 1 <br>Long A 단어시험</td><td>14-15</td><td>16-17</td></tr><tr><td>Day 4</td><td>Unit 2 (Long I)</td><td>&nbsp;</td><td>18-21</td><td>22-23, Unit 2 시험공부</td></tr><tr><td>Day 5</td><td>Unit 1-2 Story, 발표 촬영</td><td>Unit 2 <br>Long I 시험</td><td>24-25</td><td>p93,95</td></tr><tr><td>Day 6</td><td>Unit 3 (Long U)</td><td>&nbsp;</td><td>26-27</td><td>28-29</td></tr><tr><td>Day 7</td><td>Unit 3 (Long U)</td><td>&nbsp;</td><td>30-33</td><td>34-35, Unit 3 시험공부</td></tr><tr><td>Day 8</td><td>Unit 4 (Long O)</td><td>Unit 3<br>Long U 시험</td><td>36-37</td><td>38-39</td></tr><tr><td>Day 9</td><td>Unit 4 (Long O)</td><td>&nbsp;</td><td>40-43</td><td>44-45, Unit 4 시험공부</td></tr><tr><td>Day 10</td><td>Unit 3-4 Story, 발표 촬영</td><td>Unit 4<br>Long O 시험</td><td>46-47</td><td>96,98</td></tr><tr><td>Day 11</td><td>Unit 5 (Long E)</td><td>&nbsp;</td><td>48-49</td><td>50-51</td></tr><tr><td>Day 12</td><td>Unit 5 (Long E)</td><td>&nbsp;</td><td>52-55</td><td>56-57, Unit 5 시험공부</td></tr><tr><td>Day 13</td><td>Unit 6 (oi, oy)</td><td>Unit 5 <br>Long E 시험</td><td>58-59</td><td>60-61</td></tr><tr><td>Day 14</td><td>Unit 6 (oi, oy)</td><td>&nbsp;</td><td>62-65</td><td>66-67, Unit 6 시험공부</td></tr><tr><td>Day 15</td><td>Unit 5-6 Story, 발표촬영</td><td>Unit 6  <br>oi, oy 시험</td><td>68-69</td><td>101</td></tr><tr><td>Day 16</td><td>Unit 7 (ou, ow)</td><td>&nbsp;</td><td>70-71</td><td>72-73</td></tr><tr><td>Day 17</td><td>Unit 7 (ou, ow)</td><td>&nbsp;</td><td>74-77</td><td>78-79, Unit 7 시험공부</td></tr><tr><td>Day 18</td><td>Unit 8 (oo, ew)</td><td>Unit 7 <br>ou, ow 시험</td><td>80-81</td><td>82-83</td></tr><tr><td>Day 19</td><td>Unit 8 (oo, ew)</td><td>&nbsp;</td><td>84-87</td><td>88-89, Unit 8 시험공부</td></tr><tr><td>Day 20</td><td>Unit 7-8 Story, 발표촬영</td><td>Unit 8 <br>oo, ew 시험</td><td>90-91</td><td>N/A</td></tr></table>"}, {"name": "Phonic 4 Purple", "html": "<table class=\"ytable\"><tr><td style=\"font-weight:800;background:#f4f6fb\">&nbsp;</td><td colspan=\"5\" style=\"font-weight:800;background:#f4f6fb\">Phonics 4 - Purple Book</td></tr><tr><td>Co-T</td><td>Day</td><td>Lesson</td><td>Test</td><td>Pages</td><td>HW</td></tr><tr><td rowspan=\"8\">2 days a week</td><td>Day 1</td><td>Unit 1(bl,pl,fl)</td><td>&nbsp;</td><td>2-3</td><td>2025-04-05</td></tr><tr><td>Day 2</td><td>Unit 1(bl,pl,fl)</td><td>&nbsp;</td><td>6-9</td><td>10-11, Unit 1 시험공부</td></tr><tr><td>Day 3</td><td>Unit 2 (cl, gl, sl)</td><td>Unit 1 <br>bl, pl, fl 단어시험</td><td>12-13</td><td>14-15</td></tr><tr><td>Day 4</td><td>Unit 2 (cl, gl, sl)</td><td>&nbsp;</td><td>16-19</td><td>20-21, Unit 2 시험공부</td></tr><tr><td>Day 5</td><td>Unit 3 (br, cr, dr)</td><td>Unit 2 <br>cl, gl, sl 시험</td><td>22-23</td><td>24-25</td></tr><tr><td>Day 6</td><td>Unit 3 (br, cr, dr)</td><td>&nbsp;</td><td>26-29</td><td>30-31, Unit 3 시험공부</td></tr><tr><td>Day 7</td><td>Unit 4 (sm, sn, sw)</td><td>Unit 3 <br>br, cr, dr 시험</td><td>32-33</td><td>34-35</td></tr><tr><td>Day 8</td><td>Unit 4 (sm, sn, sw)</td><td>&nbsp;</td><td>36-39</td><td>40-41, Unit 4 시험공부</td></tr><tr><td rowspan=\"12\">3 days a week</td><td>Day 1</td><td>Unit 5 (nk, ng, nt)</td><td>&nbsp;</td><td>42-43</td><td>44-45</td></tr><tr><td>Day 2</td><td>Unit 5 (nk, ng, nt)</td><td>&nbsp;</td><td>46-49</td><td>50-51, Unit 5 시험공부</td></tr><tr><td>Day 3</td><td>Unit 6 (gh, ph, wh)</td><td>Unit 5 <br>nk, ng, nt 시험</td><td>52-53</td><td>54-55</td></tr><tr><td>Day 4</td><td>Unit 6 (gh, ph, wh)</td><td>&nbsp;</td><td>56-59</td><td>60-61, Unit 6 시험공부</td></tr><tr><td>Day 5</td><td>Unit 7 (ch, sh, th)</td><td>Unit 6 <br>gh, ph, wh 시험</td><td>62-63</td><td>64-65</td></tr><tr><td>Day 6</td><td>Unit 7 (ch, sh, th)</td><td>&nbsp;</td><td>66-69</td><td>70-71, Unit 7 시험공부</td></tr><tr><td>Day 7</td><td>Unit 8 (st, ft, lt)</td><td>Unit 7 <br>ch, sh, th 시험</td><td>72-73</td><td>74-75</td></tr><tr><td>Day 8</td><td>Unit 8 (st, ft, lt)</td><td>&nbsp;</td><td>76-79</td><td>80-81, Unit 8 시험공부</td></tr><tr><td>Day 9</td><td>Unit 9 <br>(Classroom English-TPR)</td><td>Unit 8 <br>st, ft, lt 시험</td><td>82-83 </td><td>82-83 복습</td></tr><tr><td>Day 10</td><td>Unit 9 <br>(Classroom English<br>-Script 작성)</td><td>&nbsp;</td><td>84-85</td><td>Script 암기</td></tr><tr><td>Day 11</td><td>Classroom English Script 발표</td><td>&nbsp;</td><td>84-87</td><td>88-89, Unit 8 시험공부</td></tr><tr><td>Day 12</td><td>Review Game</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr></table>"}], "uploadedBy": "관리자", "uploadedAt": 1787055159409, "course": "파닉스"}, {"id": "seedsyl002", "title": "English Chest 2 (2 months)", "dept": "초등", "sheets": [{"name": "Sheet1", "html": "<table class=\"ytable\"><tr><td colspan=\"5\" style=\"font-weight:800;background:#f4f6fb\">English Chest 2 (2 months)</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>8 weeks</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>〮 2 days a week</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>〮 16 days total</td></tr><tr><td>Week</td><td>Day</td><td>Unit / Lesson</td><td>Pages</td><td>HW</td></tr><tr><td rowspan=\"2\">1st</td><td>Day 1</td><td>Unit 1 / Lesson 1</td><td>2025-12-15</td><td>WB: 6-9</td></tr><tr><td>Day 2</td><td>Unit 1 / Lesson 2</td><td>18-21</td><td>WB: 10-13</td></tr><tr><td rowspan=\"2\">2nd</td><td>Day 3</td><td>Unit 1 / Lesson 3</td><td>24-27</td><td>WB: 14-17</td></tr><tr><td>Day 4</td><td>Unit 1 / Lesson 4</td><td>30-33</td><td>WB: 18-21</td></tr><tr><td rowspan=\"2\">3rd</td><td>Day 5</td><td>Unit 2 / Lesson 1</td><td>38-42</td><td>WB: 24-27</td></tr><tr><td>Day 6</td><td>Unit 2 / Lesson 2</td><td>44-46</td><td>WB: 28-29</td></tr><tr><td rowspan=\"2\">4th</td><td>Day 7</td><td>Unit 2 / Lesson 2</td><td>47-48</td><td>WB: 30-31</td></tr><tr><td>Day 8</td><td>Unit 2 / Lesson 3</td><td>50-53</td><td>WB: 32-35</td></tr><tr><td rowspan=\"2\">5th</td><td>Day 9</td><td>Unit 2 / Lesson 4</td><td>56-57</td><td>WB: 36-37</td></tr><tr><td>Day 10</td><td>Unit 2 / Lesson 4</td><td>58-60</td><td>WB: 38-39</td></tr><tr><td rowspan=\"2\">6th</td><td>Day 11</td><td>Unit 3 / Lesson 1</td><td>64-67</td><td>WB: 42-45</td></tr><tr><td>Day 12</td><td>Unit 3 / Lesson 2</td><td>70-74</td><td>WB: 46-49</td></tr><tr><td rowspan=\"2\">7th</td><td>Day 13</td><td>Unit 3 / Lesson 3</td><td>76-78</td><td>WB: 50-51</td></tr><tr><td>Day 14</td><td>Unit 3 / Lesson 3</td><td>79-80</td><td>WB: 52-53</td></tr><tr><td rowspan=\"2\">8th</td><td>Day 15</td><td>Unit 3 / Lesson 4</td><td>82-84</td><td>WB: 54-55</td></tr><tr><td>Day 16</td><td>Unit 3 / Lesson 4</td><td>85-86</td><td>WB: 56-57</td></tr></table>"}], "uploadedBy": "관리자", "uploadedAt": 1787055160409, "course": "리딩"}, {"id": "seedsyl003", "title": "English Chest 1 (2 months)", "dept": "초등", "sheets": [{"name": "Sheet1", "html": "<table class=\"ytable\"><tr><td colspan=\"5\" style=\"font-weight:800;background:#f4f6fb\">English Chest 1 (2 months)</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>8 weeks</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>〮 2 days a week</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>〮 16 days total</td></tr><tr><td>Week</td><td>Day</td><td>Unit / Lesson</td><td>Pages</td><td>HW</td></tr><tr><td rowspan=\"2\">1st</td><td>Day 1</td><td>Unit 1 / Lesson 1</td><td>2025-12-15</td><td>WB: 6-9</td></tr><tr><td>Day 2</td><td>Unit 1 / Lesson 2</td><td>18-21</td><td>WB: 10-13</td></tr><tr><td rowspan=\"2\">2nd</td><td>Day 3</td><td>Unit 1 / Lesson 3</td><td>24-27</td><td>WB: 14-17</td></tr><tr><td>Day 4</td><td>Unit 1 / Lesson 4</td><td>30-33</td><td>WB: 18-21</td></tr><tr><td rowspan=\"2\">3rd</td><td>Day 5</td><td>Unit 2 / Lesson 1</td><td>38-41</td><td>WB: 24-27</td></tr><tr><td>Day 6</td><td>Unit 2 / Lesson 2</td><td>44-47</td><td>WB: 28-31</td></tr><tr><td rowspan=\"2\">4th</td><td>Day 7</td><td>Unit 2 / Lesson 3</td><td>50-53</td><td>WB: 32-35</td></tr><tr><td>Day 8</td><td>Unit 2 / Lesson 4</td><td>56-59</td><td>WB: 36-39</td></tr><tr><td rowspan=\"2\">5th</td><td>Day 9</td><td>Unit 3 / Lesson 1</td><td>64-66</td><td>WB: 42-43</td></tr><tr><td>Day 10</td><td>Unit 3 / Lesson 1</td><td>67-68</td><td>WB: 44-45</td></tr><tr><td rowspan=\"2\">6th</td><td>Day 11</td><td>Unit 3 / Lesson 2</td><td>70-72</td><td>WB: 46-47</td></tr><tr><td>Day 12</td><td>Unit 3 / Lesson 2</td><td>73-74</td><td>WB: 48-49</td></tr><tr><td rowspan=\"2\">7th</td><td>Day 13</td><td>Unit 3 / Lesson 3</td><td>76-78</td><td>WB: 50-51</td></tr><tr><td>Day 14</td><td>Unit 3 / Lesson 3</td><td>79-80</td><td>WB: 52-53</td></tr><tr><td rowspan=\"2\">8th</td><td>Day 15</td><td>Unit 3 / Lesson 4</td><td>82-84</td><td>WB: 54-55</td></tr><tr><td>Day 16</td><td>Unit 3 / Lesson 4</td><td>85-86</td><td>WB: 56-57</td></tr></table>"}], "uploadedBy": "관리자", "uploadedAt": 1787055161409, "course": "리딩"}, {"id": "seedsyl004", "title": "English Time 4", "dept": "중등", "sheets": [{"name": "Sheet1", "html": "<table class=\"ytable\"><tr><td colspan=\"6\" style=\"font-weight:800;background:#f4f6fb\">English Time 4</td></tr><tr><td rowspan=\"3\" colspan=\"5\">&nbsp;</td><td>16 weeks</td></tr><tr><td>2 days a week</td></tr><tr><td>32 days total</td></tr><tr><td>Week</td><td>Day</td><td>Lesson / Title</td><td>Pages</td><td>Activity</td><td>HW</td></tr><tr><td rowspan=\"2\">1st - OT</td><td>Day 1</td><td>Welcome Chapter <br>&lt;Classroom English&gt;</td><td>vi~vii</td><td>Classroom English 익히고 상황별 classroom English script 작성</td><td>Script 암기, wb welcome pages</td></tr><tr><td>Day 2</td><td>Classroom English 복습, script 발표 / Classroom Rule 정하기</td><td>vi~vii</td><td>Speaking Class Rule 정하기</td><td>wb welcome pages</td></tr><tr><td rowspan=\"2\">2nd</td><td>Day 3</td><td>Chapter 1 <br>&lt;At the Campsite&gt;</td><td>p 1~3</td><td>책진도</td><td>wb p1-2</td></tr><tr><td>Day 4</td><td>Chapter 1 <br>&lt;At the Campsite&gt;</td><td>p.3~4</td><td>규칙/불규칙 과거형 매칭 게임, p.3 Q&amp;A 연습</td><td>wb p3-4</td></tr><tr><td rowspan=\"2\">3rd</td><td>Day 5</td><td>Chapter 2 <br>&lt;At the Amusement Park&gt;</td><td>p. 5~7</td><td>책진도</td><td>wb p5-6</td></tr><tr><td>Day 6</td><td>Chapter 2 <br>&lt;At the Amusement Park&gt;</td><td>p. 7</td><td>p.7 긍정문 부정문 익힌 뒤 해당문장 사용해서 <br>Lotte World / Everland Map - Amusement park project</td><td>wb p7-8</td></tr><tr><td rowspan=\"2\">4th</td><td>Day 7</td><td>Chapter 2 <br>&lt;At the Amusement Park&gt;</td><td>p. 8</td><td>Amusement Park Project Presentation <br>/ p.8 -ed sound 구분</td><td>N/A</td></tr><tr><td>Day 8</td><td>Chapter 3 <br>&lt;Around the House&gt;</td><td>p. 9~11</td><td>책진도 (House chores 익히고 p.11 문답 패턴 연습)</td><td>wb p9-10</td></tr><tr><td rowspan=\"2\">5th</td><td>Day 9</td><td>Chapter 3 <br>&lt;Around the House&gt;</td><td>p. 11~12</td><td>p.11 문답패턴 연습 activity </td><td>wb p11-12</td></tr><tr><td>Day 10</td><td>Review 1</td><td>p.13~15</td><td>책진도</td><td>wb p13-15</td></tr><tr><td rowspan=\"2\">6th</td><td>Day 11</td><td>Review 1</td><td>&nbsp;</td><td>Ch1~3 문장패턴 복습 후 롤플레잉 스크립트 작성</td><td>script 암기</td></tr><tr><td>Day 12</td><td>Chapter 4 <br>&lt;In town&gt;</td><td>p. 17~18</td><td>길찾기 activity</td><td>wb p16-17</td></tr><tr><td rowspan=\"2\">7th</td><td>Day 13</td><td>Chapter 4 <br>&lt;In town&gt;</td><td>p. 19~20</td><td>p. 19 문장패턴 활용 activity</td><td>wb p18-19</td></tr><tr><td>Day 14</td><td>Chapter 5 <br>&lt;At the Food Festival&gt;</td><td>p. 21~24</td><td>Food around the world 활동/책진도</td><td>wb p20-23</td></tr><tr><td rowspan=\"2\">8th</td><td>Day 15</td><td>Chapter 6 <br>&lt;During the Year&gt;</td><td>p. 25~26</td><td>책진도, “will” 활용해서 사계절 계획 작성</td><td>wb p24-25</td></tr><tr><td>Day 16</td><td>Chapter 6 <br>&lt;During the Year&gt;</td><td>p. 27~28</td><td>사계절 계획 발표</td><td>wb p26-27</td></tr><tr><td rowspan=\"2\">9th</td><td>Day 17</td><td>Review 2</td><td>p. 29~31</td><td>책진도, 다음시간 p31 예습 <br>(영어로 사칙연산 - worksheet 활용)</td><td>wb p28-30</td></tr><tr><td>Day 18</td><td>Chapter 7 <br>&lt;At the Aquarium&gt;</td><td>p.33~35</td><td>Sea animals / 책진도</td><td>wb p31-32</td></tr><tr><td rowspan=\"2\">10th</td><td>Day 19</td><td>Chapter 7 <br>&lt;At the Aquarium&gt;</td><td>p. 35~36</td><td>비교급 활동</td><td>wb p33-34</td></tr><tr><td>Day 20</td><td>Chapter 8 <br>&lt;At the Safari Park&gt;</td><td>p. 37~39</td><td>Animal-adjective matching / 최상급 패턴 익히기</td><td>wb p35-36</td></tr><tr><td rowspan=\"2\">11th</td><td>Day 21</td><td>Chapter 8 <br>&lt;At the Safari Park&gt;</td><td>p. 39~40</td><td>최상급 활동</td><td>wb p37-38</td></tr><tr><td>Day 22</td><td>ch 7~8 review</td><td>&nbsp;</td><td>비교급/최상급 복습 <br>비교급, 최상급 활용해서 script 작성 <br>&lt;Who should be the king of the zoo?&gt;</td><td>script 암기</td></tr><tr><td rowspan=\"2\">12th</td><td>Day 23</td><td>Chapter 9 <br>&lt;By the Seashore&gt;</td><td>p.41~42</td><td>Script 발표, 책진도</td><td>wb p39-40</td></tr><tr><td>Day 24</td><td>Chapter 9 <br>&lt;By the Seashore&gt;</td><td>p. 43~44</td><td>스포츠 &lt;What do you like to do?&gt; 활동</td><td>wb p41-42</td></tr><tr><td rowspan=\"2\">13th</td><td>Day 25</td><td>Review 3</td><td>p. 45~47</td><td>책진도</td><td>wb p43-45</td></tr><tr><td>Day 26</td><td>Chapter 10 <br>&lt;Collecting and Making&gt;</td><td>p. 49~51</td><td>책진도</td><td>wb p46-47</td></tr><tr><td rowspan=\"2\">14th</td><td>Day 27</td><td>Chapter 10 <br>&lt;Collecting and Making&gt;</td><td>p. 51~52</td><td>p.51 패턴활용해서 like/dislike bingo 게임 후 activity</td><td>wb p48-49</td></tr><tr><td>Day 28</td><td>Chapter 11<br>&lt;At the Planetarium&gt;</td><td>p. 53~54</td><td>Solar system worksheet(각 행성 배우기)</td><td>wb p50-51</td></tr><tr><td rowspan=\"2\">15th</td><td>Day 29</td><td>Chapter 11<br>&lt;At the Planetarium&gt;</td><td>p. 55~56</td><td>Solar system 발표, 책진도</td><td>wb p52-53</td></tr><tr><td>Day 30</td><td>Chapter 12<br>&lt;At School&gt;</td><td>p. 56~59</td><td>책진도</td><td>wb p54-55</td></tr><tr><td rowspan=\"2\">16th</td><td>Day 31</td><td>Chapter 12<br>&lt;At School&gt;</td><td>p. 59~60</td><td>p.59 패턴으로 &lt;롤모델과의 인터뷰&gt; script 작성</td><td>wb p56-57</td></tr><tr><td>Day 32</td><td>Review 4</td><td>p.61~63</td><td>role-playing, 책진도 <br>/ p.63 어려워서 선생님이 같이 풀어주세요.</td><td>wb p58-60 / <br>wb p61-64 (extra hw)</td></tr></table>"}], "uploadedBy": "관리자", "uploadedAt": 1787055162409, "course": "리딩"}]; store.syllabusSeeded=true; }
-const SHARE_FIELDS=['uploads','bookedit','bookdone','daysedit','timeedit','calendar','meetings','teachers','adminEmail','enrollment','newStudents','students','admissionConsults','wordTests','attend','homework','stayback','bookGiven','uploadTombstones','uploadStamps','wordbookOptions','testPaperOptions','giveSel','consultRequests','records','assign','cmemo','worklog','weekplan','submits','handover','boardPosts','examPeriod','examTabOn','handoverGrid'];
+const SHARE_FIELDS=['uploads','bookedit','bookdone','daysedit','timeedit','calendar','meetings','teachers','adminEmail','enrollment','newStudents','students','admissionConsults','wordTests','attend','homework','stayback','bookGiven','uploadTombstones','uploadStamps','wordbookOptions','testPaperOptions','giveSel','consultRequests','records','assign','cmemo','worklog','weekplan','submits','handover','boardPosts','handoverGrid','monthOverride'];
 // syllabus(실러버스)는 PDF/한글/워드 첨부가 커서 별도 경로(/syllabus)로, 낮은 빈도로만 동기화합니다 — 그래야 매 5초/매 입력마다 전체를 전송하지 않습니다.
 // 반 자료·학생 명단처럼 "삭제"가 중요한 항목은 병합하지 않고 통째로 교체한다(마지막 저장이 우선).
 // 병합 방식(mergeById)에는 삭제라는 개념이 없어서, 지운 반·학생이 다른 기기 자료와 합쳐지며 계속 되살아나기 때문.
@@ -897,36 +912,20 @@ function uniqueClassName(a,m,base){
   while(arr.some(x=>x.name===n)){ i++; n=base+' '+i; }
   return n;
 }
-function addClassAction(a,m,presetDays,examOnly){
+function addClassAction(a,m,presetDays){
   const arr=editArr(a,m);
-  const name=uniqueClassName(a,m,examOnly?'새 내신전용반':'새 반');
+  const name=uniqueClassName(a,m,'새 반');
   const id=genClassId();
   const c={_id:id, academy:a, name, dept:'초등', days:presetDays||'', time:'', students:[], count:0,
     subjects:[{subject:'',book:'',teacher:'',hw:'',progress:'',note:'',room:''}], updatedAt:Date.now()};
-  if(examOnly){ c.examOnly=true; c.examSubjects=['1회차','2회차']; c.examScores={}; }
   arr.push(c);
   state.classOpen[id]=true;
   save(); render(true);
 }
-// 내신 기간(날짜 범위)이 지금 이 날짜에 해당하는지 — 학원(academy)별로 미리 지정해둔다
-function examPeriodActiveOn(academy, dateStr){
-  const ep=(store.examPeriod&&store.examPeriod[academy])||{};
-  return !!(ep.start && ep.end && dateStr>=ep.start && dateStr<=ep.end);
-}
-// 내신 기간 동안, 학생이 내신전용반에 들어있으면 그 학생은 원래 반 수업에서는 빠지고 내신반 수업만 듣는다.
-// 내신전용반이 아닌 반의 "오늘 수업" 출석 명단을 만들 때 이 함수로 걸러서 써야 한다.
+// [내신전용반 기능 폐지로 단순화] 예전엔 내신 기간 동안 내신전용반에 든 학생을 원래 반 명단에서 빼는 로직이 있었으나,
+// 그 기능 자체가 없어졌으므로 이제는 그냥 반의 활성 학생 명단을 그대로 돌려준다. (호출부가 많아 함수명은 그대로 유지)
 function activeStudentsForDate(c, dateStr){
-  const base=activeStudents(c);
-  if(c.examOnly) return base; // 내신반 자기 자신은 그대로
-  if(!examPeriodActiveOn(c.academy, dateStr)) return base;
-  const examClasses=classesFor(state.month).filter(x=>x.academy===c.academy && x.examOnly && !x._deleted);
-  if(!examClasses.length) return base;
-  const examIds=new Set();
-  examClasses.forEach(ec=>{
-    activeStudents(ec).forEach(nm=>{ const st=matchStudentByRosterName(ec.academy, nm, ec.name); if(st) examIds.add(st.id); });
-  });
-  if(!examIds.size) return base;
-  return base.filter(nm=>{ const st=matchStudentByRosterName(c.academy, nm, c.name); return !(st && examIds.has(st.id)); });
+  return activeStudents(c);
 }
 function deleteClassAction(a,m,id){
   const arr=editArr(a,m);
@@ -993,30 +992,9 @@ function migrateClassKey(oldKey, newKey, month){
     }
   });
 }
-function toggleExamOnly(a,m,id){
+function toggleMockExamOn(a,m,id){
   const c=findClassById(a,m,id); if(!c) return;
-  const oldKey=ckey(c);
-  c.examOnly=!c.examOnly;
-  if(c.examOnly){
-    c.examSubjects=(c.examSubjects&&c.examSubjects.length)?c.examSubjects:['1회차','2회차'];
-    c.examScores=c.examScores||{};
-    if(!store.examTabOn) store.examTabOn=true; // 내신전용반으로 바뀐 반은 [🎓 내신] 탭에서만 보이므로, 그 탭이 꺼져 있으면 반이 어디로 갔는지 못 찾게 되니 자동으로 켜준다
-  }
-  migrateClassKey(oldKey, ckey(c), m);
-  c.updatedAt=Date.now();
-  save(); render(true);
-}
-function setExamRoundCount(a,m,id,n){
-  const c=findClassById(a,m,id); if(!c) return;
-  n=Math.max(1,Math.min(10,parseInt(n,10)||1));
-  c.examSubjects=(c.examSubjects&&c.examSubjects.length)?c.examSubjects:['1회차','2회차'];
-  if(c.examSubjects.length<n){
-    for(let i=c.examSubjects.length+1;i<=n;i++) c.examSubjects.push(i+'회차');
-  } else if(c.examSubjects.length>n){
-    const removed=c.examSubjects.slice(n);
-    c.examSubjects=c.examSubjects.slice(0,n);
-    removed.forEach(subj=>{ Object.values(c.examScores||{}).forEach(row=>{ if(row) delete row[subj]; }); });
-  }
+  c.mockExamOn=!c.mockExamOn;
   c.updatedAt=Date.now();
   save(); render(true);
 }
@@ -1076,10 +1054,16 @@ function updateSubjectField(a,m,id,idx,field,value){
 
 /* ---------- 상태 ---------- */
 const todayISO = ()=>{ const kst=new Date(Date.now()+9*60*60*1000); return kst.toISOString().slice(0,10); }; // 브라우저 시스템 시간대와 무관하게 항상 KST(한국 시간) 기준 날짜
+// 관리자가 [환경설정]에서 "지금 몇 월로 칠지"를 강제로 지정해두면(store.monthOverride), 실제 오늘 날짜가 아직 그 달이 안 됐어도
+// 선생님 로그인 화면이 곧바로 그 달 반·교재·시간표 자료를 기본으로 보여준다 — 달이 바뀌기 며칠 전에 다음 달 시간표로 미리 넘기고 싶을 때 씀.
+// (실제 오늘 날짜 자체(todayISO())는 그대로 두므로 출결·업무일지 등 "그날짜"에 기록되는 자료는 영향받지 않는다.)
+function effectiveCurrentMonth(){
+  return (store.monthOverride && /^\d{4}-\d{2}$/.test(store.monthOverride)) ? store.monthOverride : todayISO().slice(0,7);
+}
 function kstTimestamp(){ const kst=new Date(Date.now()+9*60*60*1000); return kst.toISOString().slice(0,16).replace('T',' '); } // "YYYY-MM-DD HH:MM" 형태, 항상 KST 기준
 function ymd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); } // Date 객체를 (그 객체가 나타내는 지역 날짜 그대로) "YYYY-MM-DD"로 — toISOString()은 UTC로 변환하면서 하루가 밀릴 수 있어 쓰지 않는다
 const LASTTAB_KEY='academy-dash-lasttab-'+MODE;
-let state = {tab:(localStorage.getItem(LASTTAB_KEY)||'today'), sub:'class', todayOpen:{}, ac: MODE==='all'?'all':MODE, dept:'all', q:'', month:todayISO().slice(0,7) /* [수정] 예전엔 "자료가 있는 가장 최근 달"을 기본값으로 써서, 이번 달 자료가 아직 안 올라와 있으면 화면을 열 때마다 지난달로 돌아가버렸다 — 이제 실제 오늘 날짜의 달을 기본으로 연다 */, tf:null, date:todayISO(), myOnly:true, classOpen:{}, ttDay:null, ttView:null, rosterOpen:{}, rosterView:null, rosterClass:null, rosterStatus:null};
+let state = {tab:(localStorage.getItem(LASTTAB_KEY)||'today'), sub:'class', todayOpen:{}, ac: MODE==='all'?'all':MODE, dept:'all', q:'', month:effectiveCurrentMonth() /* [수정] 예전엔 "자료가 있는 가장 최근 달"을 기본값으로 써서, 이번 달 자료가 아직 안 올라와 있으면 화면을 열 때마다 지난달로 돌아가버렸다 — 이제 실제 오늘 날짜의 달(또는 관리자가 강제 지정한 달)을 기본으로 연다 */, tf:null, date:todayISO(), myOnly:true, classOpen:{}, ttDay:null, ttView:null, rosterOpen:{}, rosterView:null, rosterClass:null, rosterStatus:null};
 
 /* ---------- 로그인 ---------- */
 function isMgr(){ const lt=loginTeacher(); return !!(lt && lt.t.role==='실장'); }
@@ -1118,7 +1102,14 @@ function hl(s){ s=esc(s); if(!state.q) return s;
 const matches = s => s && String(s).toLowerCase().includes(state.q.toLowerCase());
 const mLabel = m => m.replace('-','년 ')+'월';
 const ckey = c => c.academy+'|'+c.name+(c.examOnly?'␟exam':''); // 내신전용반은 이름이 같은 일반 반과 자료(상담 배정·메모·출결 등)가 섞이지 않도록 구분해서 키를 만든다
-function bookGivenFor(k, subject){ store.bookGiven[k]=store.bookGiven[k]||{}; return store.bookGiven[k][subject]||{students:{}}; }
+function bookGivenFor(k, subject){
+  store.bookGiven[k]=store.bookGiven[k]||{};
+  const rec=store.bookGiven[k][subject];
+  // 예전 자료 중엔(또는 여러 기기 동기화가 겹치는 과정에서) students가 아예 없는 손상된 레코드가 저장돼 있을 수 있다 —
+  // 그런 경우 g.students[학생명]에서 바로 에러가 나므로, 여기서 한 번 스스로 고쳐서 항상 students가 있게 보장한다.
+  if(!rec || !rec.students){ store.bookGiven[k][subject]=Object.assign({students:{}}, rec); }
+  return store.bookGiven[k][subject];
+}
 function bookGiveBadge(c, s){
   const g=bookGivenFor(ckey(c), s.subject||'-');
   const total=(c.students||[]).length; if(!total) return '';
@@ -1188,7 +1179,7 @@ function refreshLoginSel(){
   // 일반 선생님은 월 선택 자체가 없으므로 매번 오늘 날짜의 달로 고정해도 문제없지만, 실장은 월 선택 드롭다운을 직접
   // 조작할 수 있어야 하므로 여기서 매 렌더마다 강제로 되돌리면 안 된다 — 되돌리면 9월 등으로 바꿔도 렌더될 때마다
   // 다시 이번 달로 슬쩍 돌아가버려서, 9월을 보며 고친 것처럼 보여도 실제로는 계속 이번 달 자료를 고치게 된다.
-  if(lt && !isMgr()) state.month = todayISO().slice(0,7); // [수정] 선생님 로그인 때도 '자료 있는 가장 최근 달'이 아니라 실제 오늘 날짜의 달을 기본으로 연다
+  if(lt && !isMgr()) state.month = effectiveCurrentMonth(); // [수정] 선생님 로그인 때도 '자료 있는 가장 최근 달'이 아니라 실제 오늘 날짜의 달(관리자가 강제 지정했으면 그 달)을 기본으로 연다
 }
 function mountLogin(){
   const w=document.getElementById('loginwrap');
@@ -1233,17 +1224,16 @@ document.getElementById('syncBadge').onclick=()=>{ goTab('set'); };
 
 function tabDefs(){
   const lt=loginTeacher();
-  const examTab=store.examTabOn?[['exam','🎓 내신']]:[];
   if(lt && !isMgr()){
     return {main:[['today','🏠 홈'],['consult','상담'],['report','업무일지'],['dash','반 · 교재']],
-            more:[['bookgive','📦 교재배부'],['wordrange','📝 단어 범위'],...examTab,['syllabus','📘 Syllabus'],['roster','학생 명단'],['timetable','🕒 시간표'],['yearly','연간 교재'],['cal','일정 · 회의'],['board','📋 게시판'],['archive','전체 기록'],['set','설정']]};
+            more:[['bookgive','📦 교재배부'],['wordrange','📝 단어 범위'],['syllabus','📘 Syllabus'],['roster','학생 명단'],['timetable','🕒 시간표'],['yearly','연간 교재'],['cal','일정 · 회의'],['board','📋 게시판'],['archive','전체 기록'],['set','설정']]};
   }
   if(isMgr()){
     return {main:[['today','🏠 홈'],['consult','상담'],['report','업무보고'],['dash','반 · 교재']],
-            more:[['bookgive','📦 교재배부'],['wordrange','📝 단어 범위'],...examTab,['syllabus','📘 Syllabus'],['roster','학생 명단'],['timetable','🕒 시간표'],['attend','출결 (월별)'],['yearly','연간 교재'],['cal','일정 · 회의'],['board','📋 게시판'],['archive','전체 기록'],['set','설정']]};
+            more:[['bookgive','📦 교재배부'],['wordrange','📝 단어 범위'],['syllabus','📘 Syllabus'],['roster','학생 명단'],['timetable','🕒 시간표'],['attend','출결 (월별)'],['yearly','연간 교재'],['cal','일정 · 회의'],['board','📋 게시판'],['archive','전체 기록'],['set','설정']]};
   }
   return {main:[['today','오늘 수업'],['consult','상담 관리'],['report','업무보고'],['dash','반 · 교재']],
-          more:[['bookgive','📦 교재배부'],['wordrange','📝 단어 범위'],...examTab,['syllabus','📘 Syllabus'],['roster','학생 명단'],['timetable','🕒 시간표'],['attend','출결 (월별)'],['yearly','연간 교재'],['cal','일정 · 회의'],['board','📋 게시판'],['archive','전체 기록'],['set','설정 · 업로드']]};
+          more:[['bookgive','📦 교재배부'],['wordrange','📝 단어 범위'],['syllabus','📘 Syllabus'],['roster','학생 명단'],['timetable','🕒 시간표'],['attend','출결 (월별)'],['yearly','연간 교재'],['cal','일정 · 회의'],['board','📋 게시판'],['archive','전체 기록'],['set','설정 · 업로드']]};
 }
 function goTab(t){
   state.tab=t;
@@ -1667,39 +1657,6 @@ function dedupeMergedClasses(cls){
   });
   return out;
 }
-// 내신전용반 안에서 학생별·과목별 모의고사 점수를 표로 일괄 입력하는 UI (과목 칸은 자유롭게 추가·삭제 가능)
-function renderExamScoreTable(c, attrs){
-  c.examSubjects=c.examSubjects&&c.examSubjects.length?c.examSubjects:['1회차','2회차'];
-  c.examScores=c.examScores||{};
-  const students=activeStudents(c);
-  let h=`<div style="margin:6px 0 12px;padding:8px 10px;background:#fff8ec;border-radius:10px;border:1px solid #f0c987">
-    <div style="font-size:.78rem;font-weight:700;color:#92600a;margin-bottom:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">🎓 모의고사 점수
-      <span style="font-weight:400;color:var(--sub)">회차 수:
-        <select data-examroundcount ${attrs} style="padding:2px 5px;border:1px solid var(--line);border-radius:6px;font-family:inherit;font-size:.78rem;font-weight:700">
-          ${Array.from({length:10},(_,i)=>i+1).map(n=>`<option value="${n}" ${c.examSubjects.length===n?'selected':''}>${n}회차</option>`).join('')}
-        </select>
-      </span>
-    </div>`;
-  if(!students.length){ h+=`<div style="font-size:.78rem;color:#8b93a7">학생을 먼저 명단에 추가해주세요.</div></div>`; return h; }
-  h+=`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.8rem">
-    <thead><tr><th style="text-align:left;padding:4px 6px;border-bottom:1.5px solid #f0c987">학생</th>
-      ${c.examSubjects.map((subj,si)=>`<th style="padding:4px 6px;border-bottom:1.5px solid #f0c987;white-space:nowrap">
-        <input type="text" value="${esc(subj)}" data-examsubj="${si}" ${attrs} style="width:64px;border:1px solid var(--line);border-radius:6px;padding:3px 5px;font-family:inherit;font-size:.78rem;font-weight:700;text-align:center">
-        <b data-rmexamsubj="${si}" ${attrs} style="cursor:pointer;color:#c0392b;margin-left:2px" title="이 회차 칸 삭제">×</b>
-      </th>`).join('')}
-      <th style="padding:4px 6px;border-bottom:1.5px solid #f0c987"><button class="btn small" data-addexamsubj ${attrs} style="padding:3px 8px;font-size:.74rem">+ 회차</button></th>
-    </tr></thead><tbody>
-    ${students.map(sname=>{
-      const scores=c.examScores[sname]||{};
-      return `<tr><td style="padding:4px 6px;border-bottom:1px solid #f3e6c8;white-space:nowrap">${esc(studentDisplayName(c.academy,sname,c.name))}</td>
-        ${c.examSubjects.map(subj=>`<td style="padding:4px 6px;border-bottom:1px solid #f3e6c8">
-          <input type="text" inputmode="numeric" value="${esc(scores[subj]||'')}" data-examscore="${esc(sname)}|${esc(subj)}" ${attrs} placeholder="점수" style="width:56px;border:1px solid var(--line);border-radius:6px;padding:3px 5px;font-family:inherit;font-size:.8rem;text-align:center">
-        </td>`).join('')}
-        <td></td></tr>`;
-    }).join('')}
-    </tbody></table></div></div>`;
-  return h;
-}
 function classCard(c, admin, dayFilter, dupCount){
   const a=AC[c.academy];
   const id=c._id; // admin 모드에서만 존재 (classesFor에서 미리 materialize 함)
@@ -1712,15 +1669,14 @@ function classCard(c, admin, dayFilter, dupCount){
   const dayTag=s=>s.day?`<span style="font-size:.68rem;color:#8b93a7">(${esc(s.day)})</span>`:'';
   if(!open){
     return `<article class="card ${a.cls}">
-      <h2>${hl(c.name)} ${MODE==='all'?`<span class="badge ${a.cls}">${a.label}</span>`:''}${c.examOnly?` <span style="background:#d97706;color:#fff;font-size:.68rem;font-weight:800;border-radius:6px;padding:2px 6px">🎓 내신전용</span>`:''}${dupCount>1?` <span title="같은 이름의 반이 이 달에 ${dupCount}개 있습니다 — 중복이면 정리해주세요" style="background:#f59e0b;color:#fff;font-size:.68rem;font-weight:800;border-radius:6px;padding:2px 6px;cursor:help">⚠ 중복 ${dupCount}</span>`:''}${(()=>{ const mp=mergedPartnerClass(c); return mp?` <span style="background:#6366f1;color:#fff;font-size:.68rem;font-weight:800;border-radius:6px;padding:2px 6px">🔗 합반: ${esc(mp.name)}</span>`:''; })()}
+      <h2>${hl(c.name)} ${MODE==='all'?`<span class="badge ${a.cls}">${a.label}</span>`:''}${c.mockExamOn?` <span style="background:#7c3aed;color:#fff;font-size:.68rem;font-weight:800;border-radius:6px;padding:2px 6px">🎓 모의고사반</span>`:''}${dupCount>1?` <span title="같은 이름의 반이 이 달에 ${dupCount}개 있습니다 — 중복이면 정리해주세요" style="background:#f59e0b;color:#fff;font-size:.68rem;font-weight:800;border-radius:6px;padding:2px 6px;cursor:help">⚠ 중복 ${dupCount}</span>`:''}${(()=>{ const mp=mergedPartnerClass(c); return mp?` <span style="background:#6366f1;color:#fff;font-size:.68rem;font-weight:800;border-radius:6px;padding:2px 6px">🔗 합반: ${esc(mp.name)}</span>`:''; })()}
       ${admin?`<button class="btn small" style="float:right;font-size:.72rem;padding:4px 9px" data-toggleedit ${attrs}>✎ 편집</button>`:''}</h2>
       <div class="meta">${c.dept}${c.days?' · '+c.days:''}${c.prev?` · 6월 반명: ${esc(c.prev)}`:''}${c.count?' · '+c.count+'명':''}${(()=>{
-        if(c.examOnly) return ''; // 내신전용반은 단어시험을 안 보므로 담당 표시 자체를 하지 않는다
         const wi=dayFilter?wordDutyForDay(c,dayFilter):((c.wordDuty!=null&&c.wordDuty!=='')?c.wordDuty:null);
         if(wi==null) return '';
         const nm=esc((teacherByDutyVal(c.academy,wi)||{}).name||'-');
         const hasOverrides=c.wordDutyByDay&&Object.keys(c.wordDutyByDay).length>0;
-        return ' · 📖 단어시험: '+nm+(!dayFilter&&hasOverrides?' (요일별 다름)':'');
+        return ' · '+(c.mockExamOn?'🎓 모의고사':'📖 단어시험')+': '+nm+(!dayFilter&&hasOverrides?' (요일별 다름)':'');
       })()}</div>
       ${(c.students&&c.students.length)?'<div class="students">'+c.students.map(s=>`<span class="stu">${hl(studentDisplayName(c.academy,s,c.name))}</span>`).join('')+'</div>':''}
       ${c.rosterNote?`<div class="rnote">※ ${esc(c.rosterNote)}</div>`:''}
@@ -1737,19 +1693,18 @@ function classCard(c, admin, dayFilter, dupCount){
   return `<article class="card ${a.cls}" style="border:2px solid ${a.cls==='eb'?'var(--ebest)':'var(--icon)'};grid-column:1/-1">
     ${teacherDatalist(c.academy)}
     <datalist id="dl_roster_${c.academy}">${store.students.filter(x=>x.academy===c.academy && !x._deleted && x.status==='재원').map(x=>`<option value="${esc(x.nameKo)}">`).join('')}</datalist>
-    ${c.examOnly?`<div style="margin-bottom:8px"><span style="background:#d97706;color:#fff;font-size:.72rem;font-weight:800;border-radius:6px;padding:3px 8px">🎓 내신전용반 — 평소 수업(같은 이름의 일반 반)과는 서로 다른 자료입니다. 단어시험 담당 등은 보통 여기가 아니라 일반 반 쪽에서 설정하세요.</span></div>`:''}
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
       <input type="text" value="${esc(c.name)}" data-cfield="name" ${attrs} placeholder="반이름" style="flex:1;min-width:110px;font-weight:800;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
       <select data-cfield="dept" ${attrs} style="padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
         ${deptOpts.map(d=>`<option ${c.dept===d?'selected':''}>${esc(d)}</option>`).join('')}
       </select>
-      <label title="체크하면 이 반을 내신전용반으로 전환합니다 (단어시험 설정이 사라지고 모의고사 점수표가 대신 나타나요 · 다른 탭 목록에서 빠지고 [🎓 내신] 탭으로 옮겨갑니다)" style="display:flex;align-items:center;gap:4px;font-size:.8rem;font-weight:700;background:${c.examOnly?'#d97706':'#fff'};color:${c.examOnly?'#fff':'#333'};border:1px solid ${c.examOnly?'#d97706':'var(--line)'};border-radius:7px;padding:6px 9px;cursor:pointer">
-        <input type="checkbox" data-examonlycb ${attrs} ${c.examOnly?'checked':''} style="margin:0">🎓 내신전용반
+      <label title="체크하면 이 반의 단어시험 자리가 모의고사(회차 선택)로 바뀝니다 — 담당 선생님은 그대로, 매일 기록만 회차로 바뀝니다" style="display:flex;align-items:center;gap:4px;font-size:.8rem;font-weight:700;background:${c.mockExamOn?'#7c3aed':'#fff'};color:${c.mockExamOn?'#fff':'#333'};border:1px solid ${c.mockExamOn?'#7c3aed':'var(--line)'};border-radius:7px;padding:6px 9px;cursor:pointer">
+        <input type="checkbox" data-mockexamcb ${attrs} ${c.mockExamOn?'checked':''} style="margin:0">🎓 내신 (모의고사)
       </label>
-      ${c.examOnly?'':`<select data-cfield="wordDuty" ${attrs} title="단어시험 담당 선생님" style="padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;background:#fff8ec">
-        <option value="">📖 단어시험 담당 미지정</option>
-        ${(store.teachers[c.academy]||[]).map(t=>`<option value="${t.id}" ${c.wordDuty===t.id?'selected':''}>📖 ${esc(t.name)}</option>`).join('')}
-      </select>`}
+      <select data-cfield="wordDuty" ${attrs} title="${c.mockExamOn?'모의고사':'단어시험'} 담당 선생님" style="padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;background:#fff8ec">
+        <option value="">${c.mockExamOn?'🎓 모의고사':'📖 단어시험'} 담당 미지정</option>
+        ${(store.teachers[c.academy]||[]).map(t=>`<option value="${t.id}" ${c.wordDuty===t.id?'selected':''}>${c.mockExamOn?'🎓':'📖'} ${esc(t.name)}</option>`).join('')}
+      </select>
       <select data-cfield="mergedWith" ${attrs} title="같이 수업하는 합반 상대" style="padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;background:#eef0ff">
         <option value="">🔗 합반 없음</option>
         ${editArr(c.academy, c._src||state.month).filter(x=>x._id!==c._id).map(x=>`<option value="${esc(x._id)}" ${c.mergedWith===x._id?'selected':''}>🔗 ${esc(x.name)}</option>`).join('')}
@@ -1774,11 +1729,10 @@ function classCard(c, admin, dayFilter, dupCount){
       </div>
     </div>
     ${(()=>{
-      if(c.examOnly) return ''; // 내신전용반은 단어시험을 보지 않으므로 요일별 담당 설정 자체를 안 보여준다
       const days=cdays(c).split(',').map(x=>x.trim()).filter(Boolean);
       if(days.length<2) return '';
       return `<div style="margin-bottom:8px;padding:8px 10px;background:#fff8ec;border-radius:10px">
-        <div style="font-size:.76rem;font-weight:700;color:var(--sub);margin-bottom:4px">📖 요일별 단어시험 담당 (비우면 위 기본값 사용)</div>
+        <div style="font-size:.76rem;font-weight:700;color:var(--sub);margin-bottom:4px">${c.mockExamOn?'🎓 요일별 모의고사 담당 (비우면 위 기본값 사용)':'📖 요일별 단어시험 담당 (비우면 위 기본값 사용)'}</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
         ${days.map(d=>{
           const cur=c.wordDutyByDay&&c.wordDutyByDay[d];
@@ -1802,7 +1756,6 @@ function classCard(c, admin, dayFilter, dupCount){
       <input type="text" placeholder="학생 이름 추가 (명단에서 검색)" list="dl_roster_${c.academy}" data-addstu-in ${attrs} style="flex:1;min-width:100px;padding:6px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.86rem">
       <button class="btn small" data-addstu ${attrs}>+ 학생 추가</button>
     </div>
-    ${c.examOnly?renderExamScoreTable(c, attrs):''}
     ${dayFilter?`<div style="font-size:.76rem;color:var(--sub);margin-bottom:6px">📅 ${dayFilter}요일 보기 — "요일" 칸을 비워두면 이 반이 수업하는 모든 요일에 보이고, 특정 요일(들)을 적으면(예: 화,목) 그 요일에만 보입니다.</div>`:''}
     <table style="width:100%"><thead><tr><th>과목</th><th>요일</th><th>시간</th><th>강의실</th><th>담당</th><th>교재</th><th>과제</th><th>진도</th><th>메모</th><th></th></tr></thead><tbody>
     ${idxList.map(i=>{
@@ -1834,90 +1787,13 @@ function renderClass(list){
   if(admin){
     toolbar=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
       ${academies().map(a=>`<button class="btn primary" data-addclass="${a}">+ ${AC[a].label} 새 반 추가</button>`).join('')}
-      <span style="font-size:.78rem;color:var(--sub);align-self:center">카드의 [✎ 편집]을 눌러 반이름·학생·교재를 바로 수정할 수 있어요${store.examTabOn?' · 내신전용반은 [🎓 내신] 탭에서 관리합니다':''}</span>
+      <span style="font-size:.78rem;color:var(--sub);align-self:center">카드의 [✎ 편집]을 눌러 반이름·학생·교재를 바로 수정할 수 있어요</span>
     </div>`;
   }
   if(!list.length) return toolbar+'<div class="empty">조건에 맞는 반이 없습니다.</div>';
   const nameCounts={};
   list.forEach(c=>{ const k=c.academy+'|'+c.name; nameCounts[k]=(nameCounts[k]||0)+1; });
   return toolbar+'<div class="grid">'+list.map(c=>classCard(c,admin,null,nameCounts[c.academy+'|'+c.name])).join('')+'</div>';
-}
-/* ---------- 🎓 내신 (기간 · 내신전용반 · 점수표를 한 곳에서 관리) ---------- */
-function renderExam(){
-  const admin=isAdminRole();
-  state.examView=state.examView||'period';
-  const chips=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
-    <button class="chip ${state.examView==='period'?'on':''}" data-examview="period">📅 기간 설정</button>
-    <button class="chip ${state.examView==='classes'?'on':''}" data-examview="classes">🏫 내신전용반 · 명단</button>
-    <button class="chip ${state.examView==='scores'?'on':''}" data-examview="scores">📊 점수표</button>
-  </div>`;
-  let body;
-  if(state.examView==='classes') body=renderExamClasses(admin);
-  else if(state.examView==='scores') body=renderExamScores();
-  else body=renderExamPeriodView(admin);
-  return chips+body;
-}
-function renderExamPeriodView(admin){
-  return academies().map(a=>{
-    const ep=(store.examPeriod&&store.examPeriod[a])||{};
-    return `<div class="setsec" style="border:2px solid #d97706"><h3>🎓 ${AC[a].label} 내신 기간</h3>
-    <div class="desc">아래 기간 동안은, "내신전용반"에 들어있는 학생은 원래 듣던 반 수업 대신 내신전용반 수업만 듣는 것으로 자동 처리됩니다(오늘 수업 출석 명단에 반영). 내신전용반에 없는 학생은 평소처럼 원래 반 그대로 진행됩니다. 기간이 지나면 따로 끄지 않아도 자동으로 원래대로 돌아옵니다.</div>
-    <div class="cbtns">
-      <label style="font-size:.8rem;font-weight:700;color:var(--sub)">시작일 <input type="date" data-examperiod="${a}|start" value="${esc(ep.start||'')}" ${admin?'':'disabled'} style="padding:6px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit"></label>
-      <label style="font-size:.8rem;font-weight:700;color:var(--sub)">종료일 <input type="date" data-examperiod="${a}|end" value="${esc(ep.end||'')}" ${admin?'':'disabled'} style="padding:6px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit"></label>
-      ${ep.start&&ep.end?`<span style="font-size:.8rem;font-weight:800;color:${examPeriodActiveOn(a,todayISO())?'#d97706':'#8b93a7'}">${examPeriodActiveOn(a,todayISO())?'🎓 지금 내신 기간 적용 중':'지금은 기간 밖(평소대로 진행)'}</span>`:''}
-    </div>
-  </div>`;
-  }).join('');
-}
-function examClassesForMonth(){ return classesFor(state.month).filter(c=>c.examOnly); }
-function renderTtGridExamUpload(admin){
-  if(!admin) return '';
-  let h=`<div class="setsec" style="border:2px solid #d97706"><h3>🕒 내신반 시간표 엑셀 업로드</h3>
-    <div class="desc">요일×시간 격자 시간표 엑셀을 올리면, <b>내신전용반</b>에만 과목·시간·강의실·담당을 자동으로 반영합니다 (일반 반은 건드리지 않습니다). 내신 기간용 시간표 파일을 그대로 올리면 됩니다.</div>
-    <div class="cbtns">
-      <select id="ttgExAcSel" style="padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${academies().map(a=>`<option value="${a}">${AC[a].label}</option>`).join('')}</select>
-      <button class="btn primary" style="background:#d97706;border-color:#d97706" id="ttgExBtn">🕒 내신반 시간표 엑셀 업로드</button><input type="file" id="ttgExFile" accept=".xlsx,.xls" style="display:none">
-      <span id="ttgExStatus" style="font-size:.8rem;color:var(--sub)"></span>
-    </div>
-  </div>`;
-  if(state.ttGridWb && state.ttGridWb.examOnly) h+=renderTtGridSheetPicker();
-  if(state.ttGrid && state.ttGrid.examOnly) h+=renderTtGridPreview();
-  return h;
-}
-function renderExamClasses(admin){
-  let toolbar='';
-  if(admin){
-    toolbar=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-      ${academies().map(a=>`<button class="btn primary" style="background:#d97706;border-color:#d97706" data-addclass="${a}" data-examonly="1">+ ${AC[a].label} 내신전용반 추가</button>`).join('')}
-    </div>`;
-  }
-  toolbar=renderTtGridExamUpload(admin)+toolbar;
-  const list=examClassesForMonth();
-  if(!list.length) return toolbar+'<div class="empty">아직 만든 내신전용반이 없습니다. 위 버튼으로 추가한 뒤, 카드를 열어 요일·학생 명단을 채워주세요.</div>';
-  const nameCounts={};
-  list.forEach(c=>{ const k=c.academy+'|'+c.name; nameCounts[k]=(nameCounts[k]||0)+1; });
-  return toolbar+'<div class="grid">'+list.map(c=>classCard(c,admin,null,nameCounts[c.academy+'|'+c.name])).join('')+'</div>';
-}
-function renderExamScores(){
-  const list=examClassesForMonth();
-  if(!list.length) return '<div class="empty">먼저 [🏫 내신전용반 · 명단]에서 내신전용반을 만들고 학생을 넣어주세요.</div>';
-  return list.map(c=>{
-    const attrs=`data-a="${c.academy}" data-src="${esc(c._src)}" data-id="${esc(c._id||'')}"`;
-    return `<div class="setsec"><h3>${esc(c.name)} ${MODE==='all'?`<span class="badge ${AC[c.academy].cls}">${AC[c.academy].label}</span>`:''}</h3>${renderExamScoreTable(c,attrs)}</div>`;
-  }).join('');
-}
-function bindExam(){
-  const v=document.getElementById('view');
-  v.querySelectorAll('[data-examview]').forEach(b=>b.onclick=()=>{ state.examView=b.dataset.examview; render(true); });
-  v.querySelectorAll('[data-examperiod]').forEach(inp=>inp.onchange=()=>{
-    const [a,part]=inp.dataset.examperiod.split('|');
-    store.examPeriod=store.examPeriod||{}; store.examPeriod[a]=store.examPeriod[a]||{};
-    store.examPeriod[a][part]=inp.value;
-    save(); render(true);
-  });
-  bindTtGrid();
-  bindClassEdit(); // 내신전용반 카드도 반 편집과 같은 방식(학생 추가·요일·점수표 입력)으로 동작
 }
 /* ---------- 시간표 (관리자·실장) ---------- */
 function freeGaps(a, dayList, wd){
@@ -2131,7 +2007,7 @@ function bindClassEdit(){
     state.ttView='day'; state.ttDay=d; state.classOpen[id]=true; render(true);
   });
   v.querySelectorAll('[data-ttday]').forEach(b=>b.onclick=()=>{ state.ttDay=b.dataset.ttday; render(true); });
-  v.querySelectorAll('[data-addclass]').forEach(b=>b.onclick=()=>addClassAction(b.dataset.addclass, state.month, b.dataset.presetdays||'', b.dataset.examonly==='1'));
+  v.querySelectorAll('[data-addclass]').forEach(b=>b.onclick=()=>addClassAction(b.dataset.addclass, state.month, b.dataset.presetdays||''));
   v.querySelectorAll('[data-cdaycb]').forEach(cb=>cb.onchange=()=>{
     const c=findClassById(cb.dataset.a,cb.dataset.src,cb.dataset.id); if(!c) return;
     let days=cdays(c).split(',').map(x=>x.trim()).filter(Boolean);
@@ -2154,53 +2030,9 @@ function bindClassEdit(){
   v.querySelectorAll('[data-wdday]').forEach(sel=>sel.onchange=()=>{
     updateWordDutyDay(sel.dataset.a,sel.dataset.src,sel.dataset.id,sel.dataset.wdday,sel.value);
   });
-  // 🎓 내신전용반 모의고사 점수표
-  v.querySelectorAll('[data-examscore]').forEach(inp=>inp.onchange=()=>{
-    const c=findClassById(inp.dataset.a,inp.dataset.src,inp.dataset.id); if(!c) return;
-    const [sname,subj]=inp.dataset.examscore.split('|');
-    c.examScores=c.examScores||{}; c.examScores[sname]=c.examScores[sname]||{};
-    c.examScores[sname][subj]=inp.value; c.updatedAt=Date.now();
-    save(); render(true);
-  });
-  v.querySelectorAll('[data-examsubj]').forEach(inp=>inp.onchange=()=>{
-    const c=findClassById(inp.dataset.a,inp.dataset.src,inp.dataset.id); if(!c) return;
-    const si=Number(inp.dataset.examsubj);
-    const old=c.examSubjects[si], val=inp.value.trim();
-    if(!val || c.examSubjects.includes(val)){ render(true); return; } // 빈 값이나 중복 회차명은 무시
-    c.examSubjects[si]=val;
-    // 과목명이 바뀌면 이미 입력해둔 점수도 새 이름으로 옮겨준다
-    Object.values(c.examScores||{}).forEach(row=>{ if(row && old in row){ row[val]=row[old]; delete row[old]; } });
-    c.updatedAt=Date.now();
-    save(); render(true);
-  });
-  v.querySelectorAll('[data-rmexamsubj]').forEach(b=>b.onclick=()=>{
-    const c=findClassById(b.dataset.a,b.dataset.src,b.dataset.id); if(!c) return;
-    const si=Number(b.dataset.rmexamsubj);
-    const removed=c.examSubjects[si];
-    c.examSubjects.splice(si,1);
-    Object.values(c.examScores||{}).forEach(row=>{ if(row) delete row[removed]; });
-    c.updatedAt=Date.now();
-    save(); render(true);
-  });
-  v.querySelectorAll('[data-addexamsubj]').forEach(b=>b.onclick=()=>{
-    const c=findClassById(b.dataset.a,b.dataset.src,b.dataset.id); if(!c) return;
-    c.examSubjects=c.examSubjects||[];
-    c.examSubjects.push((c.examSubjects.length+1)+'회차');
-    c.updatedAt=Date.now();
-    save(); render(true);
-  });
-  v.querySelectorAll('[data-examroundcount]').forEach(sel=>sel.onchange=()=>{
-    setExamRoundCount(sel.dataset.a, sel.dataset.src, sel.dataset.id, sel.value);
-  });
-  v.querySelectorAll('[data-examonlycb]').forEach(cb=>cb.onchange=()=>{
-    const c=findClassById(cb.dataset.a,cb.dataset.src,cb.dataset.id); if(!c) return;
-    const turningOn=!c.examOnly;
-    if(!confirm(turningOn
-      ? `"${c.name}" 반을 내신전용반으로 전환할까요?\n단어시험 관련 설정은 사라지고 모의고사 점수표가 대신 나타나며, 다른 탭 목록에서 빠지고 [🎓 내신] 탭으로 옮겨갑니다.\n(상담·출결·숙제 등 이미 입력된 자료는 그대로 유지됩니다)`
-      : `"${c.name}" 반을 다시 일반 반으로 되돌릴까요?\n모의고사 점수표가 사라지고 단어시험 설정이 대신 나타나며, [🎓 내신] 탭 목록에서 빠지고 원래 탭들로 돌아갑니다.`)){
-      cb.checked=c.examOnly; return;
-    }
-    toggleExamOnly(cb.dataset.a, cb.dataset.src, cb.dataset.id);
+  // 🎓 내신 (모의고사) — 반당 하나, 단어시험 자리를 회차 선택으로 바꾸는 스위치
+  v.querySelectorAll('[data-mockexamcb]').forEach(cb=>cb.onchange=()=>{
+    toggleMockExamOn(cb.dataset.a, cb.dataset.src, cb.dataset.id);
   });
   v.querySelectorAll('[data-toggleedit]').forEach(b=>b.onclick=()=>{
     let id=b.dataset.id;
@@ -2899,8 +2731,11 @@ function prevTwoWordTests(studentId, beforeDate){
     .sort((a,b)=>b.date.localeCompare(a.date));
   return prev.slice(0,2).reverse(); // 오래된 순으로
 }
+function classOfStudent(s){
+  return classesFor(state.month).find(x=>x.academy===s.academy && x.name===String(s.className||'').trim());
+}
 function studentIsHigh(s){
-  const c=classesFor(state.month).find(x=>x.academy===s.academy && !x.examOnly && x.name===String(s.className||'').trim());
+  const c=classOfStudent(s);
   if(c && c.dept==='고등') return true;
   return String(s.school||'').trim().endsWith('고');
 }
@@ -2958,7 +2793,10 @@ function setTpOptions(a, arr){
   store.testPaperOptions[a]=arr;
 }
 const WORDLANG_OPTIONS=['한글','믹스','영어'];
+const MOCKEXAM_ROUND_OPTIONS=Array.from({length:10},(_,i)=>String(i+1));
 function wtStudentRow(s, date){
+  const cls=classOfStudent(s);
+  const isMock=!!(cls && cls.mockExamOn);
   let r=store.wordTests.find(x=>x.studentId===s.id && x.date===date);
   if(!r){
     // 오늘 기록이 아직 없으면 화면에는 어제(가장 최근) 단어장·유형을 미리 채워서 보여준다 (실제 저장은 다른 값을 건드릴 때 이 값 그대로 이어받음)
@@ -2966,6 +2804,20 @@ function wtStudentRow(s, date){
     r = prev ? {wordbook:prev.wordbook||'', lang:prev.lang||''} : {};
   }
   const dim = r.absent ? 'opacity:.5' : '';
+  const nameCol=`<span class="key">${esc(s.nameKo)}${s.nameEn?' <span style="font-weight:400;color:var(--sub)">('+esc(s.nameEn)+')</span>':''} ${MODE==='all'?bdg(s.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(s.className||'')}</span></span>`;
+  if(isMock){
+    // 🎓 모의고사반: 단어장·유형·범위·점수·누적 없이, 회차(1~10) 선택 + 미응시 체크만 매일 기록한다
+    const roundSel=`<select data-wtfield="${s.id}|round" ${r.absent?'disabled':''} style="width:96px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
+      <option value="">회차 선택</option>
+      ${MOCKEXAM_ROUND_OPTIONS.map(n=>`<option value="${n}" ${String(r.round||'')===n?'selected':''}>${n}회</option>`).join('')}
+    </select>`;
+    return `<div class="rowitem" style="align-items:center;flex-wrap:wrap">
+      ${nameCol}
+      <span class="val" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        🎓 ${roundSel}
+        <label style="font-size:.8rem;color:${r.absent?'#6b7280':'var(--sub)'};font-weight:${r.absent?'800':'400'}"><input type="checkbox" data-wtabsent="${s.id}" ${r.absent?'checked':''}> 미응시</label>
+      </span></div>`;
+  }
   const wbSel=`<select data-wtfield="${s.id}|wordbook" ${r.absent?'disabled':''} style="width:120px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
     <option value="">단어장 선택</option>
     ${wbOptionsFor(s.academy).map(o=>`<option value="${esc(o)}" ${r.wordbook===o?'selected':''}>${esc(o)}</option>`).join('')}
@@ -2975,7 +2827,7 @@ function wtStudentRow(s, date){
     ${WORDLANG_OPTIONS.map(o=>`<option value="${esc(o)}" ${r.lang===o?'selected':''}>${esc(o)}</option>`).join('')}
   </select>`;
   return `<div class="rowitem" style="align-items:center;flex-wrap:wrap">
-      <span class="key">${esc(s.nameKo)}${s.nameEn?' <span style="font-weight:400;color:var(--sub)">('+esc(s.nameEn)+')</span>':''} ${MODE==='all'?bdg(s.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(s.className||'')}</span></span>
+      ${nameCol}
       <span class="val" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         ${wbSel}
         ${langSel}
@@ -5102,15 +4954,6 @@ function autoLessons(who, date){
   const w=whoTeacher(who); if(!w) return [];
   const wd=wdOf(date); const month=date.slice(0,7);
   let cls=dedupeMergedClasses(classesFor(month).filter(c=>c.academy===w.a && classMeets(c,wd)));
-  // 내신 기간(날짜 기준) 동안은 같은 이름의 내신전용반이 원래 반을 대신한다 — 기간이 아니면 내신전용반 자체는 뺀다
-  // (출결 명단이 반별로 자동 전환되는 것과 같은 방식으로, 주간 진도계획표에도 똑같이 적용)
-  const periodOn=examPeriodActiveOn(w.a, date);
-  const byName={};
-  cls.forEach(c=>{ (byName[c.name]=byName[c.name]||[]).push(c); });
-  cls=Object.values(byName).flatMap(group=>{
-    const examVer=group.filter(c=>c.examOnly), normalVer=group.filter(c=>!c.examOnly);
-    return (periodOn && examVer.length) ? examVer : normalVer;
-  });
   const rows=[];
   cls.forEach(c=>{
     const nm=norm(w.t.name);
@@ -5128,16 +4971,6 @@ function autoLessons(who, date){
     subs=subs.filter(s=>!isSelfStudySubj(s.subject)); // IBT·L/C는 어학실에서 자체 진행돼 수업내용·진도 자동 채움 대상에서 제외
     if(!subs.length) return;
     const asg=((((store.homework[date]||{})[ckey(c)])||{})['_assign']||{}).note||'';
-    if(c.examOnly){
-      // 내신전용반은 그날 과목이 여러 개(국어·영어·수학 등)여도 따로따로 줄을 만들지 않고, 반 전체를 하나의 "내신" 줄로 합쳐서 보여준다
-      const ranges=subs.map(s=>parseRange(s.time)).filter(Boolean);
-      const t = ranges.length
-        ? (fmtH24(Math.min(...ranges.map(r=>r[0]))) + '-' + fmtH24(Math.max(...ranges.map(r=>r[1]))))
-        : timeOfDay(c,wd);
-      const books=[...new Set(subs.map(s=>s.book).filter(Boolean))].join('/');
-      rows.push({cls:c.name, time:t, book:books, lesson:'', subj:c.name, hw:asg||'', prog:''});
-      return;
-    }
     subs.forEach(s=>{
       const r=parseRange(s.time);
       const t=r ? (fmtH24(r[0])+'-'+fmtH24(r[1])) : (s.time||timeOfDay(c,wd)); // 반 전체 시간이 아니라 이 과목 자체의 시간을 보여준다
@@ -5804,10 +5637,7 @@ function hgSaveColWidth(key, w){
   localStorage.setItem('hgColWidths', JSON.stringify(saved));
 }
 function hgClassOptions(a, targetMonth){
-  // 대상 달이 내신 기간과 겹치면 내신전용반 목록을, 아니면 일반 반 목록을 드롭다운 후보로 준다
-  const ep=(store.examPeriod&&store.examPeriod[a])||{};
-  const examScope=!!(ep.start && ep.end && !(ep.end<targetMonth+'-01' || ep.start>targetMonth+'-31'));
-  return editArr(a, targetMonth).filter(c=>!c._deleted && !!c.examOnly===examScope).map(c=>c.name).sort((x,y)=>x.localeCompare(y,'ko'));
+  return editArr(a, targetMonth).filter(c=>!c._deleted).map(c=>c.name).sort((x,y)=>x.localeCompare(y,'ko'));
 }
 function renderHandoverGrid(){
   state.hgMonth=state.hgMonth||shiftMonth(todayISO().slice(0,7),1); // 기본값: 다음 달 인수인계표(이번 달에 다음 달 걸 작성하는 게 보통이므로)
@@ -7605,11 +7435,8 @@ function ttgParseWorkbook(ws, colorMap, codeMap){
   }
   return {results, unresolved};
 }
-function ttgExistingClasses(academy, examOnly){
-  // 내신반 전용 업로드는 내신전용반만 대상으로, 일반 업로드는 내신전용반을 뺀 나머지 반만 대상으로 매칭한다 (서로 섞이지 않게)
-  return examOnly
-    ? examClassesForMonth().filter(c=>c.academy===academy)
-    : classesFor(state.month).filter(c=>c.academy===academy && !c.examOnly);
+function ttgExistingClasses(academy){
+  return classesFor(state.month).filter(c=>c.academy===academy);
 }
 async function handleTtGridFile(file, academy, examOnly){
   const statusEl=document.getElementById(examOnly?'ttgExStatus':'ttgStatus');
@@ -8074,6 +7901,20 @@ function renderSet(){
       :'<div style="font-size:.8rem;color:#8b93a7">아직 업로드한 자료가 없습니다.</div>'}
   </div>`;
   else h+=`<input type="file" id="upFile" accept=".xlsx,.xls" style="display:none">`;
+  // 📅 선생님 화면 기준 달 강제 전환 (관리자·실장만) — 실제 오늘 날짜와 상관없이 선생님 로그인 화면이 특정 달 자료를 기본으로 보게 함
+  if(!isTeacher){
+    const ovOn=!!store.monthOverride;
+    h+=`<div class="setsec" style="border:2px solid ${ovOn?'#d97706':'var(--line)'}"><h3>📅 선생님 화면 기준 달 강제 전환</h3>
+      <div class="desc">평소엔 선생님이 로그인하면 항상 "실제 오늘 날짜가 속한 달" 자료가 자동으로 열립니다. 다음 달 시간표를 미리 다 준비해뒀고 며칠 일찍 다음 달로 넘기고 싶을 때만 여기서 강제로 지정하세요. (관리자·실장 화면의 월 선택 드롭다운에는 영향 없고, 출결·업무일지 등 실제 "그날짜"에 기록되는 자료도 그대로입니다 — 오직 선생님 로그인 시 기본으로 보이는 "반·교재·시간표" 자료의 달만 바뀝니다.)</div>
+      <div class="cbtns">
+        <select id="monthOverrideSel" style="padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
+          <option value="">강제 지정 안 함 (평소대로 오늘 날짜 기준)</option>
+          ${monthOptions().map(m=>`<option value="${m}" ${store.monthOverride===m?'selected':''}>${mLabel(m)}로 강제 지정</option>`).join('')}
+        </select>
+        ${ovOn?`<span style="font-size:.82rem;font-weight:800;color:#d97706">🔶 지금 ${mLabel(store.monthOverride)}로 강제 지정되어 있습니다</span>`:''}
+      </div>
+    </div>`;
+  }
   // 🕒 그리드 시간표 엑셀 업로드 (관리자·실장만) — 요일×시간 격자 형식 시간표를 읽어 과목·시간·강의실·담당을 자동 반영
   if(!isTeacher){
     h+=`<div class="setsec" style="border:2px solid #6366f1"><h3>🕒 그리드 시간표 엑셀 업로드</h3>
@@ -8091,15 +7932,8 @@ function renderSet(){
       </div>
       <div class="desc" style="margin-top:4px">다운로드한 엑셀은 이번 달 자료를 그대로 요일×시간 격자로 정리한 것이라, 수정한 뒤 위 [그리드 시간표 엑셀 업로드]로 그대로 다시 올릴 수 있어요.</div>
     </div>`;
-    if(state.ttGridWb && !state.ttGridWb.examOnly) h+=renderTtGridSheetPicker();
-    if(state.ttGrid && !state.ttGrid.examOnly) h+=renderTtGridPreview();
-    // 🎓 내신 탭 켜기/끄기 — 켜면 상단에 "🎓 내신" 탭이 새로 생기고, 그 안에서 기간·내신전용반·명단·점수표를 전부 관리한다
-    h+=`<div class="setsec" style="border:2px solid #d97706"><h3>🎓 내신 탭</h3>
-      <div class="desc">켜면 상단 메뉴(더보기)에 "🎓 내신" 탭이 새로 생기고, 그 안에서 내신 기간·내신전용반·학생 명단·모의고사 점수표를 한 곳에서 관리할 수 있습니다. 평소(내신 기간이 아닐 때)엔 꺼두어도 됩니다.</div>
-      <label style="display:flex;align-items:center;gap:8px;font-size:.86rem;font-weight:700;cursor:pointer">
-        <input type="checkbox" id="examTabToggle" ${store.examTabOn?'checked':''}> 내신 탭 사용
-      </label>
-    </div>`;
+    if(state.ttGridWb) h+=renderTtGridSheetPicker();
+    if(state.ttGrid) h+=renderTtGridPreview();
   }
   // 선생님 (관리자·실장만 편집 가능, 일반 선생님은 이름·색상만 조회)
   const canEditTeachers = isAdminRole();
@@ -8307,6 +8141,11 @@ function parseWorkbook(wb){
   return {found, yearly, skipped};
 }
 function bindTtGrid(){
+  const monthOverrideSel=document.getElementById('monthOverrideSel');
+  if(monthOverrideSel) monthOverrideSel.onchange=()=>{
+    store.monthOverride=monthOverrideSel.value; save();
+    render(true); // 선택 즉시 화면에도 반영(강제 지정 표시 갱신)
+  };
   // 일반 업로드(설정 탭)와 내신반 전용 업로드([🎓 내신] 탭)가 시트 선택·미리보기·적용 로직을 그대로 공유한다
   const ttgLangTeacher=document.getElementById('ttgLangTeacher');
   if(ttgLangTeacher) ttgLangTeacher.onchange=()=>{ store.ttgLangTeacher=ttgLangTeacher.value.trim(); save(); };
@@ -8323,14 +8162,6 @@ function bindTtGrid(){
     handleTtGridFile(f, ac?ac.value:academies()[0], false);
     ttgFile.value='';
   };
-  const ttgExBtn=document.getElementById('ttgExBtn'), ttgExFile=document.getElementById('ttgExFile');
-  if(ttgExBtn) ttgExBtn.onclick=()=>ttgExFile.click();
-  if(ttgExFile) ttgExFile.onchange=()=>{
-    const f=ttgExFile.files[0]; if(!f) return;
-    const ac=document.getElementById('ttgExAcSel');
-    handleTtGridFile(f, ac?ac.value:academies()[0], true);
-    ttgExFile.value='';
-  };
   document.querySelectorAll('[data-ttgsheet]').forEach(b=>b.onclick=()=>{
     const w=state.ttGridWb; if(!w) return;
     ttgParseSheet(w.academy, w.wb, b.dataset.ttgsheet, w.examOnly);
@@ -8340,8 +8171,7 @@ function bindTtGrid(){
     if(state.ttGrid){ state.ttGrid.classMap[ttgKey(sel.dataset.raw,sel.dataset.day)]=[...sel.selectedOptions].map(o=>o.value); render(true); } // 반 매칭이 바뀌면 변경/신규 비교도 다시 계산해야 해서 다시 그린다
   });
   const ttgApply=document.getElementById('ttgApply'); if(ttgApply) ttgApply.onclick=()=>{
-    const msg=state.ttGrid&&state.ttGrid.examOnly?'선택한 내신전용반들의 요일별 과목·시간·강의실·담당을 갱신할까요? (일반 반은 영향 없습니다)':'선택한 반들의 요일별 과목·시간·강의실·담당을 갱신할까요? (학생 명단·교재·진도는 그대로 유지됩니다)';
-    if(!confirm(msg)) return;
+    if(!confirm('선택한 반들의 요일별 과목·시간·강의실·담당을 갱신할까요? (학생 명단·교재·진도는 그대로 유지됩니다)')) return;
     applyTtGridUpdate();
   };
   const ttgCancel=document.getElementById('ttgCancel'); if(ttgCancel) ttgCancel.onclick=()=>{ state.ttGrid=null; render(true); };
@@ -8360,8 +8190,6 @@ function resetMonthFromPrev(a, m){
   save();
 }
 function bindSet(){
-  const examTabToggle=document.getElementById('examTabToggle');
-  if(examTabToggle) examTabToggle.onchange=()=>{ store.examTabOn=examTabToggle.checked; save(); goTab(store.examTabOn?'exam':'set'); };
   bindTtGrid();
   const v=document.getElementById('view');
   v.querySelectorAll('[data-resetmonth]').forEach(b=>b.onclick=()=>{
@@ -8962,8 +8790,6 @@ function render(keepOpen){
     v.innerHTML=renderBoard(); bindBoard();
   } else if(state.tab==='syllabus'){
     v.innerHTML=renderSyllabus(); bindSyllabus();
-  } else if(state.tab==='exam'){
-    v.innerHTML=renderExam(); bindExam();
   } else { v.innerHTML=renderSet(); bindSet(); }
   }catch(renderErr){
     // 특정 탭 내용을 그리다 오류가 나도 상단 탭바(더보기·설정 포함)는 항상 눌리도록, 오류를 여기서 잡아 안내 화면만 보여준다
