@@ -2799,8 +2799,10 @@ function setTpOptions(a, arr){
 const WORDLANG_OPTIONS=['한글','믹스','영어'];
 const MOCKEXAM_ROUND_OPTIONS=Array.from({length:10},(_,i)=>String(i+1));
 function wtStudentRow(s, date){
-  const wtMonth=String(date||'').slice(0,7)||state.month;
-  const cls=classOfStudent(s, wtMonth);
+  // 단어시험 "오늘 입력"은 실제 오늘 날짜(date)로 기록되지만, 반 배정 자체는 관리자가 [환경설정]에서
+  // 강제 지정한 달(state.month, 9월 등)을 기준으로 봐야 한다 — 실제 달력이 아직 8월이어도 9월 반 구성으로
+  // 넘어가 있어야 하기 때문. (date에서 달을 뽑으면 실제 오늘 날짜가 8월인 동안은 계속 8월 반으로 고정돼버림)
+  const cls=classOfStudent(s, state.month);
   const isMock=!!(cls && cls.mockExamOn);
   let r=store.wordTests.find(x=>x.studentId===s.id && x.date===date);
   if(!r){
@@ -2809,7 +2811,7 @@ function wtStudentRow(s, date){
     r = prev ? {wordbook:prev.wordbook||'', lang:prev.lang||''} : {};
   }
   const dim = r.absent ? 'opacity:.5' : '';
-  const nameCol=`<span class="key">${esc(s.nameKo)}${s.nameEn?' <span style="font-weight:400;color:var(--sub)">('+esc(s.nameEn)+')</span>':''} ${MODE==='all'?bdg(s.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(classNameInMonth(s,wtMonth)||'')}</span></span>`;
+  const nameCol=`<span class="key">${esc(s.nameKo)}${s.nameEn?' <span style="font-weight:400;color:var(--sub)">('+esc(s.nameEn)+')</span>':''} ${MODE==='all'?bdg(s.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(classNameInMonth(s,state.month)||'')}</span></span>`;
   if(isMock){
     // 🎓 모의고사반: 단어장·유형·범위·점수·누적 없이, 회차(1~10) 선택 + 미응시 체크만 매일 기록한다
     const roundSel=`<select data-wtfield="${s.id}|round" ${r.absent?'disabled':''} style="width:96px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
@@ -2849,7 +2851,9 @@ function renderWordTestToday(){
   let studentsList;
   if(lt){
     // 특정 선생님으로 로그인(일반 선생님·실장 모두 포함) — 담당으로 배정된 반의 학생만 표시
-    const todaysDutyClasses=classesFor(date.slice(0,7)).filter(c=>c.academy===lt.a && !c.examOnly && cdays(c).includes(wd) && wordDutyForDay(c,wd)!=null && wordDutyForDay(c,wd)===lt.t.id);
+    // 담당 반은 실제 오늘 날짜의 달이 아니라 state.month(관리자가 [환경설정]에서 강제 지정한 달 포함)를 기준으로 찾는다 —
+    // 그래야 강제로 9월로 넘어간 뒤에도 실제 달력이 아직 8월인 동안 계속 8월 반·담당으로 표시되는 문제가 없다.
+    const todaysDutyClasses=classesFor(state.month).filter(c=>c.academy===lt.a && !c.examOnly && cdays(c).includes(wd) && wordDutyForDay(c,wd)!=null && wordDutyForDay(c,wd)===lt.t.id);
     if(!todaysDutyClasses.length){
       return `<div class="empty">오늘(${wd}요일)은 담당으로 배정된 반이 없습니다. (배정은 [시간표]에서 관리자·실장이 설정합니다)</div>`;
     }
@@ -2879,7 +2883,7 @@ function renderWordTestToday(){
   const header=`<div style="font-size:.8rem;color:var(--sub);margin-bottom:8px">${date} (${wd}요일) 단어시험 기록</div>`;
   if(state.wtStudentView==='class'){
     const groups={};
-    studentsList.forEach(s=>{ const k=(s.className||'').trim()||'미배정'; (groups[k]=groups[k]||[]).push(s); });
+    studentsList.forEach(s=>{ const k=(classNameInMonth(s,state.month)||'').trim()||'미배정'; (groups[k]=groups[k]||[]).push(s); });
     const keys=Object.keys(groups).sort((a,b)=>{ if(a==='미배정') return 1; if(b==='미배정') return -1; return a.localeCompare(b,'ko',{numeric:true}); });
     if(!state.wtClass || !keys.includes(state.wtClass)) state.wtClass=keys[0];
     const classSel=`<div style="margin-bottom:8px">
