@@ -5303,6 +5303,12 @@ function wpGet(who, wkStart, days){
     // 예전 제출물 등으로 rows가 없는 손상된 자료가 들어와 있으면(화면이 하얗게 깨지는 원인), 자동으로 다시 채워 복구한다
     store.weekplan[who][wkStart].rows=autoWeekRows(who,days);
     save();
+  } else if(!store.weekplan[who][wkStart].updatedAt){
+    // 선생님이 이 주 진도계획표를 아직 한 번도 직접 고친 적 없는 초안(updatedAt:0)이면, 그 사이 반 이름이 바뀌거나
+    // 강제 지정한 달로 넘어가는 등 반·시간표 자료가 달라졌을 수 있으니 열 때마다 최신 자료로 다시 계산해둔다.
+    // (직접 한 글자라도 고친 순간부터는 updatedAt이 찍혀서 더 이상 여기서 덮어쓰지 않는다)
+    store.weekplan[who][wkStart].rows=autoWeekRows(who,days);
+    save();
   }
   return store.weekplan[who][wkStart];
 }
