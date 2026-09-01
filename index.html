@@ -2965,15 +2965,17 @@ function wtStudentRow(s, date){
   const dim = r.absent ? 'opacity:.5' : '';
   const nameCol=`<span class="key">${esc(s.nameKo)}${s.nameEn?' <span style="font-weight:400;color:var(--sub)">('+esc(s.nameEn)+')</span>':''} ${MODE==='all'?bdg(s.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(classNameInMonth(s,state.month)||'')}</span></span>`;
   if(isMock){
-    // 🎓 모의고사반: 단어장·유형·범위·점수·누적 없이, 회차(1~10) 선택 + 미응시 체크만 매일 기록한다
+    // 🎓 모의고사반: 단어장·유형·범위·누적 없이, 회차(1~10) 선택 + 점수 + 미응시 체크만 매일 기록한다
     const roundSel=`<select data-wtfield="${s.id}|round" ${r.absent?'disabled':''} style="width:96px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
       <option value="">회차 선택</option>
       ${MOCKEXAM_ROUND_OPTIONS.map(n=>`<option value="${n}" ${String(r.round||'')===n?'selected':''}>${n}회</option>`).join('')}
     </select>`;
+    const mockScoreInp=`<input type="text" placeholder="점수 (예: 85점, 2등급)" value="${esc(r.score||'')}" data-wtfield="${s.id}|score" ${r.absent?'disabled':''} style="width:120px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">`;
     return `<div class="rowitem" style="align-items:center;flex-wrap:wrap">
       ${nameCol}
       <span class="val" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         🎓 ${roundSel}
+        ${mockScoreInp}
         <label style="font-size:.8rem;color:${r.absent?'#6b7280':'var(--sub)'};font-weight:${r.absent?'800':'400'}"><input type="checkbox" data-wtabsent="${s.id}" ${r.absent?'checked':''}> 미응시</label>
       </span></div>`;
   }
