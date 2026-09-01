@@ -972,6 +972,37 @@ function classesFor(month){
 // 이후로는 dataFor()가 store.uploads 쪽을 우선 반환하므로 편집 내용이 그대로 반영된다.
 // 각 반에는 고유 _id를 부여해 반이름을 바꿔도 편집 대상을 정확히 추적한다.
 function genClassId(){ return 'c'+Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
+// 강제 지정된 달(targetMonth)의 자료가 이미 예전(직전 달)에서 복사돼 독립적으로 관리되기 시작한 뒤에,
+// 그 직전 달 쪽에 새로 추가한 반(예: 새로 만든 고등부 반 전체)은 이미 갈라진 targetMonth 쪽에는 자동으로 안 넘어간다.
+// 이 함수는 그렇게 "직전 달엔 있는데 이번(강제 지정) 달엔 이름 자체가 없는 반"만 골라 새로 복사해 넣어준다 —
+// 이미 이름이 같은 반이 있으면 절대 덮어쓰지 않고 건드리지 않는다(그 반은 이미 targetMonth 기준으로 따로 관리 중일 수 있으므로).
+function syncMissingClassesIntoMonth(targetMonth){
+  let added=0; const details=[];
+  academies().forEach(a=>{
+    const ms=monthsOf(a).filter(x=>x<targetMonth);
+    const srcMonth=ms[ms.length-1];
+    if(!srcMonth) return;
+    const srcArr=editArr(a, srcMonth);
+    const tgtArr=editArr(a, targetMonth);
+    const existingNames=new Set(tgtArr.filter(c=>!c._deleted).map(c=>c.name));
+    const missing=srcArr.filter(c=>!c._deleted && !existingNames.has(c.name));
+    if(!missing.length) return;
+    const idMap={};
+    const cloned=JSON.parse(JSON.stringify(missing)).map(c=>{
+      const newId=genClassId();
+      if(c._id) idMap[c._id]=newId;
+      return {...c, _id:newId};
+    });
+    // 합반 상대도 이번에 같이 새로 들어오는 반이면 새 id로 다시 연결하고, 아니면(상대가 이미 targetMonth에 따로 있으면)
+    // id가 서로 달라 잘못 연결될 수 있으니 안전하게 비워서 나중에 직접 다시 지정하도록 한다.
+    cloned.forEach(c=>{ if(c.mergedWith) c.mergedWith = idMap[c.mergedWith] || ''; });
+    cloned.forEach(c=>tgtArr.push(c));
+    added+=cloned.length;
+    details.push(`${AC[a].label} ${cloned.length}개 (${cloned.map(c=>c.name).join(', ')})`);
+  });
+  if(added) save();
+  return {added, details};
+}
 function editArr(a,m){
   const key=m+'|'+a;
   if(!store.uploads[key]){
@@ -4694,7 +4725,7 @@ function renderToday(list){
     const cardOpen = state.todayOpen && state.todayOpen[k];
     h+=`<div class="ccard ${cardOpen?'open':''}" id="tc-${esc(k).replace(/[^0-9A-Za-z가-힣]/g,'_')}" style="border-left-color:${mine&&lt?lt.t.color:AC[c.academy].color}">
       <div class="chead" data-toggle="${esc(k)}"><span class="arrow">▶</span>
-        <h3>${hl(c.name)}${subjNames.length?' · '+esc(subjNames.join(', ')):''}</h3>${bdg(c.academy)}
+        <h3>${hl(c.name)}${subjNames.length?' · '+esc(subjNames.join(', ')):((c.subjects||[]).length?' <span style="color:#c0392b;font-weight:800;font-size:.72rem">⚠ 이 요일 과목 미등록</span>':'')}</h3>${bdg(c.academy)}
         <span style="font-size:.76rem;color:var(--sub)">${esc(cdays(c))}${teas.length?' · 담당: '+esc(teas.join(', ')):''}</span>
         ${cStudents.length?`<span class="prg">출석 ${present}/${cStudents.length} · 숙제 ${hwdone}/${cStudents.length}</span>`:''}
       </div><div class="cbody">${body}</div></div>`;
@@ -8079,6 +8110,10 @@ function renderSet(){
         </select>
         ${ovOn?`<span style="font-size:.82rem;font-weight:800;color:#d97706">🔶 지금 ${mLabel(store.monthOverride)}로 강제 지정되어 있습니다</span>`:''}
       </div>
+      ${ovOn?`<div class="cbtns" style="margin-top:8px">
+        <button class="btn small" id="syncMissingClassesBtn">🔄 직전 달에서 새로 추가된 반 가져오기</button>
+        <span style="font-size:.76rem;color:var(--sub)">강제 지정하기 전(직전 달)에 새로 만든 반이 있으면, 강제 지정된 달엔 자동으로 안 넘어가 있을 수 있어요 — 이름이 겹치는 반은 건드리지 않고, 없는 반만 새로 가져옵니다.</span>
+      </div>`:''}
     </div>`;
   }
   // 🕒 그리드 시간표 엑셀 업로드 (관리자·실장만) — 요일×시간 격자 형식 시간표를 읽어 과목·시간·강의실·담당을 자동 반영
@@ -8311,6 +8346,14 @@ function bindTtGrid(){
   if(monthOverrideSel) monthOverrideSel.onchange=()=>{
     store.monthOverride=monthOverrideSel.value; save();
     state.month=effectiveCurrentMonth(); // 관리자 자신의 화면도 그 즉시 기본값이 그 달로 바뀐다(껐으면 실제 오늘 날짜로 돌아옴)
+    render(true);
+  };
+  const syncMissingClassesBtn=document.getElementById('syncMissingClassesBtn');
+  if(syncMissingClassesBtn) syncMissingClassesBtn.onclick=()=>{
+    if(!store.monthOverride) return;
+    const {added, details}=syncMissingClassesIntoMonth(store.monthOverride);
+    if(!added){ alert('직전 달과 비교했을 때, 이름이 겹치지 않는(새로 추가해야 할) 반이 없습니다.'); return; }
+    alert(`${added}개 반을 새로 가져왔습니다.\n\n${details.join('\n')}`);
     render(true);
   };
   // 일반 업로드(설정 탭)와 내신반 전용 업로드([🎓 내신] 탭)가 시트 선택·미리보기·적용 로직을 그대로 공유한다
