@@ -894,16 +894,22 @@ let __pullTimerId=null, __sylTimerId=null;
 function startSyncLoop(){
   if(!syncOn()) return;
   pullShared(true);
-  pullSyllabusShared(true);
+  // [수정] Syllabus는 파일(PDF·엑셀 등) 원본 데이터를 그대로 담고 있어서 한 번 받아올 때 용량이 꽤 크다 —
+  // 이걸 예전처럼 45초마다 자동으로 계속 통째로 다시 받아오면, 아무도 새로 안 올렸어도 하루 종일 같은 파일을
+  // 반복해서 내려받는 셈이라 데이터 사용량의 가장 큰 원인이 된다. 이제는 자동으로 안 받아오고,
+  // [Syllabus] 탭의 "🔄 최신 자료 확인" 버튼을 직접 눌렀을 때만 받아온다.
   // 설정에서 동기화를 껐다 켰다 할 때마다 이 함수가 다시 호출될 수 있는데, 예전엔 그때마다 새 타이머가 계속 추가로 쌓여서
   // (2번 켰다 끄면 5초마다 2배, 3배로 계속 요청이 늘어남) 하루 만에 다운로드량이 폭증하는 원인이 됐다.
   // 그래서 새로 걸기 전에 기존 타이머부터 반드시 정리한다.
   if(__pullTimerId) clearInterval(__pullTimerId);
-  if(__sylTimerId) clearInterval(__sylTimerId);
-  // 다른 사람이 바꾼 내용도 보이도록 1분마다 확인 (너무 자주 돌리면 트래픽이 크게 늘어나서 1분으로 완화) (용량 큰 syllabus는 따로, 45초마다만 — 매 5초마다 첨부파일까지 통째로 주고받으면 회선이 느릴 때 자꾸 실패·타임아웃 나기 때문)
-  if(MODE==='all'){ pollInbox(); __pullTimerId=setInterval(()=>{ pullShared(false); pollInbox(); }, 60000); }
-  else __pullTimerId=setInterval(()=>pullShared(false), 60000);
-  __sylTimerId=setInterval(()=>pullSyllabusShared(true), 45000);
+  if(__sylTimerId){ clearInterval(__sylTimerId); __sylTimerId=null; }
+  // 다른 사람이 바꾼 내용도 보이도록 1분마다 확인 (너무 자주 돌리면 트래픽이 크게 늘어나서 1분으로 완화)
+  // [수정] 예전엔 탭을 백그라운드에 켜둔 채 방치해도(점심시간·퇴근 후 등) 이 타이머가 하루 종일 계속 돌면서
+  // 아무도 안 보는 화면 자료를 계속 통째로 받아왔다 — 기기 여러 대가 하루 종일 켜져 있으면 데이터 사용량이 크게 늘어나는
+  // 원인이었다. 이제 탭이 화면에서 안 보이는 동안(document.hidden)은 주기적 수신을 건너뛰고,
+  // 다시 화면을 보면(visibilitychange) 그 즉시 한 번 받아와서 놓친 내용을 바로 따라잡는다.
+  if(MODE==='all'){ pollInbox(); __pullTimerId=setInterval(()=>{ if(document.hidden) return; pullShared(false); pollInbox(); }, 60000); }
+  else __pullTimerId=setInterval(()=>{ if(document.hidden) return; pullShared(false); }, 60000);
   if(__syncLoopStarted) return; // 껐다 켰다를 반복해도 화면 이벤트 리스너는 한 번만 등록
   __syncLoopStarted=true;
   document.addEventListener('visibilitychange',()=>{
@@ -1392,7 +1398,8 @@ function goTab(t){
   try{ localStorage.setItem(LASTTAB_KEY, t); }catch(e){}
   render();
   window.scrollTo({top:0});
-  if(t==='syllabus' && syncOn() && Date.now()-lastSylSyncAt>8000) pullSyllabusShared(true);
+  // [수정] Syllabus는 파일 원본을 그대로 담고 있어 용량이 커서, 탭을 열 때마다 자동으로 다시 받아오지 않는다 —
+  // 필요할 때 [Syllabus] 탭의 "🔄 최신 자료 확인" 버튼을 직접 눌러야만 받아온다.
 }
 function buildTabs(){
   const {main,more}=tabDefs();
@@ -6980,7 +6987,8 @@ function renderSyllabus(){
     const cchips=['전체',...courseSet];
     h+=`<div class="cbtns" style="margin-top:6px">${cchips.map(c=>`<button class="btn small ${state.sylCourse===c?'primary':''}" data-sylcourse="${esc(c)}">${esc(c)}</button>`).join('')}</div>`;
   }
-  h+=`<div class="ysec"><h3>📘 Syllabus <span style="font-size:.74rem;font-weight:400;color:var(--sub)">교재별 진도표 · 모든 선생님이 볼 수 있어요${admin?' · 업로드·삭제는 실장·관리자만 가능합니다':' (업로드·수정은 실장·관리자만 가능합니다)'}</span></h3>
+  h+=`<div class="ysec"><h3 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;width:100%">📘 Syllabus <span style="font-size:.74rem;font-weight:400;color:var(--sub)">교재별 진도표 · 모든 선생님이 볼 수 있어요${admin?' · 업로드·삭제는 실장·관리자만 가능합니다':' (업로드·수정은 실장·관리자만 가능합니다)'}</span>
+    ${syncOn()?`<button class="btn small" id="sylRefreshBtn" style="margin-left:auto" title="다른 기기에서 새로 올리거나 바꾼 자료가 있으면 눌러서 받아오세요 — 자동으로는 안 받아옵니다(용량 절약)">🔄 최신 자료 확인</button>`:''}</h3>
     <div style="padding:0 16px 14px">
     <input type="text" id="sylSearch" value="${esc(state.sylQ||'')}" placeholder="🔍 교재명으로 검색" style="width:100%;margin-bottom:12px;padding:8px 12px;border:1.5px solid var(--line);border-radius:9px;font-family:inherit;font-size:.86rem">`;
   if(admin){
@@ -7079,6 +7087,11 @@ function renderSyllabus(){
 function bindSyllabus(){
   const v=document.getElementById('view');
   const lt=loginTeacher(); const myName=lt?lt.t.name:(store.login==='admin'?'관리자':'');
+  const sylRefreshBtn=v.querySelector('#sylRefreshBtn');
+  if(sylRefreshBtn) sylRefreshBtn.onclick=async()=>{
+    sylRefreshBtn.disabled=true; sylRefreshBtn.textContent='⏳ 받아오는 중…';
+    try{ await pullSyllabusShared(false); }finally{ sylRefreshBtn.disabled=false; sylRefreshBtn.textContent='🔄 최신 자료 확인'; }
+  };
   v.querySelectorAll('[data-syldept]').forEach(b=>b.onclick=()=>{ state.sylDept=b.dataset.syldept; state.sylCourse='전체'; render(true); });
   v.querySelectorAll('[data-sylcourse]').forEach(b=>b.onclick=()=>{ state.sylCourse=b.dataset.sylcourse; render(true); });
   const applySylSearch=(q)=>{
