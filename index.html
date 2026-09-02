@@ -3412,7 +3412,11 @@ function renderWordRange(list){
         let cell='';
         if(rec){
           if(rec.absent) cell='<span style="color:#9ca3af;font-size:.7rem">미응시</span>';
-          else{
+          else if(c.mockExamOn){
+            // 🎓 모의고사반: 단어장·유형·범위 대신 회차·점수로 표시한다 (모의고사로 바꾸기 전에 기록된 옛날 단어장 기록이 있어도,
+            // 지금은 이 반 자체가 모의고사반이므로 화면은 일관되게 회차/점수 형식으로 보여준다)
+            cell=`${rec.round?`<span style="font-size:.7rem;color:#7c3aed;font-weight:800">🎓 ${esc(rec.round)}${rec.round==='내신단어'?'':'회'}</span>`:''}${rec.score?`<br><span style="font-size:.72rem;color:#7c3aed;font-weight:800">📊 ${esc(rec.score)}</span>`:''}`;
+          } else {
             const wbTxt=[wbShort(rec.wordbook),rec.lang].filter(Boolean).join(' ');
             cell=`<span style="font-size:.7rem;color:var(--sub)">${esc(wbTxt)}</span>${rec.range?`<br><b style="font-size:.74rem">${esc(rec.range)}</b>`:''}${rec.score?`<br><span style="font-size:.72rem;color:#7c3aed;font-weight:800">📊 ${esc(rec.score)}</span>`:''}`;
           }
