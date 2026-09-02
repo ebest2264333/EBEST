@@ -2966,9 +2966,10 @@ function wtStudentRow(s, date){
   const nameCol=`<span class="key">${esc(s.nameKo)}${s.nameEn?' <span style="font-weight:400;color:var(--sub)">('+esc(s.nameEn)+')</span>':''} ${MODE==='all'?bdg(s.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(classNameInMonth(s,state.month)||'')}</span></span>`;
   if(isMock){
     // 🎓 모의고사반: 단어장·유형·범위·누적 없이, 회차(1~10) 선택 + 점수 + 미응시 체크만 매일 기록한다
-    const roundSel=`<select data-wtfield="${s.id}|round" ${r.absent?'disabled':''} style="width:96px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
+    const roundSel=`<select data-wtfield="${s.id}|round" ${r.absent?'disabled':''} style="width:110px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
       <option value="">회차 선택</option>
       ${MOCKEXAM_ROUND_OPTIONS.map(n=>`<option value="${n}" ${String(r.round||'')===n?'selected':''}>${n}회</option>`).join('')}
+      <option value="내신단어" ${r.round==='내신단어'?'selected':''}>📖 내신 단어</option>
     </select>`;
     const mockScoreInp=`<input type="text" placeholder="점수 (예: 85점, 2등급)" value="${esc(r.score||'')}" data-wtfield="${s.id}|score" ${r.absent?'disabled':''} style="width:120px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">`;
     return `<div class="rowitem" style="align-items:center;flex-wrap:wrap">
@@ -3047,8 +3048,22 @@ function renderWordTestToday(){
     const students=groups[state.wtClass].slice().sort((a,b)=>(a.nameKo||'').localeCompare(b.nameKo||'','ko'));
     return header+viewChips+classSel+`<div class="rowlist">${students.map(s=>wtStudentRow(s,date)).join('')}</div>`;
   }
-  studentsList=studentsList.slice().sort((a,b)=>(a.nameKo||'').localeCompare(b.nameKo||'','ko'));
-  return header+viewChips+`<div class="rowlist">${studentsList.map(s=>wtStudentRow(s,date)).join('')}</div>`;
+  // "전체" 보기는 이름 가나다순으로만 죽 나열되다 보니, 초·중·고 학생이 서로 섞여서 특정 부서(예: 고등부) 학생이
+  // 화면 어딘가에 분명 있어도 눈에 안 띄어 "그 부서는 아예 안 뜬다"고 오해하기 쉽다 — 부서별로 구간을 나눠 보여준다
+  const deptOf=s=>classDeptForName(s.academy, classNameInMonth(s,state.month))||'기타';
+  studentsList=studentsList.slice().sort((a,b)=>{
+    const da=deptOf(a), db=deptOf(b);
+    const ra=DEPT_SORT_ORDER[da]!=null?DEPT_SORT_ORDER[da]:99, rb=DEPT_SORT_ORDER[db]!=null?DEPT_SORT_ORDER[db]:99;
+    if(ra!==rb) return ra-rb;
+    return (a.nameKo||'').localeCompare(b.nameKo||'','ko');
+  });
+  let lastDept=null; let rowsHtml='';
+  studentsList.forEach(s=>{
+    const d=deptOf(s);
+    if(d!==lastDept){ lastDept=d; rowsHtml+=`<div style="font-size:.76rem;font-weight:800;color:var(--sub);margin:10px 0 4px;padding-left:2px">${esc(d)} (${studentsList.filter(x=>deptOf(x)===d).length}명)</div>`; }
+    rowsHtml+=wtStudentRow(s,date);
+  });
+  return header+viewChips+`<div class="rowlist">${rowsHtml}</div>`;
 }
 function classDeptForName(academy, className){
   // 학생의 반 이름으로 그 반의 부서(초등/중등/고등)를 찾아준다 — 재시험 명단·통계 정렬에 사용
