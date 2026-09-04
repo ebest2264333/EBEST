@@ -6999,8 +6999,13 @@ function renderSyllabus(){
     const courseOptions=[...new Set(store.syllabus.filter(s=>!s._deleted).map(sylCourseOf))].sort((a,b)=>a.localeCompare(b,'ko'));
     const sylBytes=store.syllabus.reduce((n,s)=>n+sylEntrySize(s),0);
     const usageWarn=sylBytes>3*1024*1024;
+    const migratable=store.syllabus.filter(s=>!s._deleted && (s.kind==='pdf'||s.kind==='file') && s.fileData && !s.remote);
     h+=`<div style="background:${usageWarn?'#fdf3e3':'#f7f9fc'};border:1px solid ${usageWarn?'var(--warn)':'var(--line)'};border-radius:10px;padding:10px;margin-bottom:12px">
-      <div style="font-size:.78rem;font-weight:700;color:${usageWarn?'var(--warn)':'var(--sub)'};margin-bottom:8px">💾 Syllabus 저장 용량 약 ${sylFmtBytes(sylBytes)} 사용 중 ${usageWarn?'— 브라우저 저장 공간이 얼마 안 남았을 수 있어요. 큰 파일은 아래 "🔗 링크로 추가"를 이용하시거나, 안 쓰는 자료를 삭제해 공간을 확보해주세요.':'(브라우저에 직접 저장 — 용량이 크면 저장이 안 될 수 있어 큰 파일은 링크 추가를 권장합니다)'}</div>
+      <div style="font-size:.78rem;font-weight:700;color:${usageWarn?'var(--warn)':'var(--sub)'};margin-bottom:8px;display:flex;align-items:center;flex-wrap:wrap;gap:8px">
+        <span>💾 Syllabus 저장 용량 약 ${sylFmtBytes(sylBytes)} 사용 중 ${usageWarn?'— 브라우저 저장 공간이 얼마 안 남았을 수 있어요. 아래 "☁️ 서버로 옮겨서 공간 확보"를 눌러 큰 파일들을 서버 저장으로 옮기거나, 안 쓰는 자료를 삭제해주세요.':'(브라우저에 직접 저장 — 용량이 크면 저장이 안 될 수 있어 큰 파일은 서버 저장을 권장합니다)'}</span>
+        <button class="btn small" id="sylSortBySizeBtn" style="white-space:nowrap" title="어떤 파일이 용량을 많이 차지하는지 찾아서 삭제하거나 서버로 옮기기 쉽게, 용량이 큰 자료부터 정렬해서 보여줘요">${state.sylSortBySize?'📅 최신순으로 보기':'📦 용량 큰 순으로 보기'}</button>
+        ${syncOn()&&migratable.length?`<button class="btn small" id="sylMigrateBtn" style="white-space:nowrap" title="지금 이 브라우저에 통째로 저장돼 있는 큰 파일들을 서버로 옮겨서, 이 기기의 저장 공간을 비웁니다 (파일 내용은 그대로 유지돼요)">☁️ 서버로 옮겨서 공간 확보 (${migratable.length}개)</button>`:''}
+      </div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">
         <input type="text" id="sylTitle" placeholder="교재/과정명 (파일 1개만 올릴 때만 적용, 비우면 파일명 사용)" style="flex:1;min-width:180px;padding:7px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
         <select id="sylDeptSel" style="padding:7px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${SYL_DEPTS.map(d=>`<option value="${esc(d)}">${esc(d)}</option>`).join('')}</select>
@@ -7019,7 +7024,8 @@ function renderSyllabus(){
       </div>
     </div>`;
   }
-  const entries=store.syllabus.filter(s=>!s._deleted && (state.sylDept==='전체'||s.dept===state.sylDept) && (state.sylCourse==='전체'||sylCourseOf(s)===state.sylCourse)).sort((a,b)=>(b.uploadedAt||0)-(a.uploadedAt||0));
+  const entries=store.syllabus.filter(s=>!s._deleted && (state.sylDept==='전체'||s.dept===state.sylDept) && (state.sylCourse==='전체'||sylCourseOf(s)===state.sylCourse))
+    .sort((a,b)=> admin && state.sylSortBySize ? (sylEntrySize(b)-sylEntrySize(a)) : ((b.uploadedAt||0)-(a.uploadedAt||0)));
   if(!entries.length) h+='<div style="font-size:.83rem;color:#8b93a7">등록된 Syllabus가 없습니다.</div>';
   h+='<div id="sylNoMatch" class="empty" style="display:none;font-size:.83rem;color:#8b93a7;padding:10px 0">검색 결과가 없습니다.</div>';
   entries.forEach(en=>{
@@ -7027,19 +7033,27 @@ function renderSyllabus(){
     h+=`<div class="ccard syl-card ${open?'open':''}" data-syltitle="${esc((en.title||'').toLowerCase())}" style="border-left-color:var(--ebest);margin-bottom:12px">
       <div class="chead" data-toggle="${esc(en.id)}"><span class="arrow">▶</span>
         <span style="font-weight:800">${esc(en.title||'제목 없음')}</span>
-        <span style="font-size:.76rem;color:var(--sub);margin-left:8px">${en.kind==='pdf'?'📄 PDF · ':en.kind==='file'?'📎 파일 · ':en.kind==='link'?'🔗 링크 · ':''}${esc(en.dept||'기타')} · ${esc(sylCourseOf(en))} · ${esc(en.uploadedBy||'')} · ${en.uploadedAt?new Date(en.uploadedAt).toLocaleDateString('ko-KR'):''}${admin&&en.kind!=='link'?' · '+sylFmtBytes(sylEntrySize(en)):''}</span>
+        <span style="font-size:.76rem;color:var(--sub);margin-left:8px">${en.kind==='pdf'?'📄 PDF · ':en.kind==='file'?'📎 파일 · ':en.kind==='link'?'🔗 링크 · ':''}${en.remote?'☁️ ':''}${esc(en.dept||'기타')} · ${esc(sylCourseOf(en))} · ${esc(en.uploadedBy||'')} · ${en.uploadedAt?new Date(en.uploadedAt).toLocaleDateString('ko-KR'):''}${admin&&en.kind!=='link'?' · '+sylFmtBytes(en.remote?(en.size||0):sylEntrySize(en)):''}</span>
         ${admin?`<span style="margin-left:auto;display:flex;gap:6px"><button class="btn small sylRename" data-id="${esc(en.id)}">✎ 이름 수정</button><button class="btn small sylCourseEdit" data-id="${esc(en.id)}">📂 과정 수정</button><button class="del sylDel" data-id="${esc(en.id)}">삭제</button></span>`:''}
       </div>
       <div class="cbody" style="padding:12px 16px">`;
     if(en.kind==='link' && en.url){
       h+=`<div class="empty" style="text-align:left">🔗 외부 링크로 등록된 자료입니다 (브라우저 저장 공간을 쓰지 않아요).</div>
         <div style="margin-top:10px"><a href="${esc(en.url)}" target="_blank" rel="noopener" class="btn primary small">↗ 새 창에서 열기</a></div>`;
-    } else if(en.kind==='pdf' && en.fileData){
-      h+=`<div class="cbtns" style="margin-bottom:10px"><a href="${en.fileData}" download="${esc(en.fileName||'syllabus.pdf')}" class="btn small">⬇ 다운로드</a><a href="${en.fileData}" target="_blank" rel="noopener" class="btn small">↗ 새 창에서 보기</a></div>
-        <iframe src="${en.fileData}" style="width:100%;height:75vh;border:1px solid var(--line);border-radius:10px" title="${esc(en.title||'PDF')}"></iframe>`;
-    } else if(en.kind==='file' && en.fileData){
+    } else if(en.kind==='pdf' && en.remote && !sylAttCache[en.id]){
+      h+=`<div class="empty" style="text-align:left">☁️ 이 자료는 서버에 저장돼 있어요(브라우저 저장 공간을 쓰지 않아요). 눌러서 불러와주세요.</div>
+        <div style="margin-top:10px"><button class="btn primary small sylMainOpen" data-id="${esc(en.id)}">🔄 자료 불러오기</button></div>`;
+    } else if(en.kind==='pdf' && (en.fileData || (en.remote && sylAttCache[en.id]))){
+      const fd=en.fileData || sylAttCache[en.id].fileData;
+      h+=`<div class="cbtns" style="margin-bottom:10px"><a href="${fd}" download="${esc(en.fileName||'syllabus.pdf')}" class="btn small">⬇ 다운로드</a><a href="${fd}" target="_blank" rel="noopener" class="btn small">↗ 새 창에서 보기</a></div>
+        <iframe src="${fd}" style="width:100%;height:75vh;border:1px solid var(--line);border-radius:10px" title="${esc(en.title||'PDF')}"></iframe>`;
+    } else if(en.kind==='file' && en.remote && !sylAttCache[en.id]){
+      h+=`<div class="empty" style="text-align:left">☁️ 이 자료는 서버에 저장돼 있어요(브라우저 저장 공간을 쓰지 않아요). 눌러서 불러와주세요.</div>
+        <div style="margin-top:10px"><button class="btn primary small sylMainOpen" data-id="${esc(en.id)}">🔄 자료 불러오기</button></div>`;
+    } else if(en.kind==='file' && (en.fileData || (en.remote && sylAttCache[en.id]))){
+      const fd=en.fileData || sylAttCache[en.id].fileData;
       h+=`<div class="empty">이 파일 형식(${esc((en.fileName||'').split('.').pop()||'')})은 화면 미리보기를 지원하지 않아요. 다운로드해서 확인해주세요.</div>
-        <div style="margin-top:10px"><a href="${en.fileData}" download="${esc(en.fileName||'file')}" class="btn primary small">⬇ ${esc(en.fileName||'다운로드')}</a></div>`;
+        <div style="margin-top:10px"><a href="${fd}" download="${esc(en.fileName||'file')}" class="btn primary small">⬇ ${esc(en.fileName||'다운로드')}</a></div>`;
     } else if(en.sheets && en.sheets.length>1){
       state.sylSheetSel=state.sylSheetSel||{};
       const cur=state.sylSheetSel[en.id]||en.sheets[0].name;
@@ -7096,6 +7110,8 @@ function bindSyllabus(){
     sylRefreshBtn.disabled=true; sylRefreshBtn.textContent='⏳ 받아오는 중…';
     try{ await pullSyllabusShared(false); }finally{ sylRefreshBtn.disabled=false; sylRefreshBtn.textContent='🔄 최신 자료 확인'; }
   };
+  const sylSortBySizeBtn=v.querySelector('#sylSortBySizeBtn');
+  if(sylSortBySizeBtn) sylSortBySizeBtn.onclick=()=>{ state.sylSortBySize=!state.sylSortBySize; render(true); };
   v.querySelectorAll('[data-syldept]').forEach(b=>b.onclick=()=>{ state.sylDept=b.dataset.syldept; state.sylCourse='전체'; render(true); });
   v.querySelectorAll('[data-sylcourse]').forEach(b=>b.onclick=()=>{ state.sylCourse=b.dataset.sylcourse; render(true); });
   const applySylSearch=(q)=>{
@@ -7148,9 +7164,10 @@ function bindSyllabus(){
     r.onerror=()=>reject(r.error||new Error('파일을 읽지 못했습니다'));
     r.readAsDataURL(f);
   });
-  const SYL_MAX_BYTES=3*1024*1024; // 브라우저 저장 공간 한도를 고려한 파일당 상한(3MB) — 더 큰 파일은 '링크로 추가'를 이용
-  // 첨부 자료(문제 파일 등)는 이 기기 로컬 저장소에 쌓아두지 않고 Firebase에만 저장했다가 열 때 그때 불러옵니다 — 그래서 본문 자료보다 훨씬 큰 파일도 안전합니다.
-  // 30MB 안팎의 큰 파일도 문제없이 올라가도록, 큰 파일은 여러 조각으로 쪼개서 저장합니다(sylChunkPut/sylChunkGet).
+  const SYL_MAX_BYTES=3*1024*1024; // 동기화가 꺼져 있을 때(로컬 저장소에 그대로 들어감) 파일당 상한(3MB)
+  // 첨부 자료(문제 파일 등)와 마찬가지로, 동기화가 켜져 있으면 pdf·기타 파일은 크기와 상관없이 전부
+  // 이 기기 로컬 저장소에 쌓아두지 않고 Firebase에 조각내어 저장했다가 열 때 그때 불러옵니다
+  // — 그래서 브라우저 저장 공간을 거의 안 쓰고, 훨씬 큰 파일도 안전합니다.
   const SYL_ATT_MAX_BYTES = syncOn() ? 50*1024*1024 : SYL_MAX_BYTES; // 동기화 켜짐: 50MB(서버에 조각내어 저장) · 꺼짐(로컬 전용): 3MB(로컬 저장소에 그대로 들어가므로)
   if(upFile) upFile.onchange=async()=>{
     if(!isAdminRole()) return;
@@ -7161,7 +7178,7 @@ function bindSyllabus(){
     const course=(courseEl&&courseEl.value.trim())||'';
     const failed=[], tooBig=[];
     for(const f of files){
-      if(f.size>SYL_MAX_BYTES){ tooBig.push(f.name); continue; }
+      if(f.size>SYL_ATT_MAX_BYTES){ tooBig.push(f.name); continue; }
       const ext=(f.name.split('.').pop()||'').toLowerCase();
       const title=(files.length===1 && singleTitle) ? singleTitle : f.name.replace(/\.[^.]+$/,'');
       const id='syl'+Date.now().toString(36)+Math.random().toString(36).slice(2,6)+Math.random().toString(36).slice(2,4);
@@ -7169,13 +7186,17 @@ function bindSyllabus(){
         if(ext==='xlsx'||ext==='xls'){
           const sheets=await readOneXlsx(f);
           store.syllabus.push({id, title, dept, course, kind:'xlsx', sheets, uploadedBy:myName, uploadedAt:Date.now()});
-        } else if(ext==='pdf'){
-          const fileData=await readAsDataURL(f);
-          store.syllabus.push({id, title, dept, course, kind:'pdf', fileData, fileName:f.name, uploadedBy:myName, uploadedAt:Date.now()});
         } else {
-          // 한글(HWP)·워드 등 브라우저가 직접 미리보기를 못 하는 형식 — 다운로드로만 제공
+          const kind = ext==='pdf' ? 'pdf' : 'file'; // pdf는 화면 미리보기, 그 외(한글·워드 등)는 다운로드로만 제공
           const fileData=await readAsDataURL(f);
-          store.syllabus.push({id, title, dept, course, kind:'file', fileData, fileName:f.name, uploadedBy:myName, uploadedAt:Date.now()});
+          if(syncOn()){
+            // 동기화 켜짐: 크기와 상관없이 로컬에 안 쌓아두고 서버에 조각내어 저장 — 이 기기 저장 공간을 거의 안 씀
+            if(upBtn) upBtn.textContent='⏳ 업로드 중...';
+            await sylChunkPut(id, f.name, fileData, (i,total)=>{ if(upBtn && total>1) upBtn.textContent=`⏳ 업로드 중... (${i}/${total})`; });
+            store.syllabus.push({id, title, dept, course, kind, remote:true, fileName:f.name, size:f.size, uploadedBy:myName, uploadedAt:Date.now()});
+          } else {
+            store.syllabus.push({id, title, dept, course, kind, fileData, fileName:f.name, uploadedBy:myName, uploadedAt:Date.now()});
+          }
         }
       }catch(e){ failed.push(f.name); }
     }
@@ -7183,7 +7204,7 @@ function bindSyllabus(){
     try{ save(); schedulePushSyllabus(); }catch(e){ saveErr=e; }
     if(titleEl) titleEl.value=''; if(courseEl) courseEl.value=''; upFile.value=''; render(true);
     if(saveErr) sylErrAlert(saveErr, '방금 올린 자료');
-    if(tooBig.length) alert('다음 파일은 너무 커서(3MB 초과) 올리지 못했습니다. 큰 파일은 구글 드라이브 등에 올린 뒤 "🔗 링크로 추가"를 이용해주세요:\n'+tooBig.join('\n'));
+    if(tooBig.length) alert('다음 파일은 너무 커서('+Math.round(SYL_ATT_MAX_BYTES/1024/1024)+'MB 초과) 올리지 못했습니다. 큰 파일은 구글 드라이브 등에 올린 뒤 "🔗 링크로 추가"를 이용해주세요:\n'+tooBig.join('\n'));
     if(failed.length) alert('다음 파일은 읽지 못했습니다:\n'+failed.join('\n'));
   };
   const linkAddBtn=v.querySelector('#sylLinkAddBtn');
@@ -7204,7 +7225,12 @@ function bindSyllabus(){
   v.querySelectorAll('.sylDel').forEach(b=>b.onclick=()=>{
     if(!isAdminRole()) return;
     if(!confirm('이  Syllabus를 삭제할까요?')) return;
-    const en=store.syllabus.find(x=>x.id===b.dataset.id); if(en){ en._deleted=true; en.updatedAt=Date.now(); }
+    const en=store.syllabus.find(x=>x.id===b.dataset.id);
+    if(en){
+      en._deleted=true; en.updatedAt=Date.now();
+      if(en.remote) fbDel('/syllabusFiles/'+en.id);
+      delete sylAttCache[en.id];
+    }
     save(); schedulePushSyllabus(); render(true);
   });
   v.querySelectorAll('.sylRename').forEach(b=>b.onclick=()=>{
@@ -7260,6 +7286,41 @@ function bindSyllabus(){
     if(tooBig.length) alert('다음 파일은 너무 커서('+Math.round(SYL_ATT_MAX_BYTES/1024/1024)+'MB 초과) 첨부하지 못했습니다:\n'+tooBig.join('\n'));
     if(failed.length) alert('다음 파일은 올리지 못했습니다(네트워크 확인):\n'+failed.join('\n'));
   });
+  v.querySelectorAll('.sylMainOpen').forEach(b=>b.onclick=async()=>{
+    const origLabel=b.textContent;
+    b.disabled=true; b.textContent='⏳ 불러오는 중...';
+    try{
+      const result=await sylChunkGet(b.dataset.id); // 여러 조각으로 저장된 큰 파일도 자동으로 합쳐서 내려받는다
+      sylAttCache[b.dataset.id]=result;
+      state.sylOpen=state.sylOpen||{}; state.sylOpen[b.dataset.id]=true;
+      render(true);
+    }catch(e){ alert('자료를 불러오지 못했습니다: '+(e.message||e)); b.disabled=false; b.textContent=origLabel; }
+  });
+  const migrateBtn=v.querySelector('#sylMigrateBtn');
+  if(migrateBtn) migrateBtn.onclick=async()=>{
+    if(!isAdminRole()) return;
+    const targets=store.syllabus.filter(s=>!s._deleted && (s.kind==='pdf'||s.kind==='file') && s.fileData && !s.remote);
+    if(!targets.length) return;
+    if(!confirm(`${targets.length}개 파일을 서버로 옮겨서 이 기기의 저장 공간을 확보할까요? (파일 내용은 그대로 유지되고, 다른 기기에서도 그대로 볼 수 있어요)`)) return;
+    migrateBtn.disabled=true;
+    let done=0, failed=[];
+    for(const en of targets){
+      migrateBtn.textContent=`⏳ 옮기는 중... (${done+1}/${targets.length})`;
+      try{
+        await sylChunkPut(en.id, en.fileName||en.title, en.fileData);
+        const size=sylEntrySize(en);
+        delete en.fileData;
+        en.remote=true; en.size=size; en.updatedAt=Date.now();
+        done++;
+      }catch(e){ failed.push(en.title||en.fileName); }
+    }
+    let saveErr=null;
+    try{ save(); schedulePushSyllabus(); }catch(e){ saveErr=e; }
+    render(true);
+    if(saveErr) sylErrAlert(saveErr, '서버로 옮긴 자료 정보');
+    if(failed.length) alert(`다음 파일은 옮기지 못했습니다(네트워크 확인 후 다시 시도해주세요):\n${failed.join('\n')}`);
+    if(done) alert(`${done}개 파일을 서버로 옮겼습니다. 이 기기의 저장 공간이 확보됐어요.`);
+  };
   v.querySelectorAll('.sylAttOpen').forEach(b=>b.onclick=async()=>{
     if(b.disabled) return;
     const origLabel=b.textContent;
