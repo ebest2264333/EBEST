@@ -5919,6 +5919,20 @@ function renderHandoverGrid(){
   // 같은 반(prevClass) 묶음끼리 반명 칸을 세로로 합쳐서 보여준다 (원본 인수인계표 양식처럼)
   const groups=[]; let curKey=null, curGroup=null;
   rows.forEach(r=>{ if(r.prevClass!==curKey){ curKey=r.prevClass; curGroup={key:curKey, rows:[]}; groups.push(curGroup); } curGroup.rows.push(r); });
+  // 반(그룹) 순서를 초등 → 중등 → 고등, 각 부서 안에서는 반 이름에 들어있는 숫자(학년/급수) 오름차순으로 정렬해서 보여준다
+  // (저장된 자료 순서 자체는 안 건드리고, 화면에 보여줄 때만 정렬 — 예전에 만들어둔 표도 다시 만들 필요 없이 바로 정돈되어 보임)
+  const hgDeptLookup={};
+  editArr(a, prevMonth).forEach(c=>{ if(!c._deleted && hgDeptLookup[norm(c.name)]==null) hgDeptLookup[norm(c.name)]=c.dept||''; });
+  editArr(a, targetMonth).forEach(c=>{ if(!c._deleted && hgDeptLookup[norm(c.name)]==null) hgDeptLookup[norm(c.name)]=c.dept||''; });
+  const hgGradeNum=(name)=>{ const m=String(name||'').match(/\d+/); return m?parseInt(m[0],10):Infinity; };
+  groups.sort((g1,g2)=>{
+    const d1=hgDeptLookup[norm(g1.key)]||'', d2=hgDeptLookup[norm(g2.key)]||'';
+    const r1=DEPT_SORT_ORDER[d1]!=null?DEPT_SORT_ORDER[d1]:99, r2=DEPT_SORT_ORDER[d2]!=null?DEPT_SORT_ORDER[d2]:99;
+    if(r1!==r2) return r1-r2;
+    const n1=hgGradeNum(g1.key), n2=hgGradeNum(g2.key);
+    if(n1!==n2) return n1-n2;
+    return String(g1.key||'').localeCompare(String(g2.key||''),'ko',{numeric:true});
+  });
   const teaCell=(name, field, rid, mergeGroup)=>{
     const color=teacherColorByName(a, name);
     const dataAttr=mergeGroup?`data-hgmergefield="${mergeGroup}|${field}"`:`data-hgfield="${rid}|${field}"`;
