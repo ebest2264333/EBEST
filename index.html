@@ -7375,9 +7375,9 @@ function bindSyllabus(){
 }
 /* ---------- 내신 분석 (학교별 내신이 어떤 식으로 출제되는지 기록 — 월 상관없이 늘 보이고, 모든 선생님이 함께 보고 수정) ---------- */
 const EA_DIFF_OPTIONS=['하','중하','중','중상','상'];
-const EA_DIFF_COLOR={'하':'#22c55e','중하':'#a3e635','중':'#fbbf24','중상':'#fb923c','상':'#ef4444'};
+const EA_DIFF_COLOR={'하':'#4ade80','중하':'#a3e635','중':'#facc15','중상':'#fb923c','상':'#f87171'};
 const EA_DEFAULT_CATEGORIES=['어휘','대화문','어법','본문내용','서술형','외부지문'];
-const EA_CAT_PALETTE=['#e53935','#fb8c00','#ffb300','#fdd835','#c0ca33','#43a047','#00acc1','#5e35b1'];
+const EA_CAT_PALETTE=['#f87171','#fb923c','#fbbf24','#facc15','#a3e635','#4ade80','#2dd4bf','#60a5fa'];
 function eaCatColor(catNames, name){ const i=catNames.indexOf(name); return EA_CAT_PALETTE[i>=0?i%EA_CAT_PALETTE.length:0]; }
 // 배경색 밝기에 따라 흰 글자/짙은 글자를 자동으로 골라 항상 잘 보이게 한다
 function eaTextOn(hex){
@@ -7713,7 +7713,7 @@ function eaReportBody(entry){
   cats.forEach(cat=>{
     const color=eaCatColor(catNames, cat.name);
     h+=`<div style="border:1.5px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:14px">
-      <div style="background:${color};color:#fff;padding:8px 14px;font-weight:800;font-size:.86rem;display:flex;justify-content:space-between">
+      <div style="background:${color};color:${eaTextOn(color)};padding:8px 14px;font-weight:800;font-size:.86rem;display:flex;justify-content:space-between">
         <span>${esc(cat.name)}</span><span>${(cat.questions||[]).length}문항</span>
       </div>
       <div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%">
@@ -7741,11 +7741,13 @@ function eaReportBody(entry){
           <th style="padding:8px;font-size:.74rem;color:var(--sub);border-bottom:1px solid var(--line);text-align:left">이름</th>
           <th style="width:90px;padding:8px;font-size:.74rem;color:var(--sub);border-bottom:1px solid var(--line)">정답</th>
           <th style="width:90px;padding:8px;font-size:.74rem;color:var(--sub);border-bottom:1px solid var(--line)">점수</th>
+          <th style="width:110px;padding:8px;font-size:.74rem;color:var(--sub);border-bottom:1px solid var(--line)"></th>
         </tr></thead><tbody>
         ${rows.map(({s,info})=>`<tr>
           <td style="padding:8px;border-bottom:1px solid var(--line);font-weight:700">${esc(s.name)}</td>
           <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line)">${info.correct}/${info.total}</td>
           <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line);font-weight:800;color:${ac.color}">${info.earned}/${info.totalPoints}</td>
+          <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line)"><button type="button" class="btn small eaStudentReportBtn" data-sid="${esc(s.id)}">👤 리포트 보기</button></td>
         </tr>`).join('')}
       </tbody></table></div>
     </div>`;
@@ -7760,13 +7762,87 @@ function eaReportBody(entry){
   h+='</div>';
   return h;
 }
+// 학생 한 명만 골라서 보는 개인별 채점 리포트 — 어떤 문항을 맞고 틀렸는지, 부분점수는 몇 점 받았는지까지 보여준다
+function eaStudentReportBody(entry, studentId){
+  if(!entry) return '<div class="empty">삭제되었거나 찾을 수 없는 자료입니다.</div>';
+  const s=(entry.students||[]).find(x=>x.id===studentId);
+  if(!s) return '<div class="empty">학생 정보를 찾을 수 없습니다.</div>';
+  const ac=AC[entry.academy]||{label:entry.academy||'', color:'#2e5fb7', tint:'#f4f6fb'};
+  const info=eaStudentScore(entry, studentId);
+  const pct=info.totalPoints? Math.round(info.earned/info.totalPoints*100) : 0;
+  const target=entry.targetScore!=null?entry.targetScore:100;
+  const cats=(entry.categories||[]).filter(c=>(c.questions||[]).length);
+  const catNames=cats.map(c=>c.name);
+  let h=`<div style="background:${ac.color};color:#fff;border-radius:14px 14px 0 0;padding:20px 22px">
+    <div style="font-size:.78rem;opacity:.85;font-weight:700;letter-spacing:.02em">${esc(ac.label||'')} 내신 분석 리포트 · 학생별</div>
+    <div style="font-size:1.3rem;font-weight:800;margin-top:4px">${esc(s.name)}</div>
+    <div style="font-size:.9rem;font-weight:600;margin-top:2px;opacity:.95">${esc(entry.school||'')} ${esc(entry.grade||'')} · ${esc(entry.examTitle||'')}</div>
+  </div>
+  <div style="border:1.5px solid var(--line);border-top:none;border-radius:0 0 14px 14px;padding:18px 22px;background:#fff">
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:18px">
+      <div style="flex:1;min-width:130px;border:1.5px solid var(--line);border-radius:10px;padding:12px;text-align:center">
+        <div style="font-size:.72rem;color:var(--sub);font-weight:700">획득 점수</div>
+        <div style="font-size:1.4rem;font-weight:800;color:${ac.color}">${info.earned}/${info.totalPoints}점</div>
+      </div>
+      <div style="flex:1;min-width:130px;border:1.5px solid var(--line);border-radius:10px;padding:12px;text-align:center">
+        <div style="font-size:.72rem;color:var(--sub);font-weight:700">정답 개수</div>
+        <div style="font-size:1.4rem;font-weight:800;color:${ac.color}">${info.correct}/${info.total}개</div>
+      </div>
+      <div style="flex:1;min-width:130px;border:1.5px solid var(--line);border-radius:10px;padding:12px;text-align:center">
+        <div style="font-size:.72rem;color:var(--sub);font-weight:700">목표점수 대비</div>
+        <div style="font-size:1.4rem;font-weight:800;color:${pct>=target?'#16a34a':'#ef4444'}">${pct}점 ${pct>=target?'달성':'미달'}</div>
+      </div>
+    </div>`;
+  if(!cats.length) h+='<div class="empty" style="text-align:left">아직 입력된 문항이 없습니다.</div>';
+  cats.forEach(cat=>{
+    const color=eaCatColor(catNames, cat.name);
+    const st=eaScoreTypeFor(cat);
+    h+=`<div style="border:1.5px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:14px">
+      <div style="background:${color};color:${eaTextOn(color)};padding:8px 14px;font-weight:800;font-size:.86rem;display:flex;justify-content:space-between">
+        <span>${esc(cat.name)}</span><span>${(cat.questions||[]).length}문항</span>
+      </div>
+      <div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%">
+        <thead><tr style="background:#f7f9fc">
+          <th style="width:64px;padding:8px;font-size:.74rem;color:var(--sub);border-bottom:1px solid var(--line)">번호</th>
+          <th style="padding:8px;font-size:.74rem;color:var(--sub);border-bottom:1px solid var(--line);text-align:left">문제</th>
+          <th style="width:70px;padding:8px;font-size:.74rem;color:var(--sub);border-bottom:1px solid var(--line)">배점</th>
+          <th style="width:90px;padding:8px;font-size:.74rem;color:var(--sub);border-bottom:1px solid var(--line)">채점 결과</th>
+        </tr></thead><tbody>
+        ${(cat.questions||[]).map(q=>{
+          const v=((entry.scores||{})[studentId]||{})[q.id];
+          let resultHTML='<span style="color:var(--sub)">-</span>';
+          let rowBg='';
+          if(st==='partial'){
+            if(v!=null && v!==''){ const n=Number(v)||0; resultHTML=`<b>${n}점</b>`; if(n<=0) rowBg='background:#fff1f1'; }
+          } else {
+            if(v===true){ resultHTML='<span style="color:#16a34a;font-weight:800">O</span>'; }
+            else if(v===false){ resultHTML='<span style="color:#ef4444;font-weight:800">X</span>'; rowBg='background:#fff1f1'; }
+          }
+          return `<tr style="${rowBg}">
+          <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line);font-weight:700">${esc(q.no||'')}</td>
+          <td style="padding:8px;border-bottom:1px solid var(--line)">${esc(q.question||'')}</td>
+          <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line)">${esc(q.points||'')}</td>
+          <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line)">${resultHTML}</td>
+        </tr>`;
+        }).join('')}
+      </tbody></table></div>
+    </div>`;
+  });
+  h+=`<div style="font-size:.7rem;color:#8b93a7;margin-top:14px;text-align:right">최근 수정: ${entry.updatedBy?esc(entry.updatedBy)+' · ':''}${entry.updatedAt?new Date(entry.updatedAt).toLocaleString('ko-KR'):''}</div>`;
+  h+='</div>';
+  return h;
+}
 function renderEaView(){
   const entry=eaFindActive(state.eaViewId);
+  const sid=state.eaStudentViewId;
+  const showingStudent = sid && entry && (entry.students||[]).some(s=>s.id===sid);
   let h=`<div class="todaybar" style="margin-bottom:10px">
-    <button class="btn small" id="eaBackBtn">◀ 목록으로</button>
+    ${showingStudent
+      ? `<button class="btn small" id="eaBackToGroupBtn">◀ 전체 리포트로</button>`
+      : `<button class="btn small" id="eaBackBtn">◀ 목록으로</button>`}
     ${entry?`<button class="btn small" id="eaEditFromViewBtn">✎ 수정</button>`:''}
   </div>`;
-  h+=`<div style="max-width:820px;margin:0 auto">${eaReportBody(entry)}</div>`;
+  h+=`<div style="max-width:820px;margin:0 auto">${showingStudent ? eaStudentReportBody(entry, sid) : eaReportBody(entry)}</div>`;
   return h;
 }
 function bindEaForm(){
@@ -7863,7 +7939,9 @@ function bindExamAnalysis(){
   if(state.eaMode==='form'){ bindEaForm(); return; }
   if(state.eaMode==='view'){
     const back=v.querySelector('#eaBackBtn'); if(back) back.onclick=()=>{ state.eaMode='list'; render(true); };
+    const backToGroup=v.querySelector('#eaBackToGroupBtn'); if(backToGroup) backToGroup.onclick=()=>{ state.eaStudentViewId=null; render(true); };
     const editBtn=v.querySelector('#eaEditFromViewBtn'); if(editBtn) editBtn.onclick=()=>{ eaEnterForm(state.eaViewId); render(true); };
+    v.querySelectorAll('.eaStudentReportBtn').forEach(b=>b.onclick=()=>{ state.eaStudentViewId=b.dataset.sid; render(true); });
     return;
   }
   const search=v.querySelector('#eaSearch');
@@ -7872,7 +7950,7 @@ function bindExamAnalysis(){
     search.addEventListener('input',e=>{ state.eaQ=e.target.value; applyEaSearch(e.target.value); });
   }
   const newBtn=v.querySelector('#eaNewBtn'); if(newBtn) newBtn.onclick=()=>{ eaEnterForm(null); render(true); };
-  v.querySelectorAll('.eaViewBtn').forEach(b=>b.onclick=()=>{ state.eaViewId=b.dataset.id; state.eaMode='view'; render(true); });
+  v.querySelectorAll('.eaViewBtn').forEach(b=>b.onclick=()=>{ state.eaViewId=b.dataset.id; state.eaStudentViewId=null; state.eaMode='view'; render(true); });
   v.querySelectorAll('.eaEditBtn').forEach(b=>b.onclick=()=>{ eaEnterForm(b.dataset.id); render(true); });
   v.querySelectorAll('.eaDelBtn').forEach(b=>b.onclick=()=>{
     if(!confirm('이 내신 분석 자료를 삭제할까요?')) return;
@@ -9535,7 +9613,11 @@ function reportHTML(){
   else if(state.tab==='stats'){ body=repStats(); }
   else if(state.tab==='cal'){ body=repCal(); }
   else if(state.tab==='archive'){ body=repArchive(); }
-  else if(state.tab==='examrpt'){ body=eaReportBody(eaFindActive(state.eaViewId)); }
+  else if(state.tab==='examrpt'){
+    const eaEntry=eaFindActive(state.eaViewId);
+    const eaSid=state.eaStudentViewId;
+    body=(eaSid && eaEntry && (eaEntry.students||[]).some(s=>s.id===eaSid)) ? eaStudentReportBody(eaEntry, eaSid) : eaReportBody(eaEntry);
+  }
   else { body=repSet(); }
   return rBand(`${tabName}${esc(extra)} &nbsp;·&nbsp; ${when} &nbsp;·&nbsp; 출력일 ${date}`)+boxes+body;
 }
