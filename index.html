@@ -7386,8 +7386,35 @@ function eaBlankEntry(){
     id:eaNewId('ea'), _isNew:true, academy:academies()[0], school:'', grade:'', examTitle:'', examRange:'', examDate:'', prepStart:'', prepEnd:'',
     teacherLecture:'', teacherIBT:'', targetScore:100, note:'',
     categories: EA_DEFAULT_CATEGORIES.map(name=>({name, count:0, questions:[]})),
+    students: [], // [{id, name}]
+    scores: {}, // scores[studentId][questionId] = true/false(O/X 채점) 또는 숫자 문자열(부분점수 채점)
     createdAt:Date.now(), updatedAt:Date.now(), updatedBy:''
   };
+}
+// 카테고리의 채점 방식 — 명시적으로 고른 적 없으면 이름에 "서술"이 들어간 카테고리만 부분점수, 나머지는 정답/오답(O,X)
+function eaScoreTypeFor(cat){ return cat.scoreType || (norm(cat.name).includes('서술') ? 'partial' : 'oz'); }
+// 카테고리 구분 없이 모든 문항을 한 줄로 — 채점표·리포트에서 공통으로 순회할 때 사용
+function eaAllQuestions(entry){
+  const out=[];
+  (entry.categories||[]).forEach(cat=>{
+    const st=eaScoreTypeFor(cat);
+    (cat.questions||[]).forEach(q=>out.push({...q, _catName:cat.name, _scoreType:st, _points:Number(q.points)||0}));
+  });
+  return out;
+}
+// 한 학생의 채점 결과 집계 — 정답 개수·응시 문항수·받은 점수·총 배점
+function eaStudentScore(entry, studentId){
+  const qs=eaAllQuestions(entry);
+  const sc=(entry.scores||{})[studentId]||{};
+  let earned=0, correct=0, answered=0;
+  qs.forEach(q=>{
+    const v=sc[q.id];
+    if(v==null || v==='') return;
+    answered++;
+    if(q._scoreType==='partial'){ const n=Number(v)||0; earned+=n; if(n>0) correct++; }
+    else if(v===true || v==='true'){ earned+=q._points; correct++; }
+  });
+  return {earned, correct, answered, total:qs.length, totalPoints:qs.reduce((s,q)=>s+q._points,0)};
 }
 // 카테고리별 문항수(또는 배점)를 도넛 그래프로 — conic-gradient 하나로 그려서 인쇄해도 그대로 나온다
 function eaDonutHTML(data, size, centerLabel){
@@ -7517,12 +7544,17 @@ function renderEaForm(){
     <div style="font-size:.82rem;font-weight:800;color:var(--sub);margin:16px 0 8px">문항수 (카테고리별로 숫자를 먼저 다 입력해두세요 — 아래 "문항별 세부 입력"에 그 개수만큼 칸이 자동으로 생겨요. 언제든 숫자를 바꿔서 추가·삭제할 수 있어요)</div>
     <div style="border:1.5px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:18px">
       <table style="border-collapse:collapse;width:100%">
-        <thead><tr style="background:#f7f9fc"><th style="padding:8px;font-size:.76rem;color:var(--sub);text-align:left">카테고리</th><th style="width:110px;padding:8px;font-size:.76rem;color:var(--sub)">문항수</th><th style="width:80px"></th></tr></thead>
+        <thead><tr style="background:#f7f9fc"><th style="padding:8px;font-size:.76rem;color:var(--sub);text-align:left">카테고리</th><th style="width:110px;padding:8px;font-size:.76rem;color:var(--sub)">문항수</th><th style="width:150px;padding:8px;font-size:.76rem;color:var(--sub)">채점방식</th><th style="width:80px"></th></tr></thead>
         <tbody>`;
   (d.categories||[]).forEach((cat,ci)=>{
+    const st=eaScoreTypeFor(cat);
     h+=`<tr>
           <td style="padding:6px 8px"><input type="text" class="eaCatName" data-ci="${ci}" value="${esc(cat.name)}" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:6px;font-weight:700;font-family:inherit"></td>
           <td style="padding:6px 8px"><input type="number" min="0" max="200" class="eaCatCount" data-ci="${ci}" value="${cat.count||0}" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:6px;text-align:center;font-family:inherit"></td>
+          <td style="padding:6px 8px"><select class="eaCatScoreType" data-ci="${ci}" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:6px;font-family:inherit">
+            <option value="oz" ${st==='oz'?'selected':''}>정답/오답 (O,X)</option>
+            <option value="partial" ${st==='partial'?'selected':''}>부분점수 입력</option>
+          </select></td>
           <td style="padding:6px 8px;text-align:center"><button type="button" class="del eaCatDelBtn" data-ci="${ci}" style="font-size:.72rem">삭제</button></td>
         </tr>`;
   });
@@ -7564,6 +7596,60 @@ function renderEaForm(){
     }
     h+='</div></div>';
   });
+  h+=`<div style="font-size:.82rem;font-weight:800;color:var(--sub);margin:20px 0 8px">학생 등록</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+      <textarea id="eaStudentBulk" rows="2" placeholder="학생 이름을 한 줄에 한 명씩 입력하고 추가를 누르세요 (예: 김민준)" style="flex:1;min-width:220px;padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit"></textarea>
+      <button type="button" class="btn small" id="eaAddStudentsBtn" style="align-self:flex-start">➕ 추가</button>
+    </div>`;
+  if((d.students||[]).length){
+    h+=`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px">${d.students.map(s=>`<span style="display:inline-flex;align-items:center;gap:6px;background:#f7f9fc;border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:.8rem"><b>${esc(s.name)}</b><button type="button" class="del eaStudentDelBtn" data-sid="${esc(s.id)}" style="border:none;background:none;color:#c0392b;cursor:pointer;font-size:.76rem;padding:0">✕</button></span>`).join('')}</div>`;
+  } else {
+    h+='<div style="font-size:.78rem;color:#8b93a7;margin-bottom:16px">등록된 학생이 없습니다.</div>';
+  }
+  const gridQuestions=eaAllQuestions(d);
+  if((d.students||[]).length && gridQuestions.length){
+    const catsForGrid=(d.categories||[]).filter(c=>(c.questions||[]).length);
+    h+=`<div style="font-size:.82rem;font-weight:800;color:var(--sub);margin:8px 0 8px">채점표 (학생마다 문항별로 정답/오답을 고르거나 점수를 입력하세요)</div>
+      <div style="overflow-x:auto;border:1.5px solid var(--line);border-radius:10px;margin-bottom:16px">
+      <table style="border-collapse:collapse;width:max-content;min-width:100%">
+        <thead>
+          <tr>
+            <th rowspan="2" style="position:sticky;left:0;z-index:1;background:#f7f9fc;padding:8px;font-size:.76rem;color:var(--sub);border:1px solid var(--line);min-width:100px">학생</th>
+            ${catsForGrid.map(cat=>`<th colspan="${cat.questions.length}" style="background:${eaCatColor(catNames,cat.name)};color:#fff;padding:6px;font-size:.74rem;border:1px solid var(--line)">${esc(cat.name)}</th>`).join('')}
+            <th rowspan="2" style="padding:8px;font-size:.76rem;color:var(--sub);border:1px solid var(--line);min-width:70px">총점</th>
+          </tr>
+          <tr>
+            ${catsForGrid.flatMap(cat=>{ const st=eaScoreTypeFor(cat); return cat.questions.map(q=>`<th style="padding:4px;font-size:.68rem;color:var(--sub);border:1px solid var(--line);min-width:${st==='partial'?'56':'42'}px">${esc(q.no||'')}</th>`); }).join('')}
+          </tr>
+        </thead>
+        <tbody>
+          ${(d.students||[]).map(s=>{
+            const info=eaStudentScore(d, s.id);
+            const cells=catsForGrid.flatMap(cat=>{
+              const st=eaScoreTypeFor(cat);
+              return cat.questions.map(q=>{
+                const v=((d.scores||{})[s.id]||{})[q.id];
+                if(st==='partial'){
+                  return `<td style="padding:2px;border:1px solid var(--line)"><input type="number" class="eaScoreInput" data-sid="${esc(s.id)}" data-qid="${esc(q.id)}" value="${v!=null?esc(v):''}" placeholder="0" style="width:100%;padding:4px;border:none;text-align:center;font-family:inherit"></td>`;
+                }
+                return `<td style="padding:2px;border:1px solid var(--line);text-align:center">
+                  <select class="eaScoreOZ" data-sid="${esc(s.id)}" data-qid="${esc(q.id)}" style="width:100%;padding:4px;border:none;font-family:inherit;text-align:center">
+                    <option value="">-</option>
+                    <option value="true" ${v===true?'selected':''}>O</option>
+                    <option value="false" ${v===false?'selected':''}>X</option>
+                  </select></td>`;
+              });
+            }).join('');
+            return `<tr>
+              <td style="position:sticky;left:0;background:#fff;padding:6px 8px;font-size:.8rem;font-weight:700;border:1px solid var(--line)">${esc(s.name)}</td>
+              ${cells}
+              <td style="padding:6px 8px;text-align:center;font-weight:800;border:1px solid var(--line)">${info.earned}/${info.totalPoints}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      </div>`;
+  }
   h+=`<label style="font-size:.78rem;color:var(--sub);display:block;margin:16px 0 14px">선생님 코멘트 / 분석 메모<textarea id="eaNote" rows="3" style="width:100%;margin-top:4px;padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${esc(d.note||'')}</textarea></label>
     <div class="cbtns"><button class="btn primary" id="eaSaveBtn">💾 저장</button><button class="btn small" id="eaCancelBtn">취소</button></div>
     </div></div>`;
@@ -7639,6 +7725,24 @@ function eaReportBody(entry){
       </tbody></table></div>
     </div>`;
   });
+  if((entry.students||[]).length){
+    const rows=entry.students.map(s=>({s, info:eaStudentScore(entry, s.id)})).sort((a,b)=>b.info.earned-a.info.earned);
+    h+=`<div style="border:1.5px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:14px">
+      <div style="background:${ac.color};color:#fff;padding:8px 14px;font-weight:800;font-size:.86rem">👤 학생별 채점 결과</div>
+      <div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%">
+        <thead><tr style="background:#f7f9fc">
+          <th style="padding:8px;font-size:.74rem;color:var(--sub);border-bottom:1px solid var(--line);text-align:left">이름</th>
+          <th style="width:90px;padding:8px;font-size:.74rem;color:var(--sub);border-bottom:1px solid var(--line)">정답</th>
+          <th style="width:90px;padding:8px;font-size:.74rem;color:var(--sub);border-bottom:1px solid var(--line)">점수</th>
+        </tr></thead><tbody>
+        ${rows.map(({s,info})=>`<tr>
+          <td style="padding:8px;border-bottom:1px solid var(--line);font-weight:700">${esc(s.name)}</td>
+          <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line)">${info.correct}/${info.total}</td>
+          <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line);font-weight:800;color:${ac.color}">${info.earned}/${info.totalPoints}</td>
+        </tr>`).join('')}
+      </tbody></table></div>
+    </div>`;
+  }
   if(entry.note){
     h+=`<div style="border:1.5px solid var(--line);border-radius:10px;padding:12px 14px;background:#fffbea">
       <div style="font-size:.76rem;font-weight:800;color:var(--sub);margin-bottom:4px">📝 선생님 코멘트 / 분석 메모</div>
@@ -7691,10 +7795,41 @@ function bindEaForm(){
   });
   const addCatBtn=byId('eaAddCatBtn');
   if(addCatBtn) addCatBtn.onclick=()=>{ d.categories=d.categories||[]; d.categories.push({name:'새 카테고리', count:0, questions:[]}); render(true); };
-  v.querySelectorAll('.eaQNo').forEach(inp=>inp.onchange=()=>{ d.categories[Number(inp.dataset.ci)].questions[Number(inp.dataset.qi)].no=inp.value; });
+  v.querySelectorAll('.eaQNo').forEach(inp=>inp.onchange=()=>{ d.categories[Number(inp.dataset.ci)].questions[Number(inp.dataset.qi)].no=inp.value; render(true); });
   v.querySelectorAll('.eaQText').forEach(inp=>inp.onchange=()=>{ d.categories[Number(inp.dataset.ci)].questions[Number(inp.dataset.qi)].question=inp.value; });
-  v.querySelectorAll('.eaQPoints').forEach(inp=>inp.onchange=()=>{ d.categories[Number(inp.dataset.ci)].questions[Number(inp.dataset.qi)].points=inp.value; });
+  v.querySelectorAll('.eaQPoints').forEach(inp=>inp.onchange=()=>{ d.categories[Number(inp.dataset.ci)].questions[Number(inp.dataset.qi)].points=inp.value; render(true); });
   v.querySelectorAll('.eaQDiff').forEach(sel=>sel.onchange=()=>{ d.categories[Number(sel.dataset.ci)].questions[Number(sel.dataset.qi)].difficulty=sel.value; });
+  v.querySelectorAll('.eaCatScoreType').forEach(sel=>sel.onchange=()=>{ d.categories[Number(sel.dataset.ci)].scoreType=sel.value; render(true); });
+  const addStudentsBtn=byId('eaAddStudentsBtn');
+  if(addStudentsBtn) addStudentsBtn.onclick=()=>{
+    const ta=byId('eaStudentBulk'); if(!ta) return;
+    const names=ta.value.split('\n').map(s=>s.trim()).filter(Boolean);
+    if(!names.length) return;
+    d.students=d.students||[];
+    const existing=new Set(d.students.map(s=>norm(s.name)));
+    names.forEach(n=>{ if(!existing.has(norm(n))){ d.students.push({id:eaNewId('eas'), name:n}); existing.add(norm(n)); } });
+    render(true);
+  };
+  v.querySelectorAll('.eaStudentDelBtn').forEach(btn=>btn.onclick=()=>{
+    const sid=btn.dataset.sid;
+    if(!confirm('이 학생의 채점 기록도 함께 삭제됩니다. 계속할까요?')) return;
+    d.students=(d.students||[]).filter(s=>s.id!==sid);
+    if(d.scores) delete d.scores[sid];
+    render(true);
+  });
+  v.querySelectorAll('.eaScoreOZ').forEach(sel=>sel.onchange=()=>{
+    d.scores=d.scores||{}; d.scores[sel.dataset.sid]=d.scores[sel.dataset.sid]||{};
+    const val=sel.value;
+    if(val==='') delete d.scores[sel.dataset.sid][sel.dataset.qid];
+    else d.scores[sel.dataset.sid][sel.dataset.qid]=(val==='true');
+    render(true);
+  });
+  v.querySelectorAll('.eaScoreInput').forEach(inp=>inp.onchange=()=>{
+    d.scores=d.scores||{}; d.scores[inp.dataset.sid]=d.scores[inp.dataset.sid]||{};
+    if(inp.value==='') delete d.scores[inp.dataset.sid][inp.dataset.qid];
+    else d.scores[inp.dataset.sid][inp.dataset.qid]=inp.value;
+    render(true);
+  });
   const saveBtn=byId('eaSaveBtn');
   if(saveBtn) saveBtn.onclick=()=>{
     if(!(d.school||'').trim() && !(d.examTitle||'').trim()){ alert('학교명이나 시험명 중 하나는 입력해주세요.'); return; }
