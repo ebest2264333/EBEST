@@ -7384,10 +7384,51 @@ function eaBlankQuestion(){ return {id:eaNewId('eaq'), no:'', question:'', point
 function eaBlankEntry(){
   return {
     id:eaNewId('ea'), _isNew:true, academy:academies()[0], school:'', grade:'', examTitle:'', examRange:'', examDate:'', prepStart:'', prepEnd:'',
-    teacherLecture:'', teacherIBT:'', note:'',
+    teacherLecture:'', teacherIBT:'', targetScore:100, note:'',
     categories: EA_DEFAULT_CATEGORIES.map(name=>({name, count:0, questions:[]})),
     createdAt:Date.now(), updatedAt:Date.now(), updatedBy:''
   };
+}
+// 카테고리별 문항수(또는 배점)를 도넛 그래프로 — conic-gradient 하나로 그려서 인쇄해도 그대로 나온다
+function eaDonutHTML(data, size, centerLabel){
+  size=size||170;
+  const total=data.reduce((s,d)=>s+d.value,0);
+  if(!total) return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:#eef1f7;display:flex;align-items:center;justify-content:center;color:#8b93a7;font-size:.76rem;text-align:center;padding:10px">아직<br>자료 없음</div>`;
+  let acc=0;
+  const stops=data.map(d=>{
+    const start=acc/total*100; acc+=d.value; const end=acc/total*100;
+    return `${d.color} ${start}% ${end}%`;
+  }).join(', ');
+  return `<div style="position:relative;width:${size}px;height:${size}px;flex:none">
+    <div style="width:100%;height:100%;border-radius:50%;background:conic-gradient(${stops})"></div>
+    <div style="position:absolute;inset:${Math.round(size*0.2)}px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;flex-direction:column;text-align:center">
+      <div style="font-size:1.05rem;font-weight:800">${esc(String(centerLabel!=null?centerLabel:total))}</div>
+    </div>
+  </div>`;
+}
+function eaLegendHTML(data){
+  const total=data.reduce((s,d)=>s+d.value,0)||1;
+  return `<div style="display:flex;flex-direction:column;gap:6px">${data.map(d=>`
+    <div style="display:flex;align-items:center;gap:6px;font-size:.78rem">
+      <span style="width:10px;height:10px;border-radius:3px;background:${d.color};flex:none"></span>
+      <span style="flex:1;font-weight:700">${esc(d.name)}</span>
+      <span style="color:var(--sub)">${d.value}${d.suffix||''} (${Math.round(d.value/total*100)}%)</span>
+    </div>`).join('')}</div>`;
+}
+// 카테고리별 배점을 막대그래프로 — div 높이로 그려서 별도 라이브러리 없이 인쇄까지 안전하게 나온다
+function eaBarChartHTML(data, maxHeight){
+  maxHeight=maxHeight||110;
+  const max=Math.max(1, ...data.map(d=>d.value));
+  return `<div style="display:flex;align-items:flex-end;gap:12px;height:${maxHeight+34}px;padding:8px 4px 0">
+    ${data.map(d=>{
+      const h=Math.max(2, Math.round((d.value/max)*maxHeight));
+      return `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;min-width:34px">
+        <div style="font-size:.7rem;font-weight:800;color:${d.color}">${d.value}</div>
+        <div style="width:100%;max-width:32px;height:${h}px;background:${d.color};border-radius:4px 4px 0 0"></div>
+        <div style="font-size:.66rem;color:var(--sub);text-align:center;line-height:1.2">${esc(d.name)}</div>
+      </div>`;
+    }).join('')}
+  </div>`;
 }
 // 카테고리의 "문항수"를 새 값에 맞춰 늘리거나 줄인다 — 늘어난 만큼 빈 문항 칸이 생기고, 줄어들면 뒤쪽 문항이 없어진다
 function eaResizeCategory(cat, newCount){
@@ -7470,22 +7511,36 @@ function renderEaForm(){
       ${field('준비기간 끝','eaPrepEnd',d.prepEnd,'date')}
       <label style="font-size:.78rem;color:var(--sub)">담당교사(Lecture)<input type="text" id="eaTeacherLecture" list="dl_teachers_${d.academy}" value="${esc(d.teacherLecture||'')}" style="width:100%;margin-top:4px;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit"></label>
       <label style="font-size:.78rem;color:var(--sub)">담당교사(IBT)<input type="text" id="eaTeacherIBT" list="dl_teachers_${d.academy}" value="${esc(d.teacherIBT||'')}" style="width:100%;margin-top:4px;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit"></label>
+      <label style="font-size:.78rem;color:var(--sub)">목표점수<input type="number" id="eaTargetScore" value="${esc(d.targetScore!=null?d.targetScore:100)}" style="width:100%;margin-top:4px;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit"></label>
     </div>
     ${teacherDatalist(d.academy)}
-    <div style="font-size:.82rem;font-weight:800;color:var(--sub);margin:16px 0 8px">문항수 (카테고리별로 숫자를 입력하면 아래 문항 칸이 자동으로 만들어져요 — 언제든 숫자를 바꿔서 문항을 추가·삭제할 수 있어요)</div>`;
+    <div style="font-size:.82rem;font-weight:800;color:var(--sub);margin:16px 0 8px">문항수 (카테고리별로 숫자를 먼저 다 입력해두세요 — 아래 "문항별 세부 입력"에 그 개수만큼 칸이 자동으로 생겨요. 언제든 숫자를 바꿔서 추가·삭제할 수 있어요)</div>
+    <div style="border:1.5px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:18px">
+      <table style="border-collapse:collapse;width:100%">
+        <thead><tr style="background:#f7f9fc"><th style="padding:8px;font-size:.76rem;color:var(--sub);text-align:left">카테고리</th><th style="width:110px;padding:8px;font-size:.76rem;color:var(--sub)">문항수</th><th style="width:80px"></th></tr></thead>
+        <tbody>`;
+  (d.categories||[]).forEach((cat,ci)=>{
+    h+=`<tr>
+          <td style="padding:6px 8px"><input type="text" class="eaCatName" data-ci="${ci}" value="${esc(cat.name)}" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:6px;font-weight:700;font-family:inherit"></td>
+          <td style="padding:6px 8px"><input type="number" min="0" max="200" class="eaCatCount" data-ci="${ci}" value="${cat.count||0}" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:6px;text-align:center;font-family:inherit"></td>
+          <td style="padding:6px 8px;text-align:center"><button type="button" class="del eaCatDelBtn" data-ci="${ci}" style="font-size:.72rem">삭제</button></td>
+        </tr>`;
+  });
+  h+=`</tbody>
+      </table>
+      <div style="padding:8px 12px;border-top:1px dashed var(--line)"><button type="button" class="btn small" id="eaAddCatBtn">➕ 카테고리 추가</button></div>
+    </div>
+    <div style="font-size:.82rem;font-weight:800;color:var(--sub);margin:16px 0 8px">문항별 세부 입력</div>`;
   const catNames=(d.categories||[]).map(c=>c.name);
   (d.categories||[]).forEach((cat,ci)=>{
     const color=eaCatColor(catNames, cat.name);
     h+=`<div style="border:1.5px solid var(--line);border-radius:10px;margin-bottom:10px;overflow:hidden">
-      <div style="background:${color};color:#fff;padding:8px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <input type="text" class="eaCatName" data-ci="${ci}" value="${esc(cat.name)}" style="font-weight:800;border:none;background:rgba(255,255,255,.2);color:#fff;border-radius:6px;padding:4px 8px;min-width:90px">
-        <span style="font-size:.78rem">문항수</span>
-        <input type="number" min="0" max="200" class="eaCatCount" data-ci="${ci}" value="${cat.count||0}" style="width:64px;border:none;border-radius:6px;padding:4px 8px">
-        <button type="button" class="del eaCatDelBtn" data-ci="${ci}" style="margin-left:auto;background:rgba(0,0,0,.2);color:#fff;border:none">카테고리 삭제</button>
+      <div style="background:${color};color:#fff;padding:8px 12px;font-weight:800;font-size:.84rem;display:flex;justify-content:space-between;align-items:center">
+        <span>${esc(cat.name)}</span><span style="font-weight:600;font-size:.76rem">${(cat.questions||[]).length}문항</span>
       </div>
       <div style="padding:8px 12px">`;
     if(!(cat.questions||[]).length){
-      h+='<div style="font-size:.78rem;color:#8b93a7;padding:6px 0">문항수를 입력하면 이 아래 문항 칸이 생겨요.</div>';
+      h+='<div style="font-size:.78rem;color:#8b93a7;padding:6px 0">위 "문항수" 표에서 숫자를 입력하면 이 자리에 문항 입력 칸이 생겨요.</div>';
     } else {
       h+=`<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;min-width:560px">
         <thead><tr>
@@ -7509,8 +7564,7 @@ function renderEaForm(){
     }
     h+='</div></div>';
   });
-  h+=`<div class="cbtns" style="margin-bottom:16px"><button type="button" class="btn small" id="eaAddCatBtn">➕ 카테고리 추가</button></div>
-    <label style="font-size:.78rem;color:var(--sub);display:block;margin-bottom:14px">선생님 코멘트 / 분석 메모<textarea id="eaNote" rows="3" style="width:100%;margin-top:4px;padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${esc(d.note||'')}</textarea></label>
+  h+=`<label style="font-size:.78rem;color:var(--sub);display:block;margin:16px 0 14px">선생님 코멘트 / 분석 메모<textarea id="eaNote" rows="3" style="width:100%;margin-top:4px;padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${esc(d.note||'')}</textarea></label>
     <div class="cbtns"><button class="btn primary" id="eaSaveBtn">💾 저장</button><button class="btn small" id="eaCancelBtn">취소</button></div>
     </div></div>`;
   return h;
@@ -7532,15 +7586,36 @@ function eaReportBody(entry){
         .filter(([,v])=>v).map(([l,v])=>`<div><div style="font-size:.7rem;color:var(--sub);font-weight:700">${esc(l)}</div><div style="font-size:.9rem;font-weight:800;margin-top:2px">${esc(v)}</div></div>`).join('')}
     </div>
     <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:18px">
-      <div style="flex:1;min-width:140px;border:1.5px solid var(--line);border-radius:10px;padding:12px;text-align:center">
+      <div style="flex:1;min-width:130px;border:1.5px solid var(--line);border-radius:10px;padding:12px;text-align:center">
         <div style="font-size:.72rem;color:var(--sub);font-weight:700">총 문항수</div>
         <div style="font-size:1.4rem;font-weight:800;color:${ac.color}">${totalQ}개</div>
       </div>
-      <div style="flex:1;min-width:140px;border:1.5px solid var(--line);border-radius:10px;padding:12px;text-align:center">
+      <div style="flex:1;min-width:130px;border:1.5px solid var(--line);border-radius:10px;padding:12px;text-align:center">
         <div style="font-size:.72rem;color:var(--sub);font-weight:700">총 배점</div>
         <div style="font-size:1.4rem;font-weight:800;color:${ac.color}">${totalPts}점</div>
       </div>
+      <div style="flex:1;min-width:130px;border:1.5px solid var(--line);border-radius:10px;padding:12px;text-align:center">
+        <div style="font-size:.72rem;color:var(--sub);font-weight:700">목표점수</div>
+        <div style="font-size:1.4rem;font-weight:800;color:${ac.color}">${esc(entry.targetScore!=null?entry.targetScore:100)}점</div>
+      </div>
     </div>`;
+  if(cats.length){
+    const countData=cats.map(c=>({name:c.name, value:(c.questions||[]).length, color:eaCatColor(catNames,c.name), suffix:'개'}));
+    const pointData=cats.map(c=>({name:c.name, value:(c.questions||[]).reduce((m,q)=>m+(Number(q.points)||0),0), color:eaCatColor(catNames,c.name)}));
+    h+=`<div style="display:flex;flex-wrap:wrap;gap:22px;margin-bottom:20px;border:1.5px solid var(--line);border-radius:10px;padding:16px">
+      <div style="flex:1;min-width:260px">
+        <div style="font-size:.78rem;font-weight:800;color:var(--sub);margin-bottom:10px">문제 영역별 문항수 분포</div>
+        <div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">
+          ${eaDonutHTML(countData, 150, totalQ+'개')}
+          <div style="flex:1;min-width:140px">${eaLegendHTML(countData)}</div>
+        </div>
+      </div>
+      <div style="flex:1;min-width:260px">
+        <div style="font-size:.78rem;font-weight:800;color:var(--sub);margin-bottom:10px">문제 영역별 배점</div>
+        ${eaBarChartHTML(pointData)}
+      </div>
+    </div>`;
+  }
   if(!cats.length) h+='<div class="empty" style="text-align:left">아직 입력된 문항이 없습니다.</div>';
   cats.forEach(cat=>{
     const color=eaCatColor(catNames, cat.name);
@@ -7592,6 +7667,8 @@ function bindEaForm(){
   upd('eaSchool','school'); upd('eaGrade','grade'); upd('eaTitle','examTitle'); upd('eaRange','examRange');
   upd('eaDate','examDate'); upd('eaPrepStart','prepStart'); upd('eaPrepEnd','prepEnd');
   upd('eaTeacherLecture','teacherLecture'); upd('eaTeacherIBT','teacherIBT'); upd('eaNote','note');
+  const targetScoreEl=byId('eaTargetScore');
+  if(targetScoreEl) targetScoreEl.onchange=()=>{ const n=Number(targetScoreEl.value); d.targetScore = isNaN(n) ? 100 : n; };
   v.querySelectorAll('.eaCatName').forEach(inp=>inp.onchange=()=>{ d.categories[Number(inp.dataset.ci)].name=inp.value; });
   v.querySelectorAll('.eaCatCount').forEach(inp=>inp.onchange=()=>{
     const ci=Number(inp.dataset.ci); const cat=d.categories[ci];
