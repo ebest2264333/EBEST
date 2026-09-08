@@ -3328,13 +3328,34 @@ function renderCatalogSection(catKey, itemsKey, label){
         </div>
         ${isOpen?`<div style="padding:10px 12px">
           <input type="search" class="catAssignSearch" data-id="${it.id}" placeholder="🔍 학생 이름 검색" style="width:100%;max-width:260px;margin-bottom:8px;padding:6px 9px;border:1px solid var(--line);border-radius:7px;font-family:inherit">
-          <div style="display:flex;flex-wrap:wrap;gap:6px">
-            ${activeStudents.map(s=>{
-              const assigned=(s[itemsKey]||[]).some(x=>x.catalogId===it.id);
-              return `<label data-catassignrow="${it.id}" data-name="${esc((s.nameKo||'').toLowerCase())}" style="display:flex;align-items:center;gap:4px;font-size:.8rem;background:${assigned?'#e6f6ef':'#fff'};border:1px solid ${assigned?'var(--ok)':'var(--line)'};border-radius:7px;padding:4px 8px;cursor:pointer">
-                <input type="checkbox" class="catAssignChk" data-cat="${catKey}" data-items="${itemsKey}" data-catid="${it.id}" data-sid="${s.id}" ${assigned?'checked':''}>${esc(s.nameKo)}${s.className?' ('+esc(classNameInMonth(s,state.month)||s.className)+')':''}</label>`;
-            }).join('')}
-          </div>
+          ${(()=>{
+            const groups=new Map();
+            activeStudents.forEach(s=>{
+              const cn=classNameInMonth(s,state.month)||s.className||'미배정';
+              if(!groups.has(cn)) groups.set(cn,[]);
+              groups.get(cn).push(s);
+            });
+            let gh='';
+            [...groups.keys()].sort((a,b)=>a.localeCompare(b,'ko')).forEach(cn=>{
+              const members=groups.get(cn);
+              const allAssigned=members.every(s=>(s[itemsKey]||[]).some(x=>x.catalogId===it.id));
+              gh+=`<div style="margin-bottom:10px">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+                  <b style="font-size:.8rem">${esc(cn)}</b>
+                  <span style="font-size:.72rem;color:var(--sub)">${members.length}명</span>
+                  <button class="btn small catAssignClassToggle" data-cat="${catKey}" data-items="${itemsKey}" data-catid="${it.id}" data-class="${esc(cn)}" data-mode="${allAssigned?'unassign':'assign'}">${allAssigned?'☑ 이 반 전체 해제':'☐ 이 반 전체 배정'}</button>
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px">
+                  ${members.map(s=>{
+                    const assigned=(s[itemsKey]||[]).some(x=>x.catalogId===it.id);
+                    return `<label data-catassignrow="${it.id}" data-name="${esc((s.nameKo||'').toLowerCase())}" style="display:flex;align-items:center;gap:4px;font-size:.8rem;background:${assigned?'#e6f6ef':'#fff'};border:1px solid ${assigned?'var(--ok)':'var(--line)'};border-radius:7px;padding:4px 8px;cursor:pointer">
+                      <input type="checkbox" class="catAssignChk" data-cat="${catKey}" data-items="${itemsKey}" data-catid="${it.id}" data-sid="${s.id}" ${assigned?'checked':''}>${esc(s.nameKo)}</label>`;
+                  }).join('')}
+                </div>
+              </div>`;
+            });
+            return gh;
+          })()}
         </div>`:''}
       </div>`;
     });
@@ -3393,6 +3414,21 @@ function bindCatalogSection(catKey, itemsKey){
     s.updatedAt=Date.now();
     save(); render(true);
   });
+  v.querySelectorAll('.catAssignClassToggle[data-cat="'+catKey+'"]').forEach(btn=>btn.onclick=()=>{
+    const it=(store[catKey]||[]).find(x=>x.id===btn.dataset.catid); if(!it) return;
+    const className=btn.dataset.class;
+    const doAssign=btn.dataset.mode==='assign';
+    store.students.filter(s=>!s._deleted && s.status==='재원' && (classNameInMonth(s,state.month)||s.className||'미배정')===className).forEach(s=>{
+      s[itemsKey]=s[itemsKey]||[];
+      if(doAssign){
+        if(!s[itemsKey].some(x=>x.catalogId===it.id)) s[itemsKey].push({id:catNewId('asg'), catalogId:it.id, name:it.name, price:it.price, paid:false, assignedAt:Date.now()});
+      } else {
+        s[itemsKey]=s[itemsKey].filter(x=>x.catalogId!==it.id);
+      }
+      s.updatedAt=Date.now();
+    });
+    save(); render(true);
+  });
 }
 function renderBookGive(list){
   const lt=loginTeacher();
@@ -3400,7 +3436,7 @@ function renderBookGive(list){
   if(lt && state.myOnly) cls=cls.filter(c=>teacherTeaches(c,lt));
   let h=`<div class="todaybar"><span class="wd">📦 교재 배부</span>
     ${lt?`<span class="mytag" style="background:${lt.t.color}">👤 ${esc(lt.t.name)}</span><label class="hwlab"><input type="checkbox" id="bgMyOnly" ${state.myOnly?'checked':''}> 내 수업만 보기</label>`:''}
-    <span style="font-size:.76rem;color:var(--sub)">교재명을 직접 입력하고 학생을 체크한 뒤 [배부 처리]를 누르면 반교재·연간교재·업무일지에도 실시간으로 반영됩니다. 선생님 누구나 개별로 체크하거나, [반 전체 선택]으로 한 번에 배부 처리할 수 있어요.</span></div>`;
+    <span style="font-size:.76rem;color:var(--sub)">과목별 교재명은 직접 입력하면 반교재·연간교재·업무일지에도 실시간으로 반영됩니다. 실제 배부(누구에게 줬는지)와 결제 여부는 위쪽 [📚 교재 목록 관리 & 배정] · [💰 수강료 항목 관리 & 배정]에서 학생 개인 또는 반 전체 단위로 처리하고, 학생 명단에서 확인할 수 있어요.</span></div>`;
   if(isAdminRole()){
     h+=renderCatalogSection('bookCatalog','assignedBooks','📚 교재 목록 관리 & 배정 (금액 포함 · 관리자·실장 전용)');
     h+=renderCatalogSection('tuitionCatalog','assignedTuitions','💰 수강료 항목 관리 & 배정 (관리자·실장 전용)');
@@ -3424,21 +3460,12 @@ function renderBookGive(list){
     h+=`<div class="ysec"><h3>${esc(c.name)} ${bdg(c.academy)}${(effStu!==c.students)?` <span style="background:#6366f1;color:#fff;font-size:.68rem;font-weight:800;border-radius:6px;padding:2px 6px">🔗 합반 학생 기준</span>`:''}</h3><div style="padding:0 16px 14px">`;
     subs.forEach(s=>{
       const subj=s.subject||'-';
-      const g=bookGivenFor(k, subj);
-      const total=effStu.length;
-      const done=effStu.filter(stu=>g.students[stu]).length;
+      // 배부(인원 체크)는 이제 위쪽 "교재 목록 관리 & 배정"에서 처리 — 여기서는 그 과목이 지금 쓰는 교재명(진도 기록용)만 관리
       h+=`<div style="margin-bottom:14px;padding:10px 12px;background:#f6f8fc;border-radius:10px">
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <b style="font-size:.86rem">${esc(subj)}</b>
-          <input type="text" class="bgbook" data-k="${esc(k)}" data-subj="${esc(subj)}" value="${esc(s.book||'')}" placeholder="교재명 직접 입력" style="flex:1;min-width:120px;max-width:220px;border:1px solid var(--line);border-radius:7px;padding:5px 8px;font-family:inherit;font-size:.82rem">
-          <span style="font-size:.76rem;font-weight:800;color:${done===total&&total?'var(--ok)':'var(--sub)'}">배부 ${done}/${total}</span>
-          <button class="btn small" data-bgall="${esc(k)}|${esc(subj)}" style="margin-left:auto">☑ 반 전체 선택</button>
-          <button class="btn small" data-bgnone="${esc(k)}|${esc(subj)}">☐ 전체 해제</button>
-          <button class="btn small" data-bgapply="${esc(k)}|${esc(subj)}">✔ 체크된 학생 배부 처리</button>
-        </div>
-        <div style="display:flex;flex-wrap:wrap;gap:6px">
-          ${effStu.map(stu=>`<label style="display:flex;align-items:center;gap:4px;font-size:.8rem;background:${g.students[stu]?'#e6f6ef':'#fff'};border:1px solid ${g.students[stu]?'var(--ok)':'var(--line)'};border-radius:7px;padding:4px 8px;cursor:pointer">
-            <input type="checkbox" class="bgchk" data-k="${esc(k)}" data-subj="${esc(subj)}" data-stu="${esc(stu)}" ${g.students[stu]?'checked':''}>${esc(studentDisplayName(c.academy,stu,c.name))}${g.students[stu]?' ✔':''}</label>`).join('')}
+          <input type="text" class="bgbook" data-k="${esc(k)}" data-subj="${esc(subj)}" value="${esc(s.book||'')}" placeholder="교재명 직접 입력 (진도 기록용)" style="flex:1;min-width:120px;max-width:260px;border:1px solid var(--line);border-radius:7px;padding:5px 8px;font-family:inherit;font-size:.82rem">
+          <span style="font-size:.72rem;color:#8b93a7">※ 실제 배부·결제 처리는 위 [📚 교재 목록 관리 & 배정]에서 해주세요</span>
         </div>
       </div>`;
     });
@@ -3483,46 +3510,6 @@ function bindBookGive(){
     const kk=inp.dataset.k; const a=kk.split('|')[0]; const className=kk.slice(a.length+1);
     syncBookToClass(a, className, inp.dataset.subj, state.month, inp.value.trim());
     save(); render(true);
-  });
-  v.querySelectorAll('.bgchk').forEach(cb=>cb.onchange=()=>{
-    const k=cb.dataset.k, subj=cb.dataset.subj, stu=cb.dataset.stu, sk=subjKey(subj);
-    store.bookGiven[k]=store.bookGiven[k]||{};
-    store.bookGiven[k][sk]=store.bookGiven[k][sk]||{students:{}};
-    if(cb.checked) store.bookGiven[k][sk].students[stu]=true; else delete store.bookGiven[k][sk].students[stu];
-    store.bookGiven[k][sk].updatedAt=Date.now();
-    save(); render(true);
-  });
-  v.querySelectorAll('[data-bgall]').forEach(b=>b.onclick=()=>{
-    const parts=b.dataset.bgall.split('|'); const subj=parts.pop(); const k=parts.join('|'); const sk=subjKey(subj);
-    const checks=[...v.querySelectorAll('.bgchk')].filter(cb=>cb.dataset.k===k && cb.dataset.subj===subj);
-    store.bookGiven[k]=store.bookGiven[k]||{};
-    store.bookGiven[k][sk]=store.bookGiven[k][sk]||{students:{}};
-    checks.forEach(cb=>{ store.bookGiven[k][sk].students[cb.dataset.stu]=true; });
-    store.bookGiven[k][sk].updatedAt=Date.now();
-    const {label,book}=resolveBookGiveLabel(v,k,subj);
-    logBookGiveToJournal(k, label, book, checks.length);
-    save(); render(true);
-    toast('☑ 반 전체 배부 처리 완료 · '+checks.length+'명');
-  });
-  v.querySelectorAll('[data-bgnone]').forEach(b=>b.onclick=()=>{
-    const parts=b.dataset.bgnone.split('|'); const subj=parts.pop(); const k=parts.join('|'); const sk=subjKey(subj);
-    if(!store.bookGiven[k] || !store.bookGiven[k][sk]) return;
-    store.bookGiven[k][sk].students={};
-    store.bookGiven[k][sk].updatedAt=Date.now();
-    save(); render(true);
-    toast('☐ 반 전체 배부 해제됨');
-  });
-  v.querySelectorAll('[data-bgapply]').forEach(b=>b.onclick=()=>{
-    const parts=b.dataset.bgapply.split('|'); const subj=parts.pop(); const k=parts.join('|'); const sk=subjKey(subj);
-    const checks=[...v.querySelectorAll('.bgchk')].filter(cb=>cb.dataset.k===k && cb.dataset.subj===subj && cb.checked);
-    store.bookGiven[k]=store.bookGiven[k]||{};
-    store.bookGiven[k][sk]=store.bookGiven[k][sk]||{students:{}};
-    checks.forEach(cb=>{ store.bookGiven[k][sk].students[cb.dataset.stu]=true; });
-    store.bookGiven[k][sk].updatedAt=Date.now();
-    const {label,book}=resolveBookGiveLabel(v,k,subj);
-    logBookGiveToJournal(k, label, book, checks.length);
-    save(); render(true);
-    toast('📦 교재 배부 처리 완료 · '+checks.length+'명');
   });
 }
 /* ---------- 단어 범위 (월별, 학생×날짜 그리드) ---------- */
