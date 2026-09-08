@@ -7375,10 +7375,17 @@ function bindSyllabus(){
 }
 /* ---------- 내신 분석 (학교별 내신이 어떤 식으로 출제되는지 기록 — 월 상관없이 늘 보이고, 모든 선생님이 함께 보고 수정) ---------- */
 const EA_DIFF_OPTIONS=['하','중하','중','중상','상'];
-const EA_DIFF_COLOR={'하':'#2e7d32','중하':'#7cb342','중':'#f9a825','중상':'#ef6c00','상':'#c62828'};
+const EA_DIFF_COLOR={'하':'#22c55e','중하':'#a3e635','중':'#fbbf24','중상':'#fb923c','상':'#ef4444'};
 const EA_DEFAULT_CATEGORIES=['어휘','대화문','어법','본문내용','서술형','외부지문'];
-const EA_CAT_PALETTE=['#2e5fb7','#0e7c66','#b7791f','#9d4edd','#c0392b','#0f766e','#7c3aed','#c2410c'];
+const EA_CAT_PALETTE=['#e53935','#fb8c00','#ffb300','#fdd835','#c0ca33','#43a047','#00acc1','#5e35b1'];
 function eaCatColor(catNames, name){ const i=catNames.indexOf(name); return EA_CAT_PALETTE[i>=0?i%EA_CAT_PALETTE.length:0]; }
+// 배경색 밝기에 따라 흰 글자/짙은 글자를 자동으로 골라 항상 잘 보이게 한다
+function eaTextOn(hex){
+  const h=String(hex||'').replace('#','');
+  const r=parseInt(h.substring(0,2),16), g=parseInt(h.substring(2,4),16), b=parseInt(h.substring(4,6),16);
+  const lum=(r*0.299+g*0.587+b*0.114)/255;
+  return lum>0.62 ? '#3a2f10' : '#ffffff';
+}
 function eaNewId(p){ return p+Date.now().toString(36)+Math.random().toString(36).slice(2,6)+Math.random().toString(36).slice(2,4); }
 function eaBlankQuestion(){ return {id:eaNewId('eaq'), no:'', question:'', points:'', difficulty:''}; }
 function eaBlankEntry(){
@@ -7567,7 +7574,7 @@ function renderEaForm(){
   (d.categories||[]).forEach((cat,ci)=>{
     const color=eaCatColor(catNames, cat.name);
     h+=`<div style="border:1.5px solid var(--line);border-radius:10px;margin-bottom:10px;overflow:hidden">
-      <div style="background:${color};color:#fff;padding:8px 12px;font-weight:800;font-size:.84rem;display:flex;justify-content:space-between;align-items:center">
+      <div style="background:${color};color:${eaTextOn(color)};padding:8px 12px;font-weight:800;font-size:.84rem;display:flex;justify-content:space-between;align-items:center">
         <span>${esc(cat.name)}</span><span style="font-weight:600;font-size:.76rem">${(cat.questions||[]).length}문항</span>
       </div>
       <div style="padding:8px 12px">`;
@@ -7615,7 +7622,7 @@ function renderEaForm(){
         <thead>
           <tr>
             <th rowspan="2" style="position:sticky;left:0;z-index:1;background:#f7f9fc;padding:8px;font-size:.76rem;color:var(--sub);border:1px solid var(--line);min-width:100px">학생</th>
-            ${catsForGrid.map(cat=>`<th colspan="${cat.questions.length}" style="background:${eaCatColor(catNames,cat.name)};color:#fff;padding:6px;font-size:.74rem;border:1px solid var(--line)">${esc(cat.name)}</th>`).join('')}
+            ${catsForGrid.map(cat=>{ const cc=eaCatColor(catNames,cat.name); return `<th colspan="${cat.questions.length}" style="background:${cc};color:${eaTextOn(cc)};padding:6px;font-size:.74rem;border:1px solid var(--line)">${esc(cat.name)}</th>`; }).join('')}
             <th rowspan="2" style="padding:8px;font-size:.76rem;color:var(--sub);border:1px solid var(--line);min-width:70px">총점</th>
           </tr>
           <tr>
@@ -7720,7 +7727,7 @@ function eaReportBody(entry){
           <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line);font-weight:700">${esc(q.no||'')}</td>
           <td style="padding:8px;border-bottom:1px solid var(--line)">${esc(q.question||'')}</td>
           <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line)">${esc(q.points||'')}</td>
-          <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line)">${q.difficulty?`<span style="display:inline-block;padding:2px 10px;border-radius:999px;background:${EA_DIFF_COLOR[q.difficulty]||'#8b93a7'};color:#fff;font-size:.74rem;font-weight:800">${esc(q.difficulty)}</span>`:''}</td>
+          <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line)">${q.difficulty?`<span style="display:inline-block;padding:2px 10px;border-radius:999px;background:${EA_DIFF_COLOR[q.difficulty]||'#dfe3ea'};color:${eaTextOn(EA_DIFF_COLOR[q.difficulty]||'#dfe3ea')};font-size:.74rem;font-weight:800">${esc(q.difficulty)}</span>`:''}</td>
         </tr>`).join('')}
       </tbody></table></div>
     </div>`;
