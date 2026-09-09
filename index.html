@@ -2494,25 +2494,55 @@ function classNameOptions(a){
 }
 // 학생에게 배정된 교재/수강료 항목 — 편집 모드에서만 보이고, 체크하면 결제 완료 기록만 남는다(관리자·실장 전용 영역)
 function assignedItemHTML(s, item, itemsKey){
-  return `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid var(--line);font-size:.82rem">
+  if(item.canceledAt){
+    return `<div title="${esc(catHistText(item))}" style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid var(--line);font-size:.8rem;background:#f7f7f9;color:#9aa1b0">
+      <span style="flex:1;text-decoration:line-through">${esc(item.name)}</span>
+      <span style="font-size:.72rem;white-space:nowrap">취소됨 · ${fmtDT(item.canceledAt)}</span>
+      <button class="btn small catReassignBtn" data-sid="${s.id}" data-items="${itemsKey}" data-id="${item.id}" style="font-size:.7rem;padding:2px 7px">↺ 재배정</button>
+    </div>`;
+  }
+  return `<div title="${esc(catHistText(item))}" style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid var(--line);font-size:.82rem">
     <label style="display:flex;align-items:center;gap:6px;flex:1;cursor:pointer">
       <input type="checkbox" class="assignPaidChk" data-sid="${s.id}" data-items="${itemsKey}" data-id="${item.id}" ${item.paid?'checked':''}>
       <span style="${item.paid?'text-decoration:line-through;color:#8b93a7':''}">${esc(item.name)}</span>
     </label>
     <span style="font-weight:800;font-size:.78rem;color:${item.paid?'#0e9f6e':'#c0392b'}">${fmtWon(item.price)} · ${item.paid?'완납':'미납'}</span>
+    <button class="btn small catCancelBtn" data-sid="${s.id}" data-items="${itemsKey}" data-id="${item.id}" style="font-size:.7rem;padding:2px 7px;color:#c0392b">배정취소</button>
   </div>`;
 }
-function assignedItemsHTML(s){
+function catAssignPickerHTML(s, catKey, itemsKey, label){
+  const assignedIds=new Set((s[itemsKey]||[]).filter(x=>!x.canceledAt).map(x=>x.catalogId));
+  const options=catList(catKey).filter(it=>!assignedIds.has(it.id));
+  if(!options.length) return '';
+  return `<div style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap">
+    <select class="catAssignPickerSel" data-sid="${s.id}" data-cat="${catKey}" data-items="${itemsKey}" style="flex:1;min-width:140px;padding:6px 8px;border:1px solid var(--line);border-radius:7px;font-family:inherit;font-size:.8rem">
+      <option value="">${label} 선택해서 배정…</option>
+      ${options.map(it=>`<option value="${it.id}">${esc(it.name)} (${fmtWon(it.price)})</option>`).join('')}
+    </select>
+    <button class="btn small catAssignPickerBtn" data-sid="${s.id}" data-cat="${catKey}" data-items="${itemsKey}">➕ 배정</button>
+  </div>`;
+}
+function assignedItemsBlockHTML(s, list, itemsKey, icon, label){
+  const unpaid=list.filter(x=>!x.canceledAt && !x.paid);
+  const paidDone=list.filter(x=>!x.canceledAt && x.paid);
+  const past=list.filter(x=>x.canceledAt);
+  let h=`<div style="font-size:.78rem;font-weight:700;color:var(--sub);margin:10px 0 4px">${icon} 배정된 ${label}</div>`;
+  if(unpaid.length) h+=`<div style="border:1px solid var(--line);border-radius:8px;overflow:hidden">${unpaid.map(it=>assignedItemHTML(s,it,itemsKey)).join('')}</div>`;
+  else if(!paidDone.length && !past.length) h+=`<div style="font-size:.78rem;color:#8b93a7">배정된 ${label}이(가) 없습니다.</div>`;
+  if(paidDone.length) h+=`<details style="margin-top:4px" open><summary style="font-size:.72rem;color:#0e9f6e;cursor:pointer;font-weight:700">✅ 납부 완료 이력 ${paidDone.length}건</summary><div style="border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-top:4px">${paidDone.map(it=>assignedItemHTML(s,it,itemsKey)).join('')}</div></details>`;
+  if(past.length) h+=`<details style="margin-top:4px"><summary style="font-size:.72rem;color:#8b93a7;cursor:pointer">🕘 지난 기록 ${past.length}건</summary><div style="border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-top:4px">${past.map(it=>assignedItemHTML(s,it,itemsKey)).join('')}</div></details>`;
+  return h;
+}
+function assignedItemsHTML(s, admin){
   const books=s.assignedBooks||[], tuitions=s.assignedTuitions||[];
-  if(!books.length && !tuitions.length) return '';
   let h='';
-  if(books.length){
-    h+=`<div style="font-size:.78rem;font-weight:700;color:var(--sub);margin:10px 0 4px">📚 배정된 교재</div>
-      <div style="border:1px solid var(--line);border-radius:8px;overflow:hidden">${books.map(it=>assignedItemHTML(s,it,'assignedBooks')).join('')}</div>`;
+  if(books.length || (admin && catList('bookCatalog').length)){
+    h+=assignedItemsBlockHTML(s, books, 'assignedBooks', '📚', '교재');
+    if(admin) h+=catAssignPickerHTML(s,'bookCatalog','assignedBooks','교재');
   }
-  if(tuitions.length){
-    h+=`<div style="font-size:.78rem;font-weight:700;color:var(--sub);margin:10px 0 4px">💰 배정된 수강료</div>
-      <div style="border:1px solid var(--line);border-radius:8px;overflow:hidden">${tuitions.map(it=>assignedItemHTML(s,it,'assignedTuitions')).join('')}</div>`;
+  if(tuitions.length || (admin && catList('tuitionCatalog').length)){
+    h+=assignedItemsBlockHTML(s, tuitions, 'assignedTuitions', '💰', '수강료');
+    if(admin) h+=catAssignPickerHTML(s,'tuitionCatalog','assignedTuitions','수강료');
   }
   return h;
 }
@@ -2584,7 +2614,7 @@ function studentCard(s, admin){
       <input type="text" data-rsfield="${s.id}|absReason" value="${esc(s.absReason||'')}" placeholder="사유 (예: 여행)" style="flex:1;min-width:100px;padding:5px 9px;border:1px solid var(--line);border-radius:6px;font-family:inherit;font-size:.8rem">
     </div>
     ${s.absFrom?`<div style="margin-top:4px;font-size:.74rem;color:#7c3aed">현재 결석 예정: ${esc(s.absFrom)} ~ ${esc(s.absTo||s.absFrom)}${s.absReason?' · '+esc(s.absReason):''} <button class="btn small" data-rsabsdone="${s.id}" style="margin-left:6px">✔ 취소</button></div>`:''}
-    ${assignedItemsHTML(s)}
+    ${assignedItemsHTML(s, admin)}
   </article>`;
 }
 function renderRosterStats(){
@@ -2832,7 +2862,41 @@ function bindRoster(){
   v.querySelectorAll('.assignPaidChk').forEach(cb=>cb.onchange=()=>{
     const s=store.students.find(x=>x.id===cb.dataset.sid); if(!s) return;
     const arr=s[cb.dataset.items]||[]; const item=arr.find(x=>x.id===cb.dataset.id); if(!item) return;
-    item.paid=cb.checked; item.paidAt=cb.checked?Date.now():null;
+    item.paid=cb.checked; if(cb.checked) item.paidAt=Date.now();
+    catPushHist(item, cb.checked?'paid':'unpaid');
+    s.updatedAt=Date.now();
+    save(); render(true);
+  });
+  v.querySelectorAll('.catCancelBtn').forEach(btn=>btn.onclick=()=>{
+    const s=store.students.find(x=>x.id===btn.dataset.sid); if(!s) return;
+    const item=(s[btn.dataset.items]||[]).find(x=>x.id===btn.dataset.id); if(!item || item.canceledAt) return;
+    item.canceledAt=Date.now();
+    catPushHist(item,'canceled');
+    s.updatedAt=Date.now();
+    save(); render(true);
+  });
+  v.querySelectorAll('.catReassignBtn').forEach(btn=>btn.onclick=()=>{
+    const s=store.students.find(x=>x.id===btn.dataset.sid); if(!s) return;
+    const item=(s[btn.dataset.items]||[]).find(x=>x.id===btn.dataset.id); if(!item || !item.canceledAt) return;
+    item.canceledAt=null;
+    catPushHist(item,'reassigned');
+    s.updatedAt=Date.now();
+    save(); render(true);
+  });
+  v.querySelectorAll('.catAssignPickerBtn').forEach(btn=>btn.onclick=()=>{
+    const sid=btn.dataset.sid, catKey=btn.dataset.cat, itemsKey=btn.dataset.items;
+    const sel=v.querySelector(`.catAssignPickerSel[data-sid="${sid}"][data-items="${itemsKey}"]`);
+    const catId=sel?sel.value:''; if(!catId) return;
+    const s=store.students.find(x=>x.id===sid); if(!s) return;
+    const it=(store[catKey]||[]).find(x=>x.id===catId); if(!it) return;
+    s[itemsKey]=s[itemsKey]||[];
+    const existing=s[itemsKey].find(x=>x.catalogId===it.id);
+    if(existing){
+      existing.canceledAt=null; existing.name=it.name; existing.price=it.price;
+      catPushHist(existing,'reassigned');
+    } else {
+      s[itemsKey].push({id:catNewId('asg'), catalogId:it.id, name:it.name, price:it.price, paid:false, assignedAt:Date.now(), canceledAt:null, history:[{action:'assigned', at:Date.now()}]});
+    }
     s.updatedAt=Date.now();
     save(); render(true);
   });
@@ -3302,10 +3366,15 @@ function effStudentsForGive(c){
 function catNewId(p){ return p+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
 function catList(key){ return (store[key]||[]).filter(x=>!x._deleted); }
 function fmtWon(n){ return (Number(n)||0).toLocaleString('ko-KR')+'원'; }
-function studentUnpaidCount(s){ return ((s.assignedBooks||[]).filter(x=>!x.paid).length) + ((s.assignedTuitions||[]).filter(x=>!x.paid).length); }
+function studentUnpaidCount(s){ return ((s.assignedBooks||[]).filter(x=>!x.paid && !x.canceledAt).length) + ((s.assignedTuitions||[]).filter(x=>!x.paid && !x.canceledAt).length); }
+function fmtDT(ts){ return ts? new Date(ts).toLocaleString('ko-KR',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Seoul'}) : ''; }
+const CAT_HIST_LABEL={assigned:'배정',reassigned:'재배정',canceled:'배정취소',paid:'결제완료',unpaid:'결제취소'};
+function catHistText(item){ return (item.history||[]).map(h=>`${fmtDT(h.at)} ${CAT_HIST_LABEL[h.action]||h.action}`).join('\n'); }
+function catPushHist(item, action){ item.history=item.history||[]; item.history.push({action, at:Date.now()}); }
 function renderCatalogSection(catKey, itemsKey, label){
   const items=catList(catKey);
-  const activeStudents=store.students.filter(s=>!s._deleted && s.status==='재원').sort((a,b)=>(a.nameKo||'').localeCompare(b.nameKo||'','ko'));
+  const acs=academies();
+  const activeStudents=store.students.filter(s=>!s._deleted && s.status==='재원' && acs.includes(s.academy)).sort((a,b)=>(a.nameKo||'').localeCompare(b.nameKo||'','ko'));
   let h=`<div class="ysec" style="margin-bottom:14px"><h3>${label}</h3><div style="padding:0 16px 14px">
     <div style="font-size:.76rem;color:var(--sub);margin-bottom:10px">이름과 금액을 등록해두면, 아래 [배정하기]에서 학생을 클릭해 바로 배정할 수 있어요. 결제 여부는 학생 명단(✎ 편집)에서 체크만 하면 기록으로 남습니다.</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
@@ -3316,7 +3385,7 @@ function renderCatalogSection(catKey, itemsKey, label){
   if(!items.length){ h+='<div class="empty">등록된 항목이 없습니다.</div>'; }
   else{
     items.forEach(it=>{
-      const assignedCount=store.students.filter(s=>!s._deleted && (s[itemsKey]||[]).some(x=>x.catalogId===it.id)).length;
+      const assignedCount=store.students.filter(s=>!s._deleted && acs.includes(s.academy) && (s[itemsKey]||[]).some(x=>x.catalogId===it.id && !x.canceledAt)).length;
       const isOpen = !!(state.catAssignOpen && state.catAssignOpen[it.id]);
       h+=`<div style="border:1.5px solid var(--line);border-radius:10px;margin-bottom:10px;overflow:hidden">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;background:#f6f8fc">
@@ -3338,7 +3407,7 @@ function renderCatalogSection(catKey, itemsKey, label){
             let gh='';
             [...groups.keys()].sort((a,b)=>a.localeCompare(b,'ko')).forEach(cn=>{
               const members=groups.get(cn);
-              const allAssigned=members.every(s=>(s[itemsKey]||[]).some(x=>x.catalogId===it.id));
+              const allAssigned=members.every(s=>(s[itemsKey]||[]).some(x=>x.catalogId===it.id && !x.canceledAt));
               gh+=`<div style="margin-bottom:10px">
                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
                   <b style="font-size:.8rem">${esc(cn)}</b>
@@ -3347,7 +3416,7 @@ function renderCatalogSection(catKey, itemsKey, label){
                 </div>
                 <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px">
                   ${members.map(s=>{
-                    const assigned=(s[itemsKey]||[]).some(x=>x.catalogId===it.id);
+                    const assigned=(s[itemsKey]||[]).some(x=>x.catalogId===it.id && !x.canceledAt);
                     return `<label data-catassignrow="${it.id}" data-name="${esc((s.nameKo||'').toLowerCase())}" style="display:flex;align-items:center;gap:4px;font-size:.8rem;background:${assigned?'#e6f6ef':'#fff'};border:1px solid ${assigned?'var(--ok)':'var(--line)'};border-radius:7px;padding:4px 8px;cursor:pointer">
                       <input type="checkbox" class="catAssignChk" data-cat="${catKey}" data-items="${itemsKey}" data-catid="${it.id}" data-sid="${s.id}" ${assigned?'checked':''}>${esc(s.nameKo)}</label>`;
                   }).join('')}
@@ -3382,7 +3451,7 @@ function bindCatalogSection(catKey, itemsKey){
     const it=(store[catKey]||[]).find(x=>x.id===inp.dataset.id); if(!it) return;
     it.price=Number(inp.value)||0; it.updatedAt=Date.now();
     // 이미 배정됐지만 아직 결제 전인 학생 건은 최신 단가로 맞춰준다(이미 결제 완료된 기록은 그대로 둠)
-    store.students.forEach(s=>{ (s[itemsKey]||[]).forEach(a=>{ if(a.catalogId===it.id && !a.paid) a.price=it.price; }); });
+    store.students.forEach(s=>{ (s[itemsKey]||[]).forEach(a=>{ if(a.catalogId===it.id && !a.paid && !a.canceledAt) a.price=it.price; }); });
     save(); render(true);
   });
   v.querySelectorAll('.catItemDel[data-cat="'+catKey+'"]').forEach(btn=>btn.onclick=()=>{
@@ -3406,10 +3475,14 @@ function bindCatalogSection(catKey, itemsKey){
     const s=store.students.find(x=>x.id===cb.dataset.sid); if(!s) return;
     const it=(store[catKey]||[]).find(x=>x.id===cb.dataset.catid); if(!it) return;
     s[itemsKey]=s[itemsKey]||[];
+    const existing=s[itemsKey].find(x=>x.catalogId===it.id);
     if(cb.checked){
-      if(!s[itemsKey].some(x=>x.catalogId===it.id)) s[itemsKey].push({id:catNewId('asg'), catalogId:it.id, name:it.name, price:it.price, paid:false, assignedAt:Date.now()});
+      // 배정: 취소된 기록이 있으면 재배정으로 되살리고(이력 유지), 없으면 새로 만든다 — 절대 지우지 않는다
+      if(existing){ existing.canceledAt=null; catPushHist(existing,'reassigned'); }
+      else s[itemsKey].push({id:catNewId('asg'), catalogId:it.id, name:it.name, price:it.price, paid:false, assignedAt:Date.now(), canceledAt:null, history:[{action:'assigned', at:Date.now()}]});
     } else {
-      s[itemsKey]=s[itemsKey].filter(x=>x.catalogId!==it.id);
+      // 배정취소: 배열에서 삭제하지 않고 취소 표시만 남겨서 이력이 보존되게 한다
+      if(existing && !existing.canceledAt){ existing.canceledAt=Date.now(); catPushHist(existing,'canceled'); }
     }
     s.updatedAt=Date.now();
     save(); render(true);
@@ -3418,12 +3491,15 @@ function bindCatalogSection(catKey, itemsKey){
     const it=(store[catKey]||[]).find(x=>x.id===btn.dataset.catid); if(!it) return;
     const className=btn.dataset.class;
     const doAssign=btn.dataset.mode==='assign';
-    store.students.filter(s=>!s._deleted && s.status==='재원' && (classNameInMonth(s,state.month)||s.className||'미배정')===className).forEach(s=>{
+    const acs=academies();
+    store.students.filter(s=>!s._deleted && s.status==='재원' && acs.includes(s.academy) && (classNameInMonth(s,state.month)||s.className||'미배정')===className).forEach(s=>{
       s[itemsKey]=s[itemsKey]||[];
+      const existing=s[itemsKey].find(x=>x.catalogId===it.id);
       if(doAssign){
-        if(!s[itemsKey].some(x=>x.catalogId===it.id)) s[itemsKey].push({id:catNewId('asg'), catalogId:it.id, name:it.name, price:it.price, paid:false, assignedAt:Date.now()});
+        if(existing){ if(existing.canceledAt){ existing.canceledAt=null; catPushHist(existing,'reassigned'); } }
+        else s[itemsKey].push({id:catNewId('asg'), catalogId:it.id, name:it.name, price:it.price, paid:false, assignedAt:Date.now(), canceledAt:null, history:[{action:'assigned', at:Date.now()}]});
       } else {
-        s[itemsKey]=s[itemsKey].filter(x=>x.catalogId!==it.id);
+        if(existing && !existing.canceledAt){ existing.canceledAt=Date.now(); catPushHist(existing,'canceled'); }
       }
       s.updatedAt=Date.now();
     });
