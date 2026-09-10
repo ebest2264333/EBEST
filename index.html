@@ -367,8 +367,14 @@ if(!store.bookGiven) store.bookGiven={};
 if(!store.uploadTombstones) store.uploadTombstones={};
 if(!store.uploadStamps) store.uploadStamps={};
 if(!store.fieldStamps) store.fieldStamps={};
-if(!store.wordbookOptions) store.wordbookOptions=['초등 베이직','초등 컴플리트','중등 실력','중등 고난도','고등 베이직','수능 2000','하이스트','하이퍼'];
-if(!store.testPaperOptions) store.testPaperOptions=['단원평가','미니테스트','누적테스트','재시험지'];
+function normalizeStrArr(v, fallback){
+  if(Array.isArray(v)) return v.filter(x=>typeof x==='string' && x!=='');
+  if(v && typeof v==='object') return Object.values(v).filter(x=>typeof x==='string' && x!=='');
+  if(typeof v==='string' && v) return [v];
+  return fallback.slice();
+}
+store.wordbookOptions=normalizeStrArr(store.wordbookOptions, ['초등 베이직','초등 컴플리트','중등 실력','중등 고난도','고등 베이직','수능 2000','하이스트','하이퍼']);
+store.testPaperOptions=normalizeStrArr(store.testPaperOptions, ['단원평가','미니테스트','누적테스트','재시험지']);
 if(!store.giveSel) store.giveSel={};
 if(!store.submits) store.submits=[];
 if(store.adminEmail==null) store.adminEmail='';
@@ -567,6 +573,8 @@ async function pushShared(){
           // 교체 방식: 서버 쪽이 더 나중에 편집된 경우에만 받아온다(아니면 내 것을 그대로 올려 덮어씀)
           if((rStamps[f]||0) > (lStamps[f]||0)){
             store[f]=remotePack[f];
+            if(f==='wordbookOptions') store[f]=normalizeStrArr(store[f], ['초등 베이직','초등 컴플리트','중등 실력','중등 고난도','고등 베이직','수능 2000','하이스트','하이퍼']);
+            if(f==='testPaperOptions') store[f]=normalizeStrArr(store[f], ['단원평가','미니테스트','누적테스트','재시험지']);
             store.fieldStamps=store.fieldStamps||{}; store.fieldStamps[f]=rStamps[f];
           }
           return;
@@ -630,6 +638,8 @@ async function pullShared(silent){
           // 서버가 더 최신일 때만 통째로 받아온다 — 그래야 다른 기기에서 삭제한 내용이 제대로 반영된다
           if((rStamps[f]||0) > (lStamps[f]||0)){
             store[f]=pack[f];
+            if(f==='wordbookOptions') store[f]=normalizeStrArr(store[f], ['초등 베이직','초등 컴플리트','중등 실력','중등 고난도','고등 베이직','수능 2000','하이스트','하이퍼']);
+            if(f==='testPaperOptions') store[f]=normalizeStrArr(store[f], ['단원평가','미니테스트','누적테스트','재시험지']);
             store.fieldStamps=store.fieldStamps||{}; store.fieldStamps[f]=rStamps[f];
           }
           return;
@@ -6912,6 +6922,8 @@ function bindSet(){
       const d=JSON.parse(r.result);
       if(d.v!=='share1') throw 0;
       SHARE_FIELDS.forEach(fl=>{ if(d[fl]!=null) store[fl]=d[fl]; });
+      store.wordbookOptions=normalizeStrArr(store.wordbookOptions, ['초등 베이직','초등 컴플리트','중등 실력','중등 고난도','고등 베이직','수능 2000','하이스트','하이퍼']);
+      store.testPaperOptions=normalizeStrArr(store.testPaperOptions, ['단원평가','미니테스트','누적테스트','재시험지']);
       if(d.sync&&d.sync.url){ store.sync=d.sync; }
       save(); refreshMonthSel(); refreshLoginSel(); render();
       alert('학원 자료 적용 완료! ('+(d.exportedAt||'')+' 기준)'+(d.sync&&d.sync.on?'\n실시간 동기화 설정도 함께 적용되었습니다 — 새로고침하면 자동 동기화가 시작됩니다.':''));
