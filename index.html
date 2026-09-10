@@ -7916,7 +7916,7 @@ function eaReportBody(entry){
   if(!cats.length) h+='<div class="empty" style="text-align:left">아직 입력된 문항이 없습니다.</div>';
   cats.forEach(cat=>{
     const color=eaCatColor(catNames, cat.name);
-    h+=`<div style="border:1.5px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:14px">
+    h+=`<div style="border:1.5px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:14px;page-break-inside:avoid;break-inside:avoid">
       <div style="background:${color};color:${eaTextOn(color)};padding:8px 14px;font-weight:800;font-size:.86rem;display:flex;justify-content:space-between">
         <span>${esc(cat.name)}</span><span>${(cat.questions||[]).length}문항</span>
       </div>
@@ -7938,27 +7938,25 @@ function eaReportBody(entry){
   });
   if((entry.students||[]).length){
     const rows=entry.students.map(s=>({s, info:eaStudentScore(entry, s.id)})).sort((a,b)=>b.info.earned-a.info.earned);
-    h+=`<div style="border:1.5px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:14px">
+    h+=`<div style="border:1.5px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:14px;page-break-inside:avoid;break-inside:avoid">
       <div style="background:${ac.color};color:#fff;padding:8px 14px;font-weight:800;font-size:.86rem">👤 학생별 채점 결과</div>
       <div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%">
         <thead><tr style="background:#f7f9fc">
           <th style="padding:8px;font-size:.74rem;color:var(--sub);border-bottom:1px solid var(--line);text-align:left">이름</th>
           <th style="width:90px;padding:8px;font-size:.74rem;color:var(--sub);border-bottom:1px solid var(--line)">정답</th>
           <th style="width:90px;padding:8px;font-size:.74rem;color:var(--sub);border-bottom:1px solid var(--line)">점수</th>
-          <th style="width:110px;padding:8px;font-size:.74rem;color:var(--sub);border-bottom:1px solid var(--line)"></th>
         </tr></thead><tbody>
         ${rows.map(({s,info})=>`<tr>
           <td style="padding:8px;border-bottom:1px solid var(--line);font-weight:700">${esc(s.name)}</td>
           <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line)">${info.correct}/${info.total}</td>
           <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line);font-weight:800;color:${ac.color}">${info.earned}/${info.totalPoints}</td>
-          <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line)"><button type="button" class="btn small eaStudentReportBtn" data-sid="${esc(s.id)}">👤 리포트 보기</button></td>
         </tr>`).join('')}
       </tbody></table></div>
     </div>`;
     // 인쇄/전체 리포트 보기에서 학생 하나하나를 따로 열어볼 필요 없이, 학생별 상세 채점 결과가 그 아래에 자동으로 이어서 나온다
     rows.forEach(({s})=>{
-      h+=`<div style="border:1.5px solid var(--line);border-radius:10px;margin-bottom:16px;overflow:hidden;page-break-inside:avoid">
-        <div style="background:${ac.tint||'#f4f6fb'};padding:10px 14px;font-weight:800;font-size:.9rem;border-bottom:1.5px solid var(--line)">👤 ${esc(s.name)} · 상세 채점 결과</div>
+      h+=`<div style="border:1.5px solid var(--line);border-radius:10px;margin-bottom:16px;overflow:hidden">
+        <div style="background:${ac.tint||'#f4f6fb'};padding:10px 14px;font-weight:800;font-size:.9rem;border-bottom:1.5px solid var(--line);page-break-after:avoid;break-after:avoid">👤 ${esc(s.name)} · 상세 채점 결과</div>
         <div style="padding:14px">${eaStudentDetailHTML(entry, s.id, ac)}</div>
       </div>`;
     });
@@ -7999,7 +7997,7 @@ function eaStudentDetailHTML(entry, studentId, ac){
   cats.forEach(cat=>{
     const color=eaCatColor(catNames, cat.name);
     const st=eaScoreTypeFor(cat);
-    h+=`<div style="border:1.5px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:14px">
+    h+=`<div style="border:1.5px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:14px;page-break-inside:avoid;break-inside:avoid">
       <div style="background:${color};color:${eaTextOn(color)};padding:8px 14px;font-weight:800;font-size:.86rem;display:flex;justify-content:space-between">
         <span>${esc(cat.name)}</span><span>${(cat.questions||[]).length}문항</span>
       </div>
