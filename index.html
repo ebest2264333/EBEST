@@ -7580,6 +7580,7 @@ const EA_SOURCE_OPTIONS=['교과서','부교재','수행평가','모의고사'];
 const EA_SOURCE_COLOR={'교과서':'#60a5fa','부교재':'#34d399','수행평가':'#fbbf24','모의고사':'#f472b6'};
 const EA_DEPT_OPTIONS=['중등','고등'];
 const EA_DEFAULT_CATEGORIES=['어휘','대화문','어법','본문내용','서술형','외부지문'];
+const EA_DEFAULT_CATEGORIES_HS=['주제','어휘','어법','빈칸','내용불일치','흐름 파악','함축','요약문','논술형'];
 const EA_CAT_PALETTE=['#f87171','#fb923c','#fbbf24','#facc15','#a3e635','#4ade80','#2dd4bf','#60a5fa'];
 function eaCatColor(catNames, name){ const i=catNames.indexOf(name); return EA_CAT_PALETTE[i>=0?i%EA_CAT_PALETTE.length:0]; }
 // 배경색 밝기에 따라 흰 글자/짙은 글자를 자동으로 골라 항상 잘 보이게 한다
@@ -7604,7 +7605,12 @@ function eaBlankEntry(){
 // 기존(부서 구분 생기기 전) 자료는 dept 필드가 없으므로 전부 중등부로 간주한다
 function eaDept(entry){ return entry && entry.dept==='고등' ? '고등' : '중등'; }
 // 카테고리의 채점 방식 — 명시적으로 고른 적 없으면 이름에 "서술"이 들어간 카테고리만 부분점수, 나머지는 정답/오답(O,X)
-function eaScoreTypeFor(cat){ return cat.scoreType || (norm(cat.name).includes('서술') ? 'partial' : 'oz'); }
+function eaScoreTypeFor(cat){ return cat.scoreType || ((norm(cat.name).includes('서술')||norm(cat.name).includes('논술')) ? 'partial' : 'oz'); }
+// 아직 아무 문항수도 입력 안 하고 이름도 기본값 그대로인 "손 안 댄" 카테고리 목록인지 확인 — 그래야 부서를 바꿀 때
+// 이미 입력해둔 내용을 지우지 않고, 정말 비어있을 때만 그 부서의 기본 카테고리 세트로 안전하게 바꿔줄 수 있다
+function eaCategoriesUntouched(cats){
+  return (cats||[]).every(c=>!c.count && !(c.questions&&c.questions.length));
+}
 // 카테고리 구분 없이 모든 문항을 한 줄로 — 채점표·리포트에서 공통으로 순회할 때 사용
 function eaAllQuestions(entry){
   const out=[];
@@ -8225,7 +8231,15 @@ function bindEaForm(){
   const byId=(id)=>v.querySelector('#'+id);
   const upd=(id,field)=>{ const el=byId(id); if(el) el.onchange=()=>{ d[field]=el.value; }; };
   const academySel=byId('eaAcademy'); if(academySel) academySel.onchange=()=>{ d.academy=academySel.value; render(true); };
-  v.querySelectorAll('.eaDeptBtn').forEach(btn=>btn.onclick=()=>{ d.dept=btn.dataset.dept; render(true); });
+  v.querySelectorAll('.eaDeptBtn').forEach(btn=>btn.onclick=()=>{
+    const newDept=btn.dataset.dept;
+    // 아직 아무것도 입력 안 한 빈 카테고리 상태일 때만 그 부서의 기본 카테고리 세트로 자동으로 바꿔준다(이미 입력한 내용은 건드리지 않음)
+    if(newDept!==d.dept && eaCategoriesUntouched(d.categories)){
+      d.categories=(newDept==='고등'?EA_DEFAULT_CATEGORIES_HS:EA_DEFAULT_CATEGORIES).map(name=>({name, count:0, questions:[]}));
+    }
+    d.dept=newDept;
+    render(true);
+  });
   upd('eaSchool','school'); upd('eaGrade','grade'); upd('eaTitle','examTitle'); upd('eaRange','examRange');
   upd('eaDate','examDate'); upd('eaPrepStart','prepStart'); upd('eaPrepEnd','prepEnd');
   upd('eaTeacherLecture','teacherLecture'); upd('eaTeacherIBT','teacherIBT'); upd('eaNote','note');
