@@ -7575,9 +7575,12 @@ function bindSyllabus(){
 /* ---------- 내신 분석 (학교별 내신이 어떤 식으로 출제되는지 기록 — 월 상관없이 늘 보이고, 모든 선생님이 함께 보고 수정) ---------- */
 const EA_DIFF_OPTIONS=['하','중하','중','중상','상'];
 const EA_DIFF_COLOR={'하':'#4ade80','중하':'#a3e635','중':'#facc15','중상':'#fb923c','상':'#f87171'};
-// 고등부 전용 — 문항 출처(교과서/부교재/수행평가/모의고사) 및 부서 구분
-const EA_SOURCE_OPTIONS=['교과서','부교재','수행평가','모의고사'];
-const EA_SOURCE_COLOR={'교과서':'#60a5fa','부교재':'#34d399','수행평가':'#fbbf24','모의고사':'#f472b6'};
+// 고등부 전용 — 문항 출처(자유 텍스트, 예: 부1, 부4, 모의고사, 교과서 등) 및 부서 구분
+function eaSourceColor(text){
+  const s=String(text||'').trim(); if(!s) return '#dfe3ea';
+  let h=0; for(let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))>>>0;
+  return EA_CAT_PALETTE[h%EA_CAT_PALETTE.length];
+}
 const EA_DEPT_OPTIONS=['중등','고등'];
 const EA_DEFAULT_CATEGORIES=['어휘','대화문','어법','본문내용','서술형','외부지문'];
 const EA_DEFAULT_CATEGORIES_HS=['주제','어휘','어법','빈칸','내용불일치','흐름 파악','함축','요약문','논술형'];
@@ -7755,7 +7758,7 @@ function renderEaForm(){
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px">
       <span style="font-size:.78rem;font-weight:700;color:var(--sub)">부서</span>
       ${EA_DEPT_OPTIONS.map(dep=>{ const c=dep==='고등'?'#7c3aed':'#2e5fb7'; return `<button type="button" class="btn small eaDeptBtn" data-dept="${dep}" style="${d.dept===dep?`background:${c};color:#fff;border-color:${c}`:''}">${dep==='고등'?'🎓 고등부':'📘 중등부'}</button>`; }).join('')}
-      ${d.dept==='고등'?'<span style="font-size:.74rem;color:var(--sub)">문항마다 출처(교과서·부교재·수행평가·모의고사)를 입력하고, 학생 리포트에 오답 원인 분석표가 자동으로 추가됩니다.</span>':''}
+      ${d.dept==='고등'?'<span style="font-size:.74rem;color:var(--sub)">문항마다 출처(예: 부1, 부4, 모의고사 등 자유 입력)를 적어두면, 학생 리포트에 오답 원인 분석표가 자동으로 추가됩니다.</span>':''}
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin-bottom:16px">
       <label style="font-size:.78rem;color:var(--sub)">학원<select id="eaAcademy" style="width:100%;margin-top:4px;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acOpts}</select></label>
@@ -7822,10 +7825,7 @@ function renderEaForm(){
             <option value="">선택</option>
             ${EA_DIFF_OPTIONS.map(o=>`<option value="${o}" ${q.difficulty===o?'selected':''}>${o}</option>`).join('')}
           </select></td>
-          ${showSource?`<td style="padding:4px"><select class="eaQSource" data-ci="${ci}" data-qi="${qi}" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:6px;font-family:inherit">
-            <option value="">선택</option>
-            ${EA_SOURCE_OPTIONS.map(o=>`<option value="${o}" ${q.source===o?'selected':''}>${o}</option>`).join('')}
-          </select></td>`:''}
+          ${showSource?`<td style="padding:4px"><input type="text" class="eaQSource" data-ci="${ci}" data-qi="${qi}" value="${esc(q.source||'')}" placeholder="예: 부1, 부4" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:6px;font-family:inherit"></td>`:''}
         </tr>`;
       });
       h+='</tbody></table></div>';
@@ -7941,7 +7941,7 @@ function eaReportBody(entry){
     if(dept==='고등'){
       const bySource={};
       cats.forEach(c=>(c.questions||[]).forEach(q=>{ const src=q.source||'미지정'; bySource[src]=(bySource[src]||0)+1; }));
-      const sourceData=Object.keys(bySource).map(k=>({name:k, value:bySource[k], color:EA_SOURCE_COLOR[k]||'#9aa1b0', suffix:'개'}));
+      const sourceData=Object.keys(bySource).map(k=>({name:k, value:bySource[k], color:eaSourceColor(k), suffix:'개'}));
       if(sourceData.length){
         h+=`<div style="border:1.5px solid var(--line);border-radius:10px;padding:16px;margin-bottom:20px">
           <div style="font-size:.78rem;font-weight:800;color:var(--sub);margin-bottom:10px">출처별 출제수 <span style="font-weight:400;font-size:.72rem">(교과서 · 부교재 · 수행평가 · 모의고사)</span></div>
@@ -7970,7 +7970,7 @@ function eaReportBody(entry){
           <td style="padding:8px;border-bottom:1px solid var(--line)">${esc(q.question||'')}</td>
           <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line)">${esc(q.points||'')}</td>
           <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line)">${q.difficulty?`<span style="display:inline-block;padding:2px 10px;border-radius:999px;background:${EA_DIFF_COLOR[q.difficulty]||'#dfe3ea'};color:${eaTextOn(EA_DIFF_COLOR[q.difficulty]||'#dfe3ea')};font-size:.74rem;font-weight:800">${esc(q.difficulty)}</span>`:''}</td>
-          ${dept==='고등'?`<td style="padding:8px;text-align:center;border-bottom:1px solid var(--line)">${q.source?`<span style="display:inline-block;padding:2px 10px;border-radius:999px;background:${EA_SOURCE_COLOR[q.source]||'#dfe3ea'};color:${eaTextOn(EA_SOURCE_COLOR[q.source]||'#dfe3ea')};font-size:.72rem;font-weight:800">${esc(q.source)}</span>`:''}</td>`:''}
+          ${dept==='고등'?`<td style="padding:8px;text-align:center;border-bottom:1px solid var(--line)">${q.source?`<span style="display:inline-block;padding:2px 10px;border-radius:999px;background:${eaSourceColor(q.source)};color:${eaTextOn(eaSourceColor(q.source))};font-size:.72rem;font-weight:800">${esc(q.source)}</span>`:''}</td>`:''}
         </tr>`).join('')}
       </tbody></table></div>
     </div>`;
@@ -8090,7 +8090,7 @@ function eaStudentDetailHTML(entry, studentId, ac){
               <td style="padding:8px;border-bottom:1px solid var(--line)">${esc(q.question||'')}</td>
               <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line)">${esc(q.points||'')}</td>
               <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line)">${q.difficulty?`<span style="display:inline-block;padding:2px 10px;border-radius:999px;background:${EA_DIFF_COLOR[q.difficulty]||'#dfe3ea'};color:${eaTextOn(EA_DIFF_COLOR[q.difficulty]||'#dfe3ea')};font-size:.74rem;font-weight:800">${esc(q.difficulty)}</span>`:''}</td>
-              <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line)">${q.source?`<span style="display:inline-block;padding:2px 10px;border-radius:999px;background:${EA_SOURCE_COLOR[q.source]||'#dfe3ea'};color:${eaTextOn(EA_SOURCE_COLOR[q.source]||'#dfe3ea')};font-size:.72rem;font-weight:800">${esc(q.source)}</span>`:''}</td>
+              <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line)">${q.source?`<span style="display:inline-block;padding:2px 10px;border-radius:999px;background:${eaSourceColor(q.source)};color:${eaTextOn(eaSourceColor(q.source))};font-size:.72rem;font-weight:800">${esc(q.source)}</span>`:''}</td>
             </tr>`).join('')}
           </tbody></table></div>
         </div>`;
@@ -8271,7 +8271,7 @@ function bindEaForm(){
   v.querySelectorAll('.eaQText').forEach(inp=>inp.onchange=()=>{ d.categories[Number(inp.dataset.ci)].questions[Number(inp.dataset.qi)].question=inp.value; });
   v.querySelectorAll('.eaQPoints').forEach(inp=>inp.onchange=()=>{ d.categories[Number(inp.dataset.ci)].questions[Number(inp.dataset.qi)].points=inp.value; render(true); });
   v.querySelectorAll('.eaQDiff').forEach(sel=>sel.onchange=()=>{ d.categories[Number(sel.dataset.ci)].questions[Number(sel.dataset.qi)].difficulty=sel.value; });
-  v.querySelectorAll('.eaQSource').forEach(sel=>sel.onchange=()=>{ d.categories[Number(sel.dataset.ci)].questions[Number(sel.dataset.qi)].source=sel.value; });
+  v.querySelectorAll('.eaQSource').forEach(inp=>inp.oninput=()=>{ d.categories[Number(inp.dataset.ci)].questions[Number(inp.dataset.qi)].source=inp.value; });
   v.querySelectorAll('.eaCatScoreType').forEach(sel=>sel.onchange=()=>{ d.categories[Number(sel.dataset.ci)].scoreType=sel.value; render(true); });
   const addStudentsBtn=byId('eaAddStudentsBtn');
   if(addStudentsBtn) addStudentsBtn.onclick=()=>{
