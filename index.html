@@ -7575,6 +7575,10 @@ function bindSyllabus(){
 /* ---------- 내신 분석 (학교별 내신이 어떤 식으로 출제되는지 기록 — 월 상관없이 늘 보이고, 모든 선생님이 함께 보고 수정) ---------- */
 const EA_DIFF_OPTIONS=['하','중하','중','중상','상'];
 const EA_DIFF_COLOR={'하':'#4ade80','중하':'#a3e635','중':'#facc15','중상':'#fb923c','상':'#f87171'};
+// 고등부 전용 — 문항 출처(교과서/부교재/수행평가/모의고사) 및 부서 구분
+const EA_SOURCE_OPTIONS=['교과서','부교재','수행평가','모의고사'];
+const EA_SOURCE_COLOR={'교과서':'#60a5fa','부교재':'#34d399','수행평가':'#fbbf24','모의고사':'#f472b6'};
+const EA_DEPT_OPTIONS=['중등','고등'];
 const EA_DEFAULT_CATEGORIES=['어휘','대화문','어법','본문내용','서술형','외부지문'];
 const EA_CAT_PALETTE=['#f87171','#fb923c','#fbbf24','#facc15','#a3e635','#4ade80','#2dd4bf','#60a5fa'];
 function eaCatColor(catNames, name){ const i=catNames.indexOf(name); return EA_CAT_PALETTE[i>=0?i%EA_CAT_PALETTE.length:0]; }
@@ -7586,10 +7590,10 @@ function eaTextOn(hex){
   return lum>0.62 ? '#3a2f10' : '#ffffff';
 }
 function eaNewId(p){ return p+Date.now().toString(36)+Math.random().toString(36).slice(2,6)+Math.random().toString(36).slice(2,4); }
-function eaBlankQuestion(){ return {id:eaNewId('eaq'), no:'', question:'', points:'', difficulty:''}; }
+function eaBlankQuestion(){ return {id:eaNewId('eaq'), no:'', question:'', points:'', difficulty:'', source:''}; }
 function eaBlankEntry(){
   return {
-    id:eaNewId('ea'), _isNew:true, academy:academies()[0], school:'', grade:'', examTitle:'', examRange:'', examDate:'', prepStart:'', prepEnd:'',
+    id:eaNewId('ea'), _isNew:true, academy:academies()[0], dept:'중등', school:'', grade:'', examTitle:'', examRange:'', examDate:'', prepStart:'', prepEnd:'',
     teacherLecture:'', teacherIBT:'', targetScore:100, note:'',
     categories: EA_DEFAULT_CATEGORIES.map(name=>({name, count:0, questions:[]})),
     students: [], // [{id, name}]
@@ -7597,6 +7601,8 @@ function eaBlankEntry(){
     createdAt:Date.now(), updatedAt:Date.now(), updatedBy:''
   };
 }
+// 기존(부서 구분 생기기 전) 자료는 dept 필드가 없으므로 전부 중등부로 간주한다
+function eaDept(entry){ return entry && entry.dept==='고등' ? '고등' : '중등'; }
 // 카테고리의 채점 방식 — 명시적으로 고른 적 없으면 이름에 "서술"이 들어간 카테고리만 부분점수, 나머지는 정답/오답(O,X)
 function eaScoreTypeFor(cat){ return cat.scoreType || (norm(cat.name).includes('서술') ? 'partial' : 'oz'); }
 // 카테고리 구분 없이 모든 문항을 한 줄로 — 채점표·리포트에서 공통으로 순회할 때 사용
@@ -7715,9 +7721,10 @@ function renderEaList(){
     const total=eaTotalQuestions(en);
     const ac=AC[en.academy]||{color:'#2e5fb7'};
     const searchKey=norm([en.school,en.grade,en.examTitle].filter(Boolean).join(' '));
+    const dept=eaDept(en);
     h+=`<div class="ccard" data-easearch="${esc(searchKey)}" style="border-left-color:${ac.color};margin-bottom:10px;padding:12px 14px;display:flex;flex-wrap:wrap;align-items:center;gap:10px">
       <div style="flex:1;min-width:220px">
-        <div style="font-weight:800;font-size:.94rem">${esc(en.school||'(학교명 미입력)')} ${esc(en.grade||'')}</div>
+        <div style="font-weight:800;font-size:.94rem">${esc(en.school||'(학교명 미입력)')} ${esc(en.grade||'')} <span style="font-size:.68rem;font-weight:800;border-radius:6px;padding:1px 7px;background:${dept==='고등'?'#7c3aed':'#2e5fb7'};color:#fff">${dept==='고등'?'고등부':'중등부'}</span></div>
         <div style="font-size:.82rem;color:var(--sub);margin-top:2px">${esc(en.examTitle||'(시험명 미입력)')}</div>
         <div style="font-size:.76rem;color:#8b93a7;margin-top:4px">${en.examDate?esc(en.examDate)+' · ':''}문항 ${total}개${en.teacherLecture?' · Lecture '+esc(en.teacherLecture):''}${en.teacherIBT?' · IBT '+esc(en.teacherIBT):''}</div>
       </div>
@@ -7734,10 +7741,16 @@ function renderEaList(){
 function renderEaForm(){
   const d=state.eaDraft;
   if(!d){ state.eaMode='list'; return renderEaList(); }
+  d.dept=eaDept(d);
   const acOpts=academies().map(a=>`<option value="${a}" ${d.academy===a?'selected':''}>${esc(AC[a].label)}</option>`).join('');
   const field=(label,id,val,type)=>`<label style="font-size:.78rem;color:var(--sub)">${esc(label)}<input type="${type||'text'}" id="${id}" value="${esc(val||'')}" style="width:100%;margin-top:4px;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit"></label>`;
   let h=`<div class="ysec"><h3>📊 ${d._isNew?'새 내신 분석':'내신 분석 수정'}</h3>
     <div style="padding:14px 16px">
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px">
+      <span style="font-size:.78rem;font-weight:700;color:var(--sub)">부서</span>
+      ${EA_DEPT_OPTIONS.map(dep=>{ const c=dep==='고등'?'#7c3aed':'#2e5fb7'; return `<button type="button" class="btn small eaDeptBtn" data-dept="${dep}" style="${d.dept===dep?`background:${c};color:#fff;border-color:${c}`:''}">${dep==='고등'?'🎓 고등부':'📘 중등부'}</button>`; }).join('')}
+      ${d.dept==='고등'?'<span style="font-size:.74rem;color:var(--sub)">문항마다 출처(교과서·부교재·수행평가·모의고사)를 입력하고, 학생 리포트에 오답 원인 분석표가 자동으로 추가됩니다.</span>':''}
+    </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin-bottom:16px">
       <label style="font-size:.78rem;color:var(--sub)">학원<select id="eaAcademy" style="width:100%;margin-top:4px;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acOpts}</select></label>
       ${field('학교명','eaSchool',d.school)}
@@ -7785,12 +7798,14 @@ function renderEaForm(){
     if(!(cat.questions||[]).length){
       h+='<div style="font-size:.78rem;color:#8b93a7;padding:6px 0">위 "문항수" 표에서 숫자를 입력하면 이 자리에 문항 입력 칸이 생겨요.</div>';
     } else {
+      const showSource=d.dept==='고등';
       h+=`<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;min-width:560px">
         <thead><tr>
           <th style="width:64px;padding:6px;font-size:.76rem;color:var(--sub);text-align:center">번호</th>
           <th style="padding:6px;font-size:.76rem;color:var(--sub);text-align:left">문제</th>
           <th style="width:80px;padding:6px;font-size:.76rem;color:var(--sub);text-align:center">배점</th>
           <th style="width:110px;padding:6px;font-size:.76rem;color:var(--sub);text-align:center">난이도</th>
+          ${showSource?'<th style="width:110px;padding:6px;font-size:.76rem;color:var(--sub);text-align:center">출처</th>':''}
         </tr></thead><tbody>`;
       cat.questions.forEach((q,qi)=>{
         h+=`<tr>
@@ -7801,6 +7816,10 @@ function renderEaForm(){
             <option value="">선택</option>
             ${EA_DIFF_OPTIONS.map(o=>`<option value="${o}" ${q.difficulty===o?'selected':''}>${o}</option>`).join('')}
           </select></td>
+          ${showSource?`<td style="padding:4px"><select class="eaQSource" data-ci="${ci}" data-qi="${qi}" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:6px;font-family:inherit">
+            <option value="">선택</option>
+            ${EA_SOURCE_OPTIONS.map(o=>`<option value="${o}" ${q.source===o?'selected':''}>${o}</option>`).join('')}
+          </select></td>`:''}
         </tr>`;
       });
       h+='</tbody></table></div>';
@@ -7872,8 +7891,9 @@ function eaReportBody(entry){
   const cats=(entry.categories||[]).filter(c=>(c.questions||[]).length);
   const catNames=cats.map(c=>c.name);
   const totalQ=eaTotalQuestions(entry), totalPts=eaTotalPoints(entry);
+  const dept=eaDept(entry);
   let h=`<div style="background:${ac.color};color:#fff;border-radius:14px 14px 0 0;padding:20px 22px">
-    <div style="font-size:.78rem;opacity:.85;font-weight:700;letter-spacing:.02em">${esc(ac.label||'')} 내신 분석 리포트</div>
+    <div style="font-size:.78rem;opacity:.85;font-weight:700;letter-spacing:.02em">${esc(ac.label||'')} 내신 분석 리포트 <span style="background:rgba(255,255,255,.22);border-radius:999px;padding:1px 9px;margin-left:4px">${dept==='고등'?'🎓 고등부':'📘 중등부'}</span></div>
     <div style="font-size:1.3rem;font-weight:800;margin-top:4px">${esc(entry.school||'')} ${esc(entry.grade||'')}</div>
     <div style="font-size:1rem;font-weight:600;margin-top:2px;opacity:.95">${esc(entry.examTitle||'')}</div>
   </div>
@@ -7912,6 +7932,17 @@ function eaReportBody(entry){
         ${eaBarChartHTML(pointData)}
       </div>
     </div>`;
+    if(dept==='고등'){
+      const bySource={};
+      cats.forEach(c=>(c.questions||[]).forEach(q=>{ const src=q.source||'미지정'; bySource[src]=(bySource[src]||0)+1; }));
+      const sourceData=Object.keys(bySource).map(k=>({name:k, value:bySource[k], color:EA_SOURCE_COLOR[k]||'#9aa1b0', suffix:'개'}));
+      if(sourceData.length){
+        h+=`<div style="border:1.5px solid var(--line);border-radius:10px;padding:16px;margin-bottom:20px">
+          <div style="font-size:.78rem;font-weight:800;color:var(--sub);margin-bottom:10px">출처별 출제수 <span style="font-weight:400;font-size:.72rem">(교과서 · 부교재 · 수행평가 · 모의고사)</span></div>
+          ${eaBarChartHTML(sourceData)}
+        </div>`;
+      }
+    }
   }
   if(!cats.length) h+='<div class="empty" style="text-align:left">아직 입력된 문항이 없습니다.</div>';
   cats.forEach(cat=>{
@@ -7926,12 +7957,14 @@ function eaReportBody(entry){
           <th style="padding:8px;font-size:.74rem;color:var(--sub);border-bottom:1px solid var(--line);text-align:left">문제</th>
           <th style="width:70px;padding:8px;font-size:.74rem;color:var(--sub);border-bottom:1px solid var(--line)">배점</th>
           <th style="width:90px;padding:8px;font-size:.74rem;color:var(--sub);border-bottom:1px solid var(--line)">난이도</th>
+          ${dept==='고등'?'<th style="width:90px;padding:8px;font-size:.74rem;color:var(--sub);border-bottom:1px solid var(--line)">출처</th>':''}
         </tr></thead><tbody>
         ${(cat.questions||[]).map(q=>`<tr>
           <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line);font-weight:700">${esc(q.no||'')}</td>
           <td style="padding:8px;border-bottom:1px solid var(--line)">${esc(q.question||'')}</td>
           <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line)">${esc(q.points||'')}</td>
           <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line)">${q.difficulty?`<span style="display:inline-block;padding:2px 10px;border-radius:999px;background:${EA_DIFF_COLOR[q.difficulty]||'#dfe3ea'};color:${eaTextOn(EA_DIFF_COLOR[q.difficulty]||'#dfe3ea')};font-size:.74rem;font-weight:800">${esc(q.difficulty)}</span>`:''}</td>
+          ${dept==='고등'?`<td style="padding:8px;text-align:center;border-bottom:1px solid var(--line)">${q.source?`<span style="display:inline-block;padding:2px 10px;border-radius:999px;background:${EA_SOURCE_COLOR[q.source]||'#dfe3ea'};color:${eaTextOn(EA_SOURCE_COLOR[q.source]||'#dfe3ea')};font-size:.72rem;font-weight:800">${esc(q.source)}</span>`:''}</td>`:''}
         </tr>`).join('')}
       </tbody></table></div>
     </div>`;
@@ -8029,9 +8062,58 @@ function eaStudentDetailHTML(entry, studentId, ac){
       </tbody></table></div>
     </div>`;
   });
+  if(eaDept(entry)==='고등'){
+    const wrongCats=eaWrongQuestionsByCategory(entry, studentId);
+    if(wrongCats.length){
+      h+=`<div style="margin:18px 0 10px;font-size:.86rem;font-weight:800;color:var(--sub)">🔎 오답 원인 분석표 <span style="font-weight:400;font-size:.74rem">(틀린 문항만 자동 추출)</span></div>`;
+      wrongCats.forEach(({cat,color,questions})=>{
+        h+=`<div style="border:1.5px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:14px;page-break-inside:avoid;break-inside:avoid">
+          <div style="background:${color};color:${eaTextOn(color)};padding:8px 14px;font-weight:800;font-size:.86rem;display:flex;justify-content:space-between">
+            <span>${esc(cat.name)}</span><span>오답 ${questions.length}문항</span>
+          </div>
+          <div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%">
+            <thead><tr style="background:#f7f9fc">
+              <th style="width:64px;padding:8px;font-size:.74rem;color:var(--sub);border-bottom:1px solid var(--line)">번호</th>
+              <th style="padding:8px;font-size:.74rem;color:var(--sub);border-bottom:1px solid var(--line);text-align:left">문제</th>
+              <th style="width:70px;padding:8px;font-size:.74rem;color:var(--sub);border-bottom:1px solid var(--line)">배점</th>
+              <th style="width:90px;padding:8px;font-size:.74rem;color:var(--sub);border-bottom:1px solid var(--line)">난이도</th>
+              <th style="width:90px;padding:8px;font-size:.74rem;color:var(--sub);border-bottom:1px solid var(--line)">출처</th>
+            </tr></thead><tbody>
+            ${questions.map(q=>`<tr style="background:#fff1f1">
+              <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line);font-weight:700">${esc(q.no||'')}</td>
+              <td style="padding:8px;border-bottom:1px solid var(--line)">${esc(q.question||'')}</td>
+              <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line)">${esc(q.points||'')}</td>
+              <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line)">${q.difficulty?`<span style="display:inline-block;padding:2px 10px;border-radius:999px;background:${EA_DIFF_COLOR[q.difficulty]||'#dfe3ea'};color:${eaTextOn(EA_DIFF_COLOR[q.difficulty]||'#dfe3ea')};font-size:.74rem;font-weight:800">${esc(q.difficulty)}</span>`:''}</td>
+              <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line)">${q.source?`<span style="display:inline-block;padding:2px 10px;border-radius:999px;background:${EA_SOURCE_COLOR[q.source]||'#dfe3ea'};color:${eaTextOn(EA_SOURCE_COLOR[q.source]||'#dfe3ea')};font-size:.72rem;font-weight:800">${esc(q.source)}</span>`:''}</td>
+            </tr>`).join('')}
+          </tbody></table></div>
+        </div>`;
+      });
+    } else {
+      h+=`<div style="margin:18px 0 10px;font-size:.86rem;font-weight:800;color:var(--sub)">🔎 오답 원인 분석표</div>
+        <div class="empty" style="text-align:left">틀린 문항이 없습니다. 🎉</div>`;
+    }
+  }
   const mockChart=eaMockExamChartFor(entry, studentId);
   if(mockChart) h+=mockChart;
   return h;
+}
+// 카테고리별로 그 학생이 틀린 문항만 뽑는다(고등부 "오답 원인 분석표" 전용) — 서술형은 0점 처리된 것만, O/X는 X만 오답으로 본다
+function eaWrongQuestionsByCategory(entry, studentId){
+  const cats=(entry.categories||[]).filter(c=>(c.questions||[]).length);
+  const catNames=cats.map(c=>c.name);
+  const out=[];
+  cats.forEach(cat=>{
+    const color=eaCatColor(catNames, cat.name);
+    const st=eaScoreTypeFor(cat);
+    const wrong=(cat.questions||[]).filter(q=>{
+      const v=((entry.scores||{})[studentId]||{})[q.id];
+      if(st==='partial') return v==null || v==='' || (Number(v)||0)<=0;
+      return v===false || v==='false';
+    });
+    if(wrong.length) out.push({cat, color, questions:wrong});
+  });
+  return out;
 }
 // 이름으로 실제 학생 명단(store.students)에서 해당 학생을 찾는다 — 내신분석의 학생은 그때그때 이름만 입력해서 만든
 // 임시 명단(entry.students)이라 store.students와 id로 연결돼있지 않기 때문에, 이름으로 매칭해서 단어시험(모의고사) 기록을 찾아온다.
@@ -8143,6 +8225,7 @@ function bindEaForm(){
   const byId=(id)=>v.querySelector('#'+id);
   const upd=(id,field)=>{ const el=byId(id); if(el) el.onchange=()=>{ d[field]=el.value; }; };
   const academySel=byId('eaAcademy'); if(academySel) academySel.onchange=()=>{ d.academy=academySel.value; render(true); };
+  v.querySelectorAll('.eaDeptBtn').forEach(btn=>btn.onclick=()=>{ d.dept=btn.dataset.dept; render(true); });
   upd('eaSchool','school'); upd('eaGrade','grade'); upd('eaTitle','examTitle'); upd('eaRange','examRange');
   upd('eaDate','examDate'); upd('eaPrepStart','prepStart'); upd('eaPrepEnd','prepEnd');
   upd('eaTeacherLecture','teacherLecture'); upd('eaTeacherIBT','teacherIBT'); upd('eaNote','note');
@@ -8174,6 +8257,7 @@ function bindEaForm(){
   v.querySelectorAll('.eaQText').forEach(inp=>inp.onchange=()=>{ d.categories[Number(inp.dataset.ci)].questions[Number(inp.dataset.qi)].question=inp.value; });
   v.querySelectorAll('.eaQPoints').forEach(inp=>inp.onchange=()=>{ d.categories[Number(inp.dataset.ci)].questions[Number(inp.dataset.qi)].points=inp.value; render(true); });
   v.querySelectorAll('.eaQDiff').forEach(sel=>sel.onchange=()=>{ d.categories[Number(sel.dataset.ci)].questions[Number(sel.dataset.qi)].difficulty=sel.value; });
+  v.querySelectorAll('.eaQSource').forEach(sel=>sel.onchange=()=>{ d.categories[Number(sel.dataset.ci)].questions[Number(sel.dataset.qi)].source=sel.value; });
   v.querySelectorAll('.eaCatScoreType').forEach(sel=>sel.onchange=()=>{ d.categories[Number(sel.dataset.ci)].scoreType=sel.value; render(true); });
   const addStudentsBtn=byId('eaAddStudentsBtn');
   if(addStudentsBtn) addStudentsBtn.onclick=()=>{
