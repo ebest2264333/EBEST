@@ -3156,7 +3156,15 @@ function wtStudentRow(s, date){
 }
 function renderWordTestToday(){
   const admin=isAdminRole(); const lt=loginTeacher();
-  const wd=wdOf(todayISO()); const date=todayISO();
+  // 기본은 오늘이지만, 놓친 지난 날짜 기록을 나중에 채워 넣을 수 있도록 날짜를 직접 골라 바꿀 수 있다(미래 날짜는 막아둔다).
+  if(!state.wtDate || state.wtDate>todayISO()) state.wtDate=todayISO();
+  const date=state.wtDate;
+  const wd=wdOf(date);
+  const isPast=date!==todayISO();
+  const dateBar=`<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+    <input type="date" id="wtDateInput" value="${date}" max="${todayISO()}" style="padding:6px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
+    ${isPast?`<button class="btn small" data-wttoday>오늘로</button><span style="font-size:.74rem;color:#c0392b;font-weight:800">⏪ 지난 날짜(${date}) 기록을 입력/수정하는 중입니다</span>`:''}
+  </div>`;
   let studentsList;
   if(lt){
     // 특정 선생님으로 로그인(일반 선생님·실장 모두 포함) — 담당으로 배정된 반의 학생만 표시
@@ -3164,7 +3172,7 @@ function renderWordTestToday(){
     // 그래야 강제로 9월로 넘어간 뒤에도 실제 달력이 아직 8월인 동안 계속 8월 반·담당으로 표시되는 문제가 없다.
     const todaysDutyClasses=classesFor(state.month).filter(c=>c.academy===lt.a && !c.examOnly && cdays(c).includes(wd) && wordDutyForDay(c,wd)!=null && wordDutyForDay(c,wd)===lt.t.id);
     if(!todaysDutyClasses.length){
-      return `<div class="empty">오늘(${wd}요일)은 담당으로 배정된 반이 없습니다. (배정은 [시간표]에서 관리자·실장이 설정합니다)</div>`;
+      return dateBar+`<div class="empty">${date}(${wd}요일)은 담당으로 배정된 반이 없습니다. (배정은 [시간표]에서 관리자·실장이 설정합니다)</div>`;
     }
     // store.students의 className 값이(반 이름을 바꾼 뒤 등) 실제 반 이름과 어긋나 있어도 놓치지 않도록,
     // 학생명단을 className으로 역filter하지 않고 반 자체의 학생 명단(c.students)에서 실제 레코드를 직접 찾아온다.
@@ -3181,9 +3189,9 @@ function renderWordTestToday(){
     // 특정 선생님이 아닌 순수 관리자(원장) 로그인 — 전체 재원생 표시
     studentsList=store.students.filter(s=>!s._deleted && s.status==='재원' && (state.ac==='all'||s.academy===state.ac));
   } else {
-    return '<div class="empty">로그인 후 이용해주세요.</div>';
+    return dateBar+'<div class="empty">로그인 후 이용해주세요.</div>';
   }
-  if(!studentsList.length) return '<div class="empty">등록된 재원 학생이 없습니다. [학생 명단]에서 먼저 등록해주세요.</div>';
+  if(!studentsList.length) return dateBar+'<div class="empty">등록된 재원 학생이 없습니다. [학생 명단]에서 먼저 등록해주세요.</div>';
   state.wtStudentView=state.wtStudentView||'all';
   const viewChips=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
     <button class="chip ${state.wtStudentView==='all'?'on':''}" data-wtstudentview="all">전체</button>
@@ -3200,7 +3208,7 @@ function renderWordTestToday(){
         ${keys.map(k=>`<option value="${esc(k)}" ${state.wtClass===k?'selected':''}>${esc(k)} (${groups[k].length}명)</option>`).join('')}
       </select></div>`;
     const students=groups[state.wtClass].slice().sort((a,b)=>(a.nameKo||'').localeCompare(b.nameKo||'','ko'));
-    return header+viewChips+classSel+`<div class="rowlist">${students.map(s=>wtStudentRow(s,date)).join('')}</div>`;
+    return dateBar+header+viewChips+classSel+`<div class="rowlist">${students.map(s=>wtStudentRow(s,date)).join('')}</div>`;
   }
   // "전체" 보기는 이름 가나다순으로만 죽 나열되다 보니, 초·중·고 학생이 서로 섞여서 특정 부서(예: 고등부) 학생이
   // 화면 어딘가에 분명 있어도 눈에 안 띄어 "그 부서는 아예 안 뜬다"고 오해하기 쉽다 — 부서별로 구간을 나눠 보여준다
@@ -3217,7 +3225,7 @@ function renderWordTestToday(){
     if(d!==lastDept){ lastDept=d; rowsHtml+=`<div style="font-size:.76rem;font-weight:800;color:var(--sub);margin:10px 0 4px;padding-left:2px">${esc(d)} (${studentsList.filter(x=>deptOf(x)===d).length}명)</div>`; }
     rowsHtml+=wtStudentRow(s,date);
   });
-  return header+viewChips+`<div class="rowlist">${rowsHtml}</div>`;
+  return dateBar+header+viewChips+`<div class="rowlist">${rowsHtml}</div>`;
 }
 function classDeptForName(academy, className){
   // 학생의 반 이름으로 그 반의 부서(초등/중등/고등)를 찾아준다 — 재시험 명단·통계 정렬에 사용
@@ -3296,25 +3304,31 @@ function bindWordTest(){
   v.querySelectorAll('[data-wtstudentview]').forEach(b=>b.onclick=()=>{ state.wtStudentView=b.dataset.wtstudentview; render(true); });
   const wtClassSel=v.querySelector('[data-wtclasssel]');
   if(wtClassSel) wtClassSel.onchange=()=>{ state.wtClass=wtClassSel.value; render(true); };
+  // "오늘 입력" 화면에서 고른 날짜(state.wtDate) — 안 골랐으면 오늘. 지난 날짜를 골라서 놓친 기록을 채워 넣을 수 있다.
+  const wtDate=()=>state.wtDate||todayISO();
+  const wtDateInput=v.querySelector('#wtDateInput');
+  if(wtDateInput) wtDateInput.onchange=()=>{ state.wtDate=wtDateInput.value||todayISO(); render(true); };
+  v.querySelectorAll('[data-wttoday]').forEach(b=>b.onclick=()=>{ state.wtDate=todayISO(); render(true); });
   v.querySelectorAll('[data-wtfield]').forEach(el=>el.onchange=()=>{
     const [sid,field]=el.dataset.wtfield.split('|');
     const s=store.students.find(x=>x.id===sid); if(!s) return;
-    upsertWordTest(sid,s.academy,todayISO(),field,el.value);
+    // 점수 칸은 "18/20", "2등급"처럼 숫자가 아닌 텍스트가 흔하므로 있는 그대로(문자열) 저장한다 — 형식을 강제하거나 숫자로 변환하지 않는다.
+    upsertWordTest(sid,s.academy,wtDate(),field,el.value);
   });
   v.querySelectorAll('[data-wtretest]').forEach(cb=>cb.onchange=()=>{
     const sid=cb.dataset.wtretest;
     const s=store.students.find(x=>x.id===sid); if(!s) return;
-    upsertWordTest(sid,s.academy,todayISO(),'retestNeeded',cb.checked);
+    upsertWordTest(sid,s.academy,wtDate(),'retestNeeded',cb.checked);
   });
   v.querySelectorAll('[data-wtaccum]').forEach(cb=>cb.onchange=()=>{
     const sid=cb.dataset.wtaccum;
     const s=store.students.find(x=>x.id===sid); if(!s) return;
-    upsertWordTest(sid,s.academy,todayISO(),'accumulate',cb.checked);
+    upsertWordTest(sid,s.academy,wtDate(),'accumulate',cb.checked);
   });
   v.querySelectorAll('[data-wtabsent]').forEach(cb=>cb.onchange=()=>{
     const sid=cb.dataset.wtabsent;
     const s=store.students.find(x=>x.id===sid); if(!s) return;
-    upsertWordTest(sid,s.academy,todayISO(),'absent',cb.checked);
+    upsertWordTest(sid,s.academy,wtDate(),'absent',cb.checked);
   });
   v.querySelectorAll('[data-wtdone]').forEach(b=>b.onclick=()=>markRetestDone(b.dataset.wtdone));
 }
@@ -8415,9 +8429,11 @@ function mockExamSeriesFor(studentId){
   return MOCKEXAM_ROUND_OPTIONS.map(n=>{
     const r=byRound[n];
     if(!r) return {round:n, score:null, absent:false, raw:''};
-    if(r.absent) return {round:n, score:null, absent:true, raw:r.score||''};
-    const m=String(r.score||'').match(/-?\d+(\.\d+)?/);
-    return {round:n, score:m?Number(m[0]):null, absent:false, raw:r.score||''};
+    // 단어시험·모의고사를 동시에 쓰는 반은 모의고사 점수를 mockScore 필드에 저장하므로(단어시험 score와 안 겹치게) 그것도 확인한다
+    const sc=r.mockScore||r.score;
+    if(r.absent) return {round:n, score:null, absent:true, raw:sc||''};
+    const m=String(sc||'').match(/-?\d+(\.\d+)?/);
+    return {round:n, score:m?Number(m[0]):null, absent:false, raw:sc||''};
   });
 }
 // 모의고사 회차별 점수를 꺾은선 그래프로 — 결시(시험잠수) 처리된 회차는 선을 끊고 빨간 ✕ 표시로 따로 보여준다.
