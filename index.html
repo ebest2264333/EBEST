@@ -1144,9 +1144,22 @@ function migrateClassKey(oldKey, newKey, month){
     }
   });
 }
+// 단어시험/모의고사 동시 사용 지원: c.mockExamOn(기존 필드, 그대로 유지)과 c.wordTestOn(신규) 두 개의 독립 플래그로 관리한다.
+// c.wordTestOn이 명시적으로 설정돼 있지 않은 기존 반은 "모의고사가 꺼져있으면 단어시험은 켜진 것"이라는 기존 동작을 그대로 유지한다(하위호환).
+function classWordTestOn(c){ if(!c) return true; return c.wordTestOn===true || (c.wordTestOn!==false && !c.mockExamOn); }
+function classMockExamOn(c){ return !!(c && c.mockExamOn); }
 function toggleMockExamOn(a,m,id){
   const c=findClassById(a,m,id); if(!c) return;
   c.mockExamOn=!c.mockExamOn;
+  // 최소 하나는 켜져 있어야 하므로, 끄는 바람에 둘 다 꺼지는 상황이 되면 단어시험을 자동으로 켜준다
+  if(!classMockExamOn(c) && !classWordTestOn(c)) c.wordTestOn=true;
+  c.updatedAt=Date.now();
+  save(); render(true);
+}
+function toggleWordTestOn(a,m,id){
+  const c=findClassById(a,m,id); if(!c) return;
+  c.wordTestOn=!classWordTestOn(c);
+  if(!classWordTestOn(c) && !classMockExamOn(c)) c.mockExamOn=true;
   c.updatedAt=Date.now();
   save(); render(true);
 }
@@ -1831,14 +1844,19 @@ function classCard(c, admin, dayFilter, dupCount){
   const dayTag=s=>s.day?`<span style="font-size:.68rem;color:#8b93a7">(${esc(s.day)})</span>`:'';
   if(!open){
     return `<article class="card ${a.cls}">
-      <h2>${hl(c.name)} ${MODE==='all'?`<span class="badge ${a.cls}">${a.label}</span>`:''}${c.mockExamOn?` <span style="background:#7c3aed;color:#fff;font-size:.68rem;font-weight:800;border-radius:6px;padding:2px 6px">🎓 모의고사반</span>`:''}${dupCount>1?` <span title="같은 이름의 반이 이 달에 ${dupCount}개 있습니다 — 중복이면 정리해주세요" style="background:#f59e0b;color:#fff;font-size:.68rem;font-weight:800;border-radius:6px;padding:2px 6px;cursor:help">⚠ 중복 ${dupCount}</span>`:''}${(()=>{ const mp=mergedPartnerClass(c); return mp?` <span style="background:#6366f1;color:#fff;font-size:.68rem;font-weight:800;border-radius:6px;padding:2px 6px">🔗 합반: ${esc(mp.name)}</span>`:''; })()}
+      <h2>${hl(c.name)} ${MODE==='all'?`<span class="badge ${a.cls}">${a.label}</span>`:''}${(()=>{ const w=classWordTestOn(c), m=classMockExamOn(c);
+        if(w&&m) return ` <span style="background:linear-gradient(90deg,#7c3aed,#2e5fb7);color:#fff;font-size:.68rem;font-weight:800;border-radius:6px;padding:2px 6px">📖🎓 단어+모의고사반</span>`;
+        if(m) return ` <span style="background:#7c3aed;color:#fff;font-size:.68rem;font-weight:800;border-radius:6px;padding:2px 6px">🎓 모의고사반</span>`;
+        return '';
+      })()}${dupCount>1?` <span title="같은 이름의 반이 이 달에 ${dupCount}개 있습니다 — 중복이면 정리해주세요" style="background:#f59e0b;color:#fff;font-size:.68rem;font-weight:800;border-radius:6px;padding:2px 6px;cursor:help">⚠ 중복 ${dupCount}</span>`:''}${(()=>{ const mp=mergedPartnerClass(c); return mp?` <span style="background:#6366f1;color:#fff;font-size:.68rem;font-weight:800;border-radius:6px;padding:2px 6px">🔗 합반: ${esc(mp.name)}</span>`:''; })()}
       ${admin?`<button class="btn small" style="float:right;font-size:.72rem;padding:4px 9px" data-toggleedit ${attrs}>✎ 편집</button>`:''}</h2>
       <div class="meta">${c.dept}${c.days?' · '+c.days:''}${c.prev?` · 6월 반명: ${esc(c.prev)}`:''}${c.count?' · '+c.count+'명':''}${(()=>{
         const wi=dayFilter?wordDutyForDay(c,dayFilter):((c.wordDuty!=null&&c.wordDuty!=='')?c.wordDuty:null);
         if(wi==null) return '';
         const nm=esc((teacherByDutyVal(c.academy,wi)||{}).name||'-');
         const hasOverrides=c.wordDutyByDay&&Object.keys(c.wordDutyByDay).length>0;
-        return ' · '+(c.mockExamOn?'🎓 모의고사':'📖 단어시험')+': '+nm+(!dayFilter&&hasOverrides?' (요일별 다름)':'');
+        const w=classWordTestOn(c), m=classMockExamOn(c);
+        return ' · '+(w&&m?'📖🎓 단어+모의고사':m?'🎓 모의고사':'📖 단어시험')+': '+nm+(!dayFilter&&hasOverrides?' (요일별 다름)':'');
       })()}</div>
       ${(c.students&&c.students.length)?'<div class="students">'+c.students.map(s=>`<span class="stu">${hl(studentDisplayName(c.academy,s,c.name))}</span>`).join('')+'</div>':''}
       ${c.rosterNote?`<div class="rnote">※ ${esc(c.rosterNote)}</div>`:''}
@@ -1860,12 +1878,16 @@ function classCard(c, admin, dayFilter, dupCount){
       <select data-cfield="dept" ${attrs} style="padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
         ${deptOpts.map(d=>`<option ${c.dept===d?'selected':''}>${esc(d)}</option>`).join('')}
       </select>
-      <label title="체크하면 이 반의 단어시험 자리가 모의고사(회차 선택)로 바뀝니다 — 담당 선생님은 그대로, 매일 기록만 회차로 바뀝니다" style="display:flex;align-items:center;gap:4px;font-size:.8rem;font-weight:700;background:${c.mockExamOn?'#7c3aed':'#fff'};color:${c.mockExamOn?'#fff':'#333'};border:1px solid ${c.mockExamOn?'#7c3aed':'var(--line)'};border-radius:7px;padding:6px 9px;cursor:pointer">
-        <input type="checkbox" data-mockexamcb ${attrs} ${c.mockExamOn?'checked':''} style="margin:0">🎓 내신 (모의고사)
+      ${(()=>{ const wOn=classWordTestOn(c), mOn=classMockExamOn(c); return `
+      <label title="체크하면 이 반에서 단어시험을 입력할 수 있습니다. 모의고사와 동시에 체크하면 둘 다 입력란이 나타납니다." style="display:flex;align-items:center;gap:4px;font-size:.8rem;font-weight:700;background:${wOn?'#2563eb':'#fff'};color:${wOn?'#fff':'#333'};border:1px solid ${wOn?'#2563eb':'var(--line)'};border-radius:7px;padding:6px 9px;cursor:pointer">
+        <input type="checkbox" data-wordtestcb ${attrs} ${wOn?'checked':''} style="margin:0">📖 단어시험
       </label>
-      <select data-cfield="wordDuty" ${attrs} title="${c.mockExamOn?'모의고사':'단어시험'} 담당 선생님" style="padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;background:#fff8ec">
-        <option value="">${c.mockExamOn?'🎓 모의고사':'📖 단어시험'} 담당 미지정</option>
-        ${(store.teachers[c.academy]||[]).map(t=>`<option value="${t.id}" ${c.wordDuty===t.id?'selected':''}>${c.mockExamOn?'🎓':'📖'} ${esc(t.name)}</option>`).join('')}
+      <label title="체크하면 이 반에서 모의고사(회차 선택) 점수를 입력할 수 있습니다. 단어시험과 동시에 체크하면 둘 다 입력란이 나타납니다." style="display:flex;align-items:center;gap:4px;font-size:.8rem;font-weight:700;background:${mOn?'#7c3aed':'#fff'};color:${mOn?'#fff':'#333'};border:1px solid ${mOn?'#7c3aed':'var(--line)'};border-radius:7px;padding:6px 9px;cursor:pointer">
+        <input type="checkbox" data-mockexamcb ${attrs} ${mOn?'checked':''} style="margin:0">🎓 내신 (모의고사)
+      </label>`; })()}
+      <select data-cfield="wordDuty" ${attrs} title="${classWordTestOn(c)&&classMockExamOn(c)?'단어시험·모의고사':classMockExamOn(c)?'모의고사':'단어시험'} 담당 선생님" style="padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;background:#fff8ec">
+        <option value="">${classWordTestOn(c)&&classMockExamOn(c)?'📖🎓 단어·모의고사':classMockExamOn(c)?'🎓 모의고사':'📖 단어시험'} 담당 미지정</option>
+        ${(store.teachers[c.academy]||[]).map(t=>`<option value="${t.id}" ${c.wordDuty===t.id?'selected':''}>${classWordTestOn(c)&&classMockExamOn(c)?'📖🎓':classMockExamOn(c)?'🎓':'📖'} ${esc(t.name)}</option>`).join('')}
       </select>
       <select data-cfield="mergedWith" ${attrs} title="같이 수업하는 합반 상대" style="padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;background:#eef0ff">
         <option value="">🔗 합반 없음</option>
@@ -1894,7 +1916,7 @@ function classCard(c, admin, dayFilter, dupCount){
       const days=cdays(c).split(',').map(x=>x.trim()).filter(Boolean);
       if(days.length<2) return '';
       return `<div style="margin-bottom:8px;padding:8px 10px;background:#fff8ec;border-radius:10px">
-        <div style="font-size:.76rem;font-weight:700;color:var(--sub);margin-bottom:4px">${c.mockExamOn?'🎓 요일별 모의고사 담당 (비우면 위 기본값 사용)':'📖 요일별 단어시험 담당 (비우면 위 기본값 사용)'}</div>
+        <div style="font-size:.76rem;font-weight:700;color:var(--sub);margin-bottom:4px">${classWordTestOn(c)&&classMockExamOn(c)?'📖🎓 요일별 단어시험·모의고사 담당 (비우면 위 기본값 사용)':classMockExamOn(c)?'🎓 요일별 모의고사 담당 (비우면 위 기본값 사용)':'📖 요일별 단어시험 담당 (비우면 위 기본값 사용)'}</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
         ${days.map(d=>{
           const cur=c.wordDutyByDay&&c.wordDutyByDay[d];
@@ -2192,7 +2214,10 @@ function bindClassEdit(){
   v.querySelectorAll('[data-wdday]').forEach(sel=>sel.onchange=()=>{
     updateWordDutyDay(sel.dataset.a,sel.dataset.src,sel.dataset.id,sel.dataset.wdday,sel.value);
   });
-  // 🎓 내신 (모의고사) — 반당 하나, 단어시험 자리를 회차 선택으로 바꾸는 스위치
+  // 📖 단어시험 / 🎓 내신(모의고사) — 반별로 독립적으로 켜고 끌 수 있다(둘 다 켜면 둘 다 입력란이 나타남)
+  v.querySelectorAll('[data-wordtestcb]').forEach(cb=>cb.onchange=()=>{
+    toggleWordTestOn(cb.dataset.a, cb.dataset.src, cb.dataset.id);
+  });
   v.querySelectorAll('[data-mockexamcb]').forEach(cb=>cb.onchange=()=>{
     toggleMockExamOn(cb.dataset.a, cb.dataset.src, cb.dataset.id);
   });
@@ -3062,7 +3087,8 @@ function wtStudentRow(s, date){
   // 강제 지정한 달(state.month, 9월 등)을 기준으로 봐야 한다 — 실제 달력이 아직 8월이어도 9월 반 구성으로
   // 넘어가 있어야 하기 때문. (date에서 달을 뽑으면 실제 오늘 날짜가 8월인 동안은 계속 8월 반으로 고정돼버림)
   const cls=classOfStudent(s, state.month);
-  const isMock=!!(cls && cls.mockExamOn);
+  const wOn=classWordTestOn(cls), mOn=classMockExamOn(cls);
+  const both=wOn&&mOn;
   let r=store.wordTests.find(x=>x.studentId===s.id && x.date===date);
   if(!r){
     // 오늘 기록이 아직 없으면 화면에는 어제(가장 최근) 단어장·유형을 미리 채워서 보여준다 (실제 저장은 다른 값을 건드릴 때 이 값 그대로 이어받음)
@@ -3071,40 +3097,61 @@ function wtStudentRow(s, date){
   }
   const dim = r.absent ? 'opacity:.5' : '';
   const nameCol=`<span class="key">${esc(s.nameKo)}${s.nameEn?' <span style="font-weight:400;color:var(--sub)">('+esc(s.nameEn)+')</span>':''} ${MODE==='all'?bdg(s.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(classNameInMonth(s,state.month)||'')}</span></span>`;
-  if(isMock){
-    // 🎓 모의고사반: 단어장·유형·범위·누적 없이, 회차(1~10) 선택 + 점수 + 미응시 체크만 매일 기록한다
+  const absentLabel=`<label style="font-size:.8rem;color:${r.absent?'#6b7280':'var(--sub)'};font-weight:${r.absent?'800':'400'}"><input type="checkbox" data-wtabsent="${s.id}" ${r.absent?'checked':''}> 미응시</label>`;
+  // 🎓 모의고사: 단어장·유형·범위·누적 없이, 회차(1~10) 선택 + 점수만 매일 기록한다.
+  // 단어시험과 동시에 켜져 있을 때는(both) 점수 필드가 단어시험 점수와 겹치지 않도록 별도 필드(mockScore)를 쓴다 —
+  // 모의고사만 켜진 기존 반은 그대로 'score' 필드를 계속 쓰므로 기존에 저장된 데이터는 전혀 영향받지 않는다.
+  const mockScoreField=both?'mockScore':'score';
+  const mockScoreVal=both?(r.mockScore||''):(r.score||'');
+  const mockBlock=()=>{
     const roundSel=`<select data-wtfield="${s.id}|round" ${r.absent?'disabled':''} style="width:110px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
       <option value="">회차 선택</option>
       ${MOCKEXAM_ROUND_OPTIONS.map(n=>`<option value="${n}" ${String(r.round||'')===n?'selected':''}>${n}회</option>`).join('')}
       <option value="내신단어" ${r.round==='내신단어'?'selected':''}>📖 내신 단어</option>
     </select>`;
-    const mockScoreInp=`<input type="text" placeholder="점수 (예: 85점, 2등급)" value="${esc(r.score||'')}" data-wtfield="${s.id}|score" ${r.absent?'disabled':''} style="width:120px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">`;
+    const mockScoreInp=`<input type="text" placeholder="점수 (예: 85점, 2등급)" value="${esc(mockScoreVal)}" data-wtfield="${s.id}|${mockScoreField}" ${r.absent?'disabled':''} style="width:120px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">`;
+    return `🎓 ${roundSel} ${mockScoreInp}`;
+  };
+  if(mOn && !wOn){
     return `<div class="rowitem" style="align-items:center;flex-wrap:wrap">
       ${nameCol}
       <span class="val" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-        🎓 ${roundSel}
-        ${mockScoreInp}
-        <label style="font-size:.8rem;color:${r.absent?'#6b7280':'var(--sub)'};font-weight:${r.absent?'800':'400'}"><input type="checkbox" data-wtabsent="${s.id}" ${r.absent?'checked':''}> 미응시</label>
+        ${mockBlock()}
+        ${absentLabel}
       </span></div>`;
   }
-  const wbSel=`<select data-wtfield="${s.id}|wordbook" ${r.absent?'disabled':''} style="width:120px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
-    <option value="">단어장 선택</option>
-    ${wbOptionsFor(s.academy).map(o=>`<option value="${esc(o)}" ${r.wordbook===o?'selected':''}>${esc(o)}</option>`).join('')}
-  </select>`;
-  const langSel=`<select data-wtfield="${s.id}|lang" ${r.absent?'disabled':''} style="width:76px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
-    <option value="">유형</option>
-    ${WORDLANG_OPTIONS.map(o=>`<option value="${esc(o)}" ${r.lang===o?'selected':''}>${esc(o)}</option>`).join('')}
-  </select>`;
-  return `<div class="rowitem" style="align-items:center;flex-wrap:wrap">
-      ${nameCol}
-      <span class="val" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-        ${wbSel}
+  const wordBlock=()=>{
+    const wbSel=`<select data-wtfield="${s.id}|wordbook" ${r.absent?'disabled':''} style="width:120px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
+      <option value="">단어장 선택</option>
+      ${wbOptionsFor(s.academy).map(o=>`<option value="${esc(o)}" ${r.wordbook===o?'selected':''}>${esc(o)}</option>`).join('')}
+    </select>`;
+    const langSel=`<select data-wtfield="${s.id}|lang" ${r.absent?'disabled':''} style="width:76px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
+      <option value="">유형</option>
+      ${WORDLANG_OPTIONS.map(o=>`<option value="${esc(o)}" ${r.lang===o?'selected':''}>${esc(o)}</option>`).join('')}
+    </select>`;
+    return `${wbSel}
         ${langSel}
         <input type="text" placeholder="범위" value="${esc(r.range||'')}" data-wtfield="${s.id}|range" ${r.absent?'disabled':''} style="width:110px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
         <input type="text" placeholder="점수 (예: 18/20)" value="${esc(r.score||'')}" data-wtfield="${s.id}|score" ${r.absent?'disabled':''} style="width:90px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
         ${studentIsHigh(s)?`<label style="font-size:.8rem;color:${r.accumulate?'#7c3aed':'var(--sub)'};${dim}" title="체크하면 이전 등원일 이틀치 시험 범위를 자동으로 이어서 채워줍니다"><input type="checkbox" data-wtaccum="${s.id}" ${r.accumulate?'checked':''} ${r.absent?'disabled':''}> 📚 누적</label>`:''}
-        <label style="font-size:.8rem;color:${r.retestNeeded?'#c0392b':'var(--sub)'};${dim}"><input type="checkbox" data-wtretest="${s.id}" ${r.retestNeeded?'checked':''} ${r.absent?'disabled':''}> 재시험(O)</label>
-        <label style="font-size:.8rem;color:${r.absent?'#6b7280':'var(--sub)'};font-weight:${r.absent?'800':'400'}"><input type="checkbox" data-wtabsent="${s.id}" ${r.absent?'checked':''}> 미응시</label>
+        <label style="font-size:.8rem;color:${r.retestNeeded?'#c0392b':'var(--sub)'};${dim}"><input type="checkbox" data-wtretest="${s.id}" ${r.retestNeeded?'checked':''} ${r.absent?'disabled':''}> 재시험(O)</label>`;
+  };
+  if(both){
+    // 📖🎓 단어시험 + 모의고사 동시 사용: 두 입력 그룹을 나란히 보여주고, 미응시 체크는 하나만 공유한다(그 날 안 왔으면 둘 다 결석)
+    return `<div class="rowitem" style="align-items:center;flex-wrap:wrap">
+      ${nameCol}
+      <span class="val" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:4px 6px;background:#f5f3ff;border-radius:8px">${mockBlock()}</span>
+        <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:4px 6px;background:#eff6ff;border-radius:8px">${wordBlock()}</span>
+        ${absentLabel}
+      </span></div>`;
+  }
+  // 단어시험만 켜진 경우(기본값, 기존 동작)
+  return `<div class="rowitem" style="align-items:center;flex-wrap:wrap">
+      ${nameCol}
+      <span class="val" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        ${wordBlock()}
+        ${absentLabel}
       </span></div>`;
 }
 function renderWordTestToday(){
@@ -3615,7 +3662,8 @@ function renderWordRange(list){
           else if(rec.round){
             // 🎓 그 날짜에 실제로 회차가 입력된 기록만 회차·점수 형식으로 보여준다 — 반을 모의고사로 바꾸기 "전"에
             // 남긴 옛날 단어장 기록은 그 자체는 그대로 단어장 기록이므로 건드리지 않고 원래 형식대로 보여준다
-            cell=`<span style="font-size:.7rem;color:#7c3aed;font-weight:800">🎓 ${esc(rec.round)}${rec.round==='내신단어'?'':'회'}</span>${rec.score?`<br><span style="font-size:.72rem;color:#7c3aed;font-weight:800">📊 ${esc(rec.score)}</span>`:''}`;
+            const mockScoreShown=rec.mockScore||rec.score;
+            cell=`<span style="font-size:.7rem;color:#7c3aed;font-weight:800">🎓 ${esc(rec.round)}${rec.round==='내신단어'?'':'회'}</span>${mockScoreShown?`<br><span style="font-size:.72rem;color:#7c3aed;font-weight:800">📊 ${esc(mockScoreShown)}</span>`:''}`;
           } else {
             const wbTxt=[wbShort(rec.wordbook),rec.lang].filter(Boolean).join(' ');
             cell=`<span style="font-size:.7rem;color:var(--sub)">${esc(wbTxt)}</span>${rec.range?`<br><b style="font-size:.74rem">${esc(rec.range)}</b>`:''}${rec.score?`<br><span style="font-size:.72rem;color:#7c3aed;font-weight:800">📊 ${esc(rec.score)}</span>`:''}`;
@@ -7623,7 +7671,7 @@ function eaMergedCatTableHTML(cats, rowRenderer, zebraPalette){
     const qs=cat.questions||[];
     qs.forEach((q,qi)=>{
       const rowBg=EA_ROW_STRIPE[rowIdx%EA_ROW_STRIPE.length];
-      rows+=`<tr style="background:${rowBg}">`;
+      rows+=`<tr style="background:${rowBg};page-break-inside:avoid;break-inside:avoid">`;
       if(qi===0) rows+=`<td rowspan="${qs.length}" style="padding:8px;text-align:center;font-weight:800;border-bottom:1px solid var(--line);border-right:1.5px solid var(--line);vertical-align:middle;background:${catBg}">${esc(cat.name)}</td>`;
       rows+=rowRenderer(cat,q,qi,rowIdx);
       rows+='</tr>';
@@ -7641,6 +7689,47 @@ function eaTextOn(hex){
 }
 function eaNewId(p){ return p+Date.now().toString(36)+Math.random().toString(36).slice(2,6)+Math.random().toString(36).slice(2,4); }
 function eaBlankQuestion(){ return {id:eaNewId('eaq'), no:'', question:'', points:'', difficulty:''}; }
+// 선생님 코멘트는 굵게/밑줄/글자색 서식을 쓸 수 있게 HTML로 저장한다 — 옛날에 일반 텍스트로만 저장된 메모는 줄바꿈만 살려서 그대로 보여준다
+function eaNoteInitialHTML(note){
+  const s=String(note||''); if(!s) return '';
+  if(/<[a-z][\s\S]*>/i.test(s)) return s; // 이미 서식이 들어간 HTML
+  return esc(s).replace(/\n/g,'<br>');
+}
+// execCommand로 만들어진 HTML 중 굵게/밑줄/글자색 정도만 허용하고 나머지 태그·속성은 걷어낸다(붙여넣기 등으로 이상한 게 섞여도 안전하게)
+function eaSanitizeNoteHTML(html){
+  const allowed=new Set(['B','STRONG','I','EM','U','SPAN','DIV','BR','FONT','P']);
+  const removeEntirely=new Set(['SCRIPT','STYLE','IFRAME','OBJECT','EMBED']); // 내용까지 통째로 지워야 하는 태그
+  const tmp=document.createElement('div');
+  tmp.innerHTML=String(html||'');
+  const walk=(node)=>{
+    Array.from(node.childNodes).forEach(child=>{
+      if(child.nodeType===3) return;
+      if(child.nodeType!==1){ node.removeChild(child); return; }
+      if(removeEntirely.has(child.tagName)){ node.removeChild(child); return; }
+      if(!allowed.has(child.tagName)){
+        while(child.firstChild) node.insertBefore(child.firstChild, child);
+        node.removeChild(child);
+        return;
+      }
+      // <font color="..."> 처럼 속성으로 들어간 색상도 style로 옮겨서 살려둔다(그냥 지우면 색이 사라짐)
+      const fontColorAttr=child.tagName==='FONT' ? child.getAttribute('color') : null;
+      const style=child.getAttribute('style');
+      Array.from(child.attributes).forEach(a=>child.removeAttribute(a.name));
+      const safe=[];
+      if(style){
+        style.split(';').forEach(decl=>{
+          const parts=decl.split(':'); const k=(parts[0]||'').trim().toLowerCase(); const v=(parts[1]||'').trim();
+          if(/^(color|font-weight|text-decoration|text-decoration-line)$/.test(k) && v && !/url\(|expression\(/i.test(v)) safe.push(`${k}:${v}`);
+        });
+      }
+      if(fontColorAttr && !safe.some(s=>s.startsWith('color:')) && !/url\(|expression\(/i.test(fontColorAttr)) safe.push(`color:${fontColorAttr}`);
+      if(safe.length) child.setAttribute('style', safe.join(';'));
+      walk(child);
+    });
+  };
+  walk(tmp);
+  return tmp.innerHTML;
+}
 function eaBlankEntry(){
   return {
     id:eaNewId('ea'), _isNew:true, academy:academies()[0], dept:'중등', school:'', grade:'', examTitle:'', examRange:'', examDate:'', prepStart:'', prepEnd:'',
@@ -7951,7 +8040,17 @@ function renderEaForm(){
       </table>
       </div>`;
   }
-  h+=`<label style="font-size:.78rem;color:var(--sub);display:block;margin:16px 0 14px">선생님 코멘트 / 분석 메모<textarea id="eaNote" rows="3" style="width:100%;margin-top:4px;padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${esc(d.note||'')}</textarea></label>
+  h+=`<div style="margin:16px 0 14px">
+    <div style="font-size:.78rem;color:var(--sub);margin-bottom:4px">선생님 코멘트 / 분석 메모 <span style="font-weight:400;font-size:.72rem">(굵게·밑줄·글자색 지정 가능)</span></div>
+    <div style="display:flex;gap:4px;align-items:center;margin-bottom:4px;flex-wrap:wrap">
+      <button type="button" class="btn small eaNoteCmdBtn" data-cmd="bold" style="font-weight:800;padding:3px 10px">B</button>
+      <button type="button" class="btn small eaNoteCmdBtn" data-cmd="underline" style="text-decoration:underline;padding:3px 10px">U</button>
+      <span style="width:1px;height:18px;background:var(--line);margin:0 2px"></span>
+      ${['#111827','#dc2626','#2563eb','#15803d','#d97706'].map(c=>`<button type="button" class="eaNoteColorBtn" data-color="${c}" title="글자색" style="width:20px;height:20px;border-radius:50%;background:${c};border:1.5px solid #fff;box-shadow:0 0 0 1px var(--line);cursor:pointer;padding:0"></button>`).join('')}
+      <button type="button" class="btn small" id="eaNoteClearBtn" style="padding:3px 10px;font-size:.72rem">서식 지우기</button>
+    </div>
+    <div id="eaNote" contenteditable="true" style="width:100%;min-height:70px;padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.86rem;background:#fff" data-placeholder="메모를 입력하세요">${eaNoteInitialHTML(d.note)}</div>
+  </div>
     <div class="cbtns"><button class="btn primary" id="eaSaveBtn">💾 저장</button><button class="btn small" id="eaCancelBtn">취소</button></div>
     </div></div>`;
   return h;
@@ -7969,11 +8068,11 @@ function eaReportBody(entry){
     <div style="font-size:1rem;font-weight:600;margin-top:2px;opacity:.95">${esc(entry.examTitle||'')}</div>
   </div>
   <div style="border:1.5px solid var(--line);border-top:none;border-radius:0 0 14px 14px;padding:18px 22px;background:#fff">
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px;margin-bottom:18px;background:${ac.tint||'#f4f6fb'};border-radius:10px;padding:14px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px;margin-bottom:18px;background:${ac.tint||'#f4f6fb'};border-radius:10px;padding:14px;page-break-inside:avoid;break-inside:avoid">
       ${[['시험범위',entry.examRange],['시험일',entry.examDate],['준비기간', (entry.prepStart||entry.prepEnd)?(entry.prepStart||'')+' ~ '+(entry.prepEnd||''):''],['담당(Lecture)',entry.teacherLecture],['담당(IBT)',entry.teacherIBT]]
         .filter(([,v])=>v).map(([l,v])=>`<div><div style="font-size:.7rem;color:var(--sub);font-weight:700">${esc(l)}</div><div style="font-size:.9rem;font-weight:800;margin-top:2px">${esc(v)}</div></div>`).join('')}
     </div>
-    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:18px">
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:18px;page-break-inside:avoid;break-inside:avoid">
       <div style="flex:1;min-width:130px;border:1.5px solid var(--line);border-radius:10px;padding:12px;text-align:center">
         <div style="font-size:.72rem;color:var(--sub);font-weight:700">총 문항수</div>
         <div style="font-size:1.4rem;font-weight:800;color:${ac.color}">${totalQ}개</div>
@@ -7994,7 +8093,7 @@ function eaReportBody(entry){
     const sourceData=Object.keys(bySource).map(k=>({name:k, value:bySource[k], color:eaSourceColor(k), suffix:'개'}));
     const totalSourceText=Object.keys(bySource).map(k=>`${k}${bySource[k]}`).join(' · ');
     const panelHeadStyle='background:#2b3648;color:#fff;padding:10px 16px;font-weight:800;font-size:.84rem;letter-spacing:.01em';
-    h+=`<div style="border:1.5px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:18px">
+    h+=`<div style="border:1.5px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:18px;page-break-inside:avoid;break-inside:avoid">
       <div style="${panelHeadStyle}">문제 영역 &amp; 유형별 문항수 분포 (단위: 개)</div>
       <div style="display:flex;flex-wrap:wrap">
         <div style="flex:1;min-width:220px;border-right:1px solid var(--line);overflow-x:auto">
@@ -8026,22 +8125,29 @@ function eaReportBody(entry){
         </div>
       </div>
     </div>`;
-    const pointData=cats.map(c=>({name:c.name, value:eaRoundPts((c.questions||[]).reduce((m,q)=>m+(Number(q.points)||0),0)), color:'#475569'}));
+    // 카테고리가 많으면 세로 막대그래프가 옆에 나란히 있을 때 너무 눌리고 인쇄 시 표와 그래프가 서로 다른 페이지로 갈라지기 쉬워서,
+    // 표 안에 카테고리마다 가로 막대를 한 줄씩 넣어 카테고리 목록과 그래프가 항상 같은 줄에 나란히(세로로 쭉) 보이게 한다
+    const pointData=cats.map(c=>({name:c.name, value:eaRoundPts((c.questions||[]).reduce((m,q)=>m+(Number(q.points)||0),0))}));
     const totalPtsRounded=eaRoundPts(pointData.reduce((m,d)=>m+d.value,0));
-    h+=`<div style="border:1.5px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:18px">
+    const maxPt=Math.max(1, ...pointData.map(d=>d.value));
+    h+=`<div style="border:1.5px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:18px;page-break-inside:avoid;break-inside:avoid">
       <div style="${panelHeadStyle}">문제 영역별 배점 분석 (단위: 점)</div>
-      <div style="display:flex;flex-wrap:wrap">
-        <div style="flex:1;min-width:180px;border-right:1px solid var(--line);overflow-x:auto">
-          <table style="border-collapse:collapse;width:100%">
-            <thead><tr style="background:#f7f9fc"><th style="padding:7px 10px;font-size:.72rem;color:var(--sub);text-align:left;border-bottom:1px solid var(--line)">문제 영역</th><th style="padding:7px 10px;font-size:.72rem;color:var(--sub);border-bottom:1px solid var(--line)">배점</th></tr></thead><tbody>
-            ${pointData.map((d,ci)=>`<tr style="background:${EA_HS_ZEBRA[ci%EA_HS_ZEBRA.length]}"><td style="padding:6px 10px;font-weight:700;border-bottom:1px solid var(--line)">${esc(d.name)}</td><td style="padding:6px 10px;text-align:center;border-bottom:1px solid var(--line)">${d.value}</td></tr>`).join('')}
-            <tr style="background:#eef1f6;font-weight:800"><td style="padding:6px 10px">총계</td><td style="padding:6px 10px;text-align:center">${totalPtsRounded}</td></tr>
-          </tbody></table>
-        </div>
-        <div style="flex:2;min-width:280px;padding:16px 16px 4px">
-          ${eaBarChartHTML(pointData)}
-        </div>
-      </div>
+      <div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%">
+        <thead><tr style="background:#f7f9fc">
+          <th style="width:110px;padding:7px 10px;font-size:.72rem;color:var(--sub);text-align:left;border-bottom:1px solid var(--line)">문제 영역</th>
+          <th style="width:60px;padding:7px 10px;font-size:.72rem;color:var(--sub);border-bottom:1px solid var(--line)">배점</th>
+          <th style="padding:7px 10px;font-size:.72rem;color:var(--sub);text-align:left;border-bottom:1px solid var(--line)">분포</th>
+        </tr></thead><tbody>
+        ${pointData.map((d,ci)=>{
+          const pct=Math.round(d.value/maxPt*100);
+          return `<tr style="background:${EA_HS_ZEBRA[ci%EA_HS_ZEBRA.length]};page-break-inside:avoid;break-inside:avoid">
+            <td style="padding:6px 10px;font-weight:700;border-bottom:1px solid var(--line)">${esc(d.name)}</td>
+            <td style="padding:6px 10px;text-align:center;border-bottom:1px solid var(--line)">${d.value}</td>
+            <td style="padding:8px 10px;border-bottom:1px solid var(--line)"><div style="background:#e2e8f0;border-radius:4px;overflow:hidden;height:14px;width:100%"><div style="background:#475569;height:100%;border-radius:4px;width:${pct}%"></div></div></td>
+          </tr>`;
+        }).join('')}
+        <tr style="background:#eef1f6;font-weight:800"><td style="padding:6px 10px">총계</td><td style="padding:6px 10px;text-align:center">${totalPtsRounded}</td><td></td></tr>
+      </tbody></table></div>
     </div>`;
   } else if(cats.length){
     const countData=cats.map(c=>({name:c.name, value:(c.questions||[]).length, color:eaCatColor(catNames,c.name,dept), suffix:'개'}));
@@ -8130,9 +8236,9 @@ function eaReportBody(entry){
     });
   }
   if(entry.note){
-    h+=`<div style="border:1.5px solid var(--line);border-radius:10px;padding:12px 14px;background:#fffbea">
-      <div style="font-size:.76rem;font-weight:800;color:var(--sub);margin-bottom:4px">📝 선생님 코멘트 / 분석 메모</div>
-      <div style="font-size:.86rem;white-space:pre-wrap">${esc(entry.note)}</div>
+    h+=`<div style="border:1.5px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:14px;page-break-inside:avoid;break-inside:avoid">
+      <div style="background:#2b3648;color:#fff;padding:10px 16px;font-family:'Brush Script MT','Segoe Script',cursive;font-style:italic;font-size:1.2rem;letter-spacing:.02em">Teacher's Comment</div>
+      <div style="background:#fff;padding:14px 16px;font-size:.86rem;white-space:pre-wrap">${eaSanitizeNoteHTML(eaNoteInitialHTML(entry.note))}</div>
     </div>`;
   }
   h+=`<div style="font-size:.7rem;color:#8b93a7;margin-top:14px;text-align:right">최근 수정: ${entry.updatedBy?esc(entry.updatedBy)+' · ':''}${entry.updatedAt?new Date(entry.updatedAt).toLocaleString('ko-KR'):''}</div>`;
@@ -8194,7 +8300,7 @@ function eaStudentDetailHTML(entry, studentId, ac){
             const {resultHTML,rowBg}=gradeResultHTML(cat,q);
             const bg=rowBg||`background:${EA_ROW_STRIPE[rowIdx%EA_ROW_STRIPE.length]}`;
             rowIdx++;
-            return `<tr style="${bg}">
+            return `<tr style="${bg};page-break-inside:avoid;break-inside:avoid">
               ${qi===0?`<td rowspan="${qs.length}" style="padding:8px;text-align:center;font-weight:800;border-bottom:1px solid var(--line);border-right:1.5px solid var(--line);vertical-align:middle;background:${catBg}">${esc(cat.name)}</td>`:''}
               <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line);font-weight:700">${esc(q.no||'')}</td>
               <td style="padding:8px;border-bottom:1px solid var(--line)">${esc(q.question||'')}</td>
@@ -8236,8 +8342,8 @@ function eaStudentDetailHTML(entry, studentId, ac){
     const wrongCats=eaWrongQuestionsByCategory(entry, studentId);
     if(wrongCats.length){
       const totalWrong=wrongCats.reduce((m,w)=>m+w.questions.length,0);
-      h+=`<div style="margin:18px 0 10px;font-size:.86rem;font-weight:800;color:var(--sub)">🔎 오답 원인 분석표 <span style="font-weight:400;font-size:.74rem">(틀린 문항 ${totalWrong}개 자동 추출)</span></div>
-        <div style="border:1.5px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:14px;page-break-inside:avoid;break-inside:avoid">
+      h+=`<div style="margin:18px 0 10px;font-size:.86rem;font-weight:800;color:var(--sub);page-break-after:avoid;break-after:avoid">🔎 오답 원인 분석표 <span style="font-weight:400;font-size:.74rem">(틀린 문항 ${totalWrong}개 자동 추출)</span></div>
+        <div style="border:1.5px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:14px">
           <div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%">
             <thead><tr style="background:#f7f9fc">
               <th style="width:110px;padding:8px;font-size:.74rem;color:var(--sub);border-bottom:1.5px solid var(--line)">문제 영역</th>
@@ -8253,7 +8359,7 @@ function eaStudentDetailHTML(entry, studentId, ac){
               return questions.map((q,qi)=>{
                 const rowBg=EA_ROW_STRIPE[rowIdx%EA_ROW_STRIPE.length];
                 rowIdx++;
-                return `<tr style="background:${rowBg}">
+                return `<tr style="background:${rowBg};page-break-inside:avoid;break-inside:avoid">
                 ${qi===0?`<td rowspan="${questions.length}" style="padding:8px;text-align:center;font-weight:800;border-bottom:1px solid var(--line);border-right:1.5px solid var(--line);vertical-align:middle;background:${catBg}">${esc(label)}</td>`:''}
                 <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line);font-weight:700">${esc(q.no||'')}</td>
                 <td style="padding:8px;border-bottom:1px solid var(--line)">${esc(q.question||'')}</td>
@@ -8265,7 +8371,7 @@ function eaStudentDetailHTML(entry, studentId, ac){
           </tbody></table></div>
         </div>`;
     } else {
-      h+=`<div style="margin:18px 0 10px;font-size:.86rem;font-weight:800;color:var(--sub)">🔎 오답 원인 분석표</div>
+      h+=`<div style="margin:18px 0 10px;font-size:.86rem;font-weight:800;color:var(--sub);page-break-after:avoid;break-after:avoid">🔎 오답 원인 분석표</div>
         <div class="empty" style="text-align:left">틀린 문항이 없습니다. 🎉</div>`;
     }
   }
@@ -8412,7 +8518,28 @@ function bindEaForm(){
   });
   upd('eaSchool','school'); upd('eaGrade','grade'); upd('eaTitle','examTitle'); upd('eaRange','examRange');
   upd('eaDate','examDate'); upd('eaPrepStart','prepStart'); upd('eaPrepEnd','prepEnd');
-  upd('eaTeacherLecture','teacherLecture'); upd('eaTeacherIBT','teacherIBT'); upd('eaNote','note');
+  upd('eaTeacherLecture','teacherLecture'); upd('eaTeacherIBT','teacherIBT');
+  const noteEl=byId('eaNote');
+  if(noteEl){
+    noteEl.oninput=()=>{ d.note=noteEl.innerHTML; };
+    noteEl.onblur=()=>{ const clean=eaSanitizeNoteHTML(noteEl.innerHTML); d.note=clean; if(noteEl.innerHTML!==clean) noteEl.innerHTML=clean; };
+    v.querySelectorAll('.eaNoteCmdBtn').forEach(btn=>btn.onclick=(e)=>{
+      e.preventDefault(); noteEl.focus();
+      document.execCommand(btn.dataset.cmd, false, null);
+      d.note=noteEl.innerHTML;
+    });
+    v.querySelectorAll('.eaNoteColorBtn').forEach(btn=>btn.onclick=(e)=>{
+      e.preventDefault(); noteEl.focus();
+      document.execCommand('foreColor', false, btn.dataset.color);
+      d.note=noteEl.innerHTML;
+    });
+    const clearBtn=byId('eaNoteClearBtn');
+    if(clearBtn) clearBtn.onclick=(e)=>{
+      e.preventDefault(); noteEl.focus();
+      document.execCommand('removeFormat', false, null);
+      d.note=noteEl.innerHTML;
+    };
+  }
   const targetScoreEl=byId('eaTargetScore');
   if(targetScoreEl) targetScoreEl.onchange=()=>{ const n=Number(targetScoreEl.value); d.targetScore = isNaN(n) ? 100 : n; };
   v.querySelectorAll('.eaCatName').forEach(inp=>inp.onchange=()=>{ d.categories[Number(inp.dataset.ci)].name=inp.value; });
@@ -10198,6 +10325,8 @@ function reportHTML(){
     body=(eaSid && eaEntry && (eaEntry.students||[]).some(s=>s.id===eaSid)) ? eaStudentReportBody(eaEntry, eaSid) : eaReportBody(eaEntry);
   }
   else { body=repSet(); }
+  // 내신 분석은 리포트 자체에 학교명·시험명이 들어간 전용 머리말이 이미 있어서, 위쪽의 일반 대시보드 타이틀 바는 중복이라 뺀다(중등부·고등부 모두 동일)
+  if(state.tab==='examrpt') return body;
   return rBand(`${tabName}${esc(extra)} &nbsp;·&nbsp; ${when} &nbsp;·&nbsp; 출력일 ${date}`)+boxes+body;
 }
 document.getElementById('printBtn').onclick=()=>{
