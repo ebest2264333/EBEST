@@ -7694,8 +7694,11 @@ function eaMergedCatTableHTML(cats, rowRenderer, zebraPalette){
     let rows='';
     qs.forEach((q,qi)=>{
       const rowBg=EA_ROW_STRIPE[rowIdx%EA_ROW_STRIPE.length];
+      const isLast=qi===qs.length-1;
       rows+=`<tr style="background:${rowBg}">`;
-      if(qi===0) rows+=`<td rowspan="${qs.length}" style="padding:8px;text-align:center;font-weight:800;border-bottom:1px solid var(--line);border-right:1.5px solid var(--line);vertical-align:middle;background:${catBg}">${esc(cat.name)}</td>`;
+      // rowspan 대신 매 행마다 독립된 셀을 쓰고 카테고리 첫 행에만 이름 글자를 보여준다(나머지 행은 같은 배경색만 이어져 시각적으로는 합쳐 보인다) —
+      // 진짜 rowspan 셀은 한 페이지보다 카테고리가 길면 인쇄 시 강제로 잘려서 테두리가 끊긴 것처럼 보이는데, 이렇게 하면 그 문제 자체가 생기지 않는다.
+      rows+=`<td style="padding:8px;text-align:center;font-weight:800;${isLast?'border-bottom:1px solid var(--line);':''}border-right:1.5px solid var(--line);vertical-align:middle;background:${catBg}">${qi===0?esc(cat.name):''}</td>`;
       rows+=rowRenderer(cat,q,qi,rowIdx);
       rows+='</tr>';
       rowIdx++;
@@ -8129,7 +8132,7 @@ function eaReportBody(entry, opts){
     const sourceData=Object.keys(bySource).map(k=>({name:k, value:bySource[k], color:eaSourceColor(k), suffix:'개'}));
     const totalSourceText=Object.keys(bySource).map(k=>`${k}${bySource[k]}`).join(' · ');
     const panelHeadStyle='background:#2b3648;color:#fff;padding:10px 16px;font-weight:800;font-size:.84rem;letter-spacing:.01em';
-    h+=`<div style="border:1.5px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:18px;page-break-inside:avoid;break-inside:avoid">
+    h+=`<div style="border:1.5px solid var(--line);border-radius:10px;margin-bottom:18px;page-break-inside:avoid;break-inside:avoid">
       <div style="${panelHeadStyle}">문제 영역 &amp; 유형별 문항수 분포 (단위: 개)</div>
       <div style="display:flex;flex-wrap:wrap">
         <div style="flex:1;min-width:220px;border-right:1px solid var(--line);overflow-x:auto">
@@ -8166,7 +8169,7 @@ function eaReportBody(entry, opts){
     const pointData=cats.map(c=>({name:c.name, value:eaRoundPts((c.questions||[]).reduce((m,q)=>m+(Number(q.points)||0),0))}));
     const totalPtsRounded=eaRoundPts(pointData.reduce((m,d)=>m+d.value,0));
     const maxPt=Math.max(1, ...pointData.map(d=>d.value));
-    h+=`<div style="border:1.5px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:18px;page-break-inside:avoid;break-inside:avoid">
+    h+=`<div style="border:1.5px solid var(--line);border-radius:10px;margin-bottom:18px;page-break-inside:avoid;break-inside:avoid">
       <div style="${panelHeadStyle}">문제 영역별 배점 분석 (단위: 점)</div>
       <div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%">
         <thead><tr style="background:#f7f9fc">
@@ -8228,7 +8231,7 @@ function eaReportBody(entry, opts){
   } else {
     cats.forEach(cat=>{
       const color=eaCatColor(catNames, cat.name, dept);
-      h+=`<div style="border:1.5px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:14px;page-break-inside:avoid;break-inside:avoid">
+      h+=`<div style="border:1.5px solid var(--line);border-radius:10px;margin-bottom:14px;page-break-inside:avoid;break-inside:avoid">
         <div style="background:${color};color:${eaTextOn(color)};padding:8px 14px;font-weight:800;font-size:.86rem;display:flex;justify-content:space-between">
           <span>${esc(cat.name)}</span><span>${(cat.questions||[]).length}문항</span>
         </div>
@@ -8253,7 +8256,7 @@ function eaReportBody(entry, opts){
   const studentsForBody=studentFilter ? (entry.students||[]).filter(s=>studentFilter.includes(s.id)) : (entry.students||[]);
   if(studentsForBody.length){
     const rows=studentsForBody.map(s=>({s, info:eaStudentScore(entry, s.id)})).sort((a,b)=>b.info.earned-a.info.earned);
-    h+=`<div style="border:1.5px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:14px;page-break-inside:avoid;break-inside:avoid">
+    h+=`<div style="border:1.5px solid var(--line);border-radius:10px;margin-bottom:14px;page-break-inside:avoid;break-inside:avoid">
       <div style="background:${ac.color};color:#fff;padding:8px 14px;font-weight:800;font-size:.86rem">👤 학생별 채점 결과</div>
       <div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%">
         <thead><tr style="background:#f7f9fc">
@@ -8277,7 +8280,7 @@ function eaReportBody(entry, opts){
     });
   }
   if(entry.note){
-    h+=`<div style="border:1.5px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:14px;page-break-inside:avoid;break-inside:avoid">
+    h+=`<div style="border:1.5px solid var(--line);border-radius:10px;margin-bottom:14px;page-break-inside:avoid;break-inside:avoid">
       <div style="background:#2b3648;color:#fff;padding:10px 16px;font-family:inherit;font-style:normal;font-weight:800;font-size:.9rem;letter-spacing:.02em">Teacher's Comment</div>
       <div style="background:#fff;padding:16px 18px;font-family:'Nanum Pen Script',cursive;font-size:1.35rem;line-height:1.7;color:#1f2937;white-space:pre-wrap">${eaSanitizeNoteHTML(eaNoteInitialHTML(entry.note))}</div>
     </div>`;
@@ -8342,9 +8345,10 @@ function eaStudentDetailHTML(entry, studentId, ac){
           const rowsHtml=qs.map((q,qi)=>{
             const {resultHTML,rowBg}=gradeResultHTML(cat,q);
             const bg=rowBg||`background:${EA_ROW_STRIPE[rowIdx%EA_ROW_STRIPE.length]}`;
+            const isLast=qi===qs.length-1;
             rowIdx++;
             return `<tr style="${bg}">
-              ${qi===0?`<td rowspan="${qs.length}" style="padding:8px;text-align:center;font-weight:800;border-bottom:1px solid var(--line);border-right:1.5px solid var(--line);vertical-align:middle;background:${catBg}">${esc(cat.name)}</td>`:''}
+              <td style="padding:8px;text-align:center;font-weight:800;${isLast?'border-bottom:1px solid var(--line);':''}border-right:1.5px solid var(--line);vertical-align:middle;background:${catBg}">${qi===0?esc(cat.name):''}</td>
               <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line);font-weight:700">${esc(q.no||'')}</td>
               <td style="padding:8px;border-bottom:1px solid var(--line)">${eaQuestionHTML(q.question)}</td>
               <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line)">${esc(q.points||'')}</td>
@@ -8358,7 +8362,7 @@ function eaStudentDetailHTML(entry, studentId, ac){
   } else {
     cats.forEach(cat=>{
       const color=eaCatColor(catNames, cat.name, detailDept);
-      h+=`<div style="border:1.5px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:14px;page-break-inside:avoid;break-inside:avoid">
+      h+=`<div style="border:1.5px solid var(--line);border-radius:10px;margin-bottom:14px;page-break-inside:avoid;break-inside:avoid">
         <div style="background:${color};color:${eaTextOn(color)};padding:8px 14px;font-weight:800;font-size:.86rem;display:flex;justify-content:space-between">
           <span>${esc(cat.name)}</span><span>${(cat.questions||[]).length}문항</span>
         </div>
@@ -8402,9 +8406,10 @@ function eaStudentDetailHTML(entry, studentId, ac){
               const catBg=EA_HS_ZEBRA[ci%EA_HS_ZEBRA.length];
               const rowsHtml=questions.map((q,qi)=>{
                 const rowBg=EA_ROW_STRIPE[rowIdx%EA_ROW_STRIPE.length];
+                const isLast=qi===questions.length-1;
                 rowIdx++;
                 return `<tr style="background:${rowBg}">
-                ${qi===0?`<td rowspan="${questions.length}" style="padding:8px;text-align:center;font-weight:800;border-bottom:1px solid var(--line);border-right:1.5px solid var(--line);vertical-align:middle;background:${catBg}">${esc(label)}</td>`:''}
+                <td style="padding:8px;text-align:center;font-weight:800;${isLast?'border-bottom:1px solid var(--line);':''}border-right:1.5px solid var(--line);vertical-align:middle;background:${catBg}">${qi===0?esc(label):''}</td>
                 <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line);font-weight:700">${esc(q.no||'')}</td>
                 <td style="padding:8px;border-bottom:1px solid var(--line)">${eaQuestionHTML(q.question)}</td>
                 <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line)">${esc(q.points||'')}</td>
@@ -8514,7 +8519,7 @@ function eaMockExamChartFor(entry, studentId){
   const rosterStu=eaFindRosterStudentByName(s.name); if(!rosterStu) return '';
   const series=mockExamSeriesFor(rosterStu.id);
   if(!series.some(r=>r.score!=null || r.absent)) return '';
-  return `<div style="border:1.5px solid var(--line);border-radius:10px;overflow:hidden;margin-top:4px;page-break-inside:avoid;break-inside:avoid">
+  return `<div style="border:1.5px solid var(--line);border-radius:10px;margin-top:4px;page-break-inside:avoid;break-inside:avoid">
     <div style="background:#7c3aed;color:#fff;padding:8px 14px;font-weight:800;font-size:.86rem">🎓 모의고사 회차별 점수 추이 <span style="font-weight:400;font-size:.76rem">(단어시험 기록 연동 · 1~10회차)</span></div>
     <div style="padding:14px;overflow-x:auto">${eaMockExamChartHTML(series)}</div>
   </div>`;
