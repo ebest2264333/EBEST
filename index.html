@@ -8538,6 +8538,11 @@ function eaPrintSelectorHTML(entry){
   const students=entry.students||[];
   return `<div id="eaPrintSel" style="max-width:820px;margin:0 auto 10px;border:1.5px solid var(--line);border-radius:10px;padding:12px 14px;background:#fafbfd">
     <div style="font-size:.8rem;font-weight:800;margin-bottom:8px">🖨 인쇄 · 엑셀에 포함할 항목</div>
+    <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+      <button class="btn small" type="button" id="eaPrintOnlyStudents" title="전체 분석표는 빼고, 선택된 학생들 리포트만 인쇄합니다">📋 학생 리포트만</button>
+      <button class="btn small" type="button" id="eaPrintOnlyAnalysis" title="학생별 리포트는 빼고, 전체 분석표만 인쇄합니다">📊 분석표만</button>
+      <button class="btn small" type="button" id="eaPrintEverything" title="전체 분석표와 모든 학생 리포트를 다 포함합니다">전체 포함</button>
+    </div>
     <label style="display:inline-flex;align-items:center;gap:5px;font-size:.82rem;font-weight:700;margin-bottom:10px;cursor:pointer">
       <input type="checkbox" data-eaprint-analysis ${sel.includeAnalysis!==false?'checked':''}> 전체 분석표(문항 구성 · 배점 분석 등)
     </label>
@@ -8749,6 +8754,13 @@ function bindExamAnalysis(){
         if(allOnBtn) allOnBtn.onclick=()=>{ (entry.students||[]).forEach(s=>{ sel.students[s.id]=true; }); render(true); };
         const allOffBtn=printSelEl.querySelector('#eaPrintAllOff');
         if(allOffBtn) allOffBtn.onclick=()=>{ (entry.students||[]).forEach(s=>{ sel.students[s.id]=false; }); render(true); };
+        // 자주 쓰는 조합을 한 번에 고를 수 있는 단축 버튼들
+        const onlyStudentsBtn=printSelEl.querySelector('#eaPrintOnlyStudents');
+        if(onlyStudentsBtn) onlyStudentsBtn.onclick=()=>{ sel.includeAnalysis=false; (entry.students||[]).forEach(s=>{ sel.students[s.id]=true; }); render(true); };
+        const onlyAnalysisBtn=printSelEl.querySelector('#eaPrintOnlyAnalysis');
+        if(onlyAnalysisBtn) onlyAnalysisBtn.onclick=()=>{ sel.includeAnalysis=true; (entry.students||[]).forEach(s=>{ sel.students[s.id]=false; }); render(true); };
+        const everythingBtn=printSelEl.querySelector('#eaPrintEverything');
+        if(everythingBtn) everythingBtn.onclick=()=>{ sel.includeAnalysis=true; (entry.students||[]).forEach(s=>{ sel.students[s.id]=true; }); render(true); };
       }
     }
     return;
