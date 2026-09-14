@@ -8285,7 +8285,6 @@ function eaReportBody(entry, opts){
       <div style="background:#fff;padding:16px 18px;font-family:'Nanum Pen Script',cursive;font-size:1.35rem;line-height:1.7;color:#1f2937;white-space:pre-wrap">${eaSanitizeNoteHTML(eaNoteInitialHTML(entry.note))}</div>
     </div>`;
   }
-  h+=`<div style="font-size:.7rem;color:#8b93a7;margin-top:14px;text-align:right">최근 수정: ${entry.updatedBy?esc(entry.updatedBy)+' · ':''}${entry.updatedAt?new Date(entry.updatedAt).toLocaleString('ko-KR'):''}</div>`;
   h+='</div>';
   return h;
 }
@@ -8536,7 +8535,6 @@ function eaStudentReportBody(entry, studentId){
   </div>
   <div style="border:1.5px solid var(--line);border-top:none;border-radius:0 0 14px 14px;padding:18px 22px;background:#fff">`;
   h+=eaStudentDetailHTML(entry, studentId, ac);
-  h+=`<div style="font-size:.7rem;color:#8b93a7;margin-top:14px;text-align:right">최근 수정: ${entry.updatedBy?esc(entry.updatedBy)+' · ':''}${entry.updatedAt?new Date(entry.updatedAt).toLocaleString('ko-KR'):''}</div>`;
   h+='</div>';
   return h;
 }
