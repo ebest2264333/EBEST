@@ -6055,18 +6055,25 @@ function regenHandoverGrid(academy, targetMonth, onlyTeacherName){
   const prevGrid=store.handoverGrid[academy][targetMonth]||{};
   const old=prevGrid.rows||[];
   const overrides=prevGrid.classOverrides||{}; // 반명을 직접 입력(수정)해둔 것 — 어떤 규모로 다시 채우든 항상 유지
+  const splitGroups=prevGrid.splitTargetGroups||{}; // 반이 나뉘어서 과목마다 반명을 따로 입력해둔 그룹(✂️ 모드)
   const freshRows=genHandoverRows(academy,targetMonth);
   let rows=onlyTeacherName ? freshRows.map(fr=>{
     if(norm(fr.prevTeacher)===norm(onlyTeacherName)) return fr; // 내가 담당했던 과목 → 최신 자료로 새로 채움
     const match=old.find(o=>norm(o.prevClass)===norm(fr.prevClass) && norm(o.matchKey||o.subject)===norm(fr.matchKey||fr.subject));
     return match ? {...match} : fr; // 다른 선생님 과목 → 예전에 저장된(직접 수정한) 값 유지, 새로 생긴 행이면 새 값 사용
   }) : freshRows;
-  // 반명(targetClass)은 직접 입력해둔 적이 있으면 새로고침 범위(내 것만/전체)와 상관없이 절대 되돌아가지 않게 강제로 유지한다
+  // 반명(targetClass)은 직접 입력해둔 적이 있으면 새로고침 범위(내 것만/전체)와 상관없이 절대 되돌아가지 않게 강제로 유지한다.
+  // - ✂️로 과목별로 나눠 입력해둔 그룹은 그 과목(행) 각각의 예전 반명을 그대로 이어받는다(그룹 전체를 하나로 덮어쓰지 않음).
+  // - 그 외(그룹 전체가 같은 반명인) 경우는 기존처럼 그룹 override 값을 통째로 적용한다.
   rows=rows.map(r=>{
+    if(splitGroups[norm(r.prevClass)]){
+      const oldRow=old.find(o=>norm(o.prevClass)===norm(r.prevClass) && norm(o.matchKey||o.subject)===norm(r.matchKey||r.subject));
+      return (oldRow && oldRow.targetClass) ? {...r, targetClass:oldRow.targetClass} : r;
+    }
     const ov=overrides[norm(r.prevClass)];
     return (ov!=null && ov!=='') ? {...r, targetClass:ov} : r;
   });
-  store.handoverGrid[academy][targetMonth]={rows, classOverrides:overrides, updatedAt:Date.now()};
+  store.handoverGrid[academy][targetMonth]={rows, classOverrides:overrides, splitTargetGroups:splitGroups, updatedAt:Date.now()};
   save();
 }
 // 인수인계표 칸 너비 — 보는 사람 화면(이 브라우저)에서만 적용, 저장/동기화 안 됨(다른 선생님에게 영향 없음)
@@ -6216,6 +6223,8 @@ function renderHandoverGrid(){
   <thead><tr>${HG_COLS.map((c,ci)=>`<th style="position:relative;background:var(--ink);color:#fff;padding:7px 14px 7px 8px;font-size:.76rem;text-align:center;border:1px solid #333;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${esc(colLabels[ci])}">${colLabels[ci]}<span class="hg-resizer" data-col="${c.key}" title="드래그해서 칸 너비 조절 (이 화면에서만 적용)" style="position:absolute;right:0;top:0;bottom:0;width:8px;cursor:col-resize;user-select:none"></span></th>`).join('')}</tr></thead><tbody>
   ${groups.map(g2=>{
     const curTarget=(g2.rows[0]||{}).targetClass||'';
+    // 반이 합쳐졌다가 다음 달 다시 갈라지는 경우처럼, 같은 지난달 반 소속 과목들의 "이번달 반명"을 서로 다르게 적어야 할 때 켜는 모드
+    const splitMode=!!(g.splitTargetGroups && g.splitTargetGroups[norm(g2.key)]);
     const displayRows=hgDisplayOrder(g2.rows); // 합쳐진 행들은 원래 떨어져 있어도 화면에선 나란히 모아서 보여준다
     const cinfo=hgClusterInfo(displayRows);
     return displayRows.map((r,ri)=>{
@@ -6262,12 +6271,23 @@ function renderHandoverGrid(){
     <td style="border:1px solid var(--line);padding:6px;text-align:center">${txtCell(r.progress,'progress',r.id)}</td>
     <td style="border:1px solid var(--line);padding:6px">${txtCell(r.note,'note',r.id,true)}</td>
     ${targetProgressTd}`;
+      const targetClassCell=splitMode
+        ? `<td style="border:1px solid var(--line);padding:6px;text-align:center;vertical-align:middle">
+      <div style="display:flex;align-items:center;gap:3px">
+        <input type="text" list="dl_hgclass_${a}" data-hgfield="${r.id}|targetClass" value="${esc(r.targetClass||'')}" placeholder="반 선택·직접 입력" style="flex:1;min-width:0;border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-family:inherit;font-size:.8rem;font-weight:800;text-align:center;${r.targetClass?'':'color:#c0392b'}">
+        ${ri===0?`<button type="button" data-hgmergetarget="${esc(g2.key)}" title="과목별로 나눠 적은 반명을 다시 하나로 합치기" style="flex:none;border:none;background:#e6e9f0;color:#5a6478;border-radius:4px;padding:0 4px;font-size:.62rem;cursor:pointer;line-height:1.6">🔗</button>`:''}
+      </div>
+    </td>`
+        : (ri===0?`<td rowspan="${g2.rows.length}" style="border:1px solid var(--line);padding:6px;text-align:center;vertical-align:middle">
+      <div style="display:flex;align-items:center;gap:3px">
+        <input type="text" list="dl_hgclass_${a}" data-hggroupclass="${esc(g2.key)}" value="${esc(curTarget)}" placeholder="반 선택·직접 입력" style="flex:1;min-width:0;border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-family:inherit;font-size:.8rem;font-weight:800;text-align:center;${curTarget?'':'color:#c0392b'}">
+        <button type="button" data-hgsplittarget="${esc(g2.key)}" title="반이 나뉘어서 과목마다 다음달 반명이 다를 때 — 과목별로 따로 입력하게 바꾸기" style="flex:none;border:none;background:#e6e9f0;color:#5a6478;border-radius:4px;padding:0 4px;font-size:.62rem;cursor:pointer;line-height:1.6">✂️</button>
+      </div>
+    </td>`:'');
       return `<tr>
     <td style="border:1px solid var(--line);padding:6px;text-align:center"><input type="checkbox" data-hgmergesel="${r.id}"></td>
-    ${ri===0?`<td rowspan="${g2.rows.length}" style="border:1px solid var(--line);padding:6px;text-align:center;font-weight:800;background:#f6f8fc;vertical-align:middle">${esc(r.prevClass)}</td>
-    <td rowspan="${g2.rows.length}" style="border:1px solid var(--line);padding:6px;text-align:center;vertical-align:middle">
-      <input type="text" list="dl_hgclass_${a}" data-hggroupclass="${esc(g2.key)}" value="${esc(curTarget)}" placeholder="반 선택·직접 입력" style="width:100%;min-width:90px;border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-family:inherit;font-size:.8rem;font-weight:800;text-align:center;${curTarget?'':'color:#c0392b'}">
-    </td>`:''}
+    ${ri===0?`<td rowspan="${g2.rows.length}" style="border:1px solid var(--line);padding:6px;text-align:center;font-weight:800;background:#f6f8fc;vertical-align:middle">${esc(r.prevClass)}</td>`:''}
+    ${targetClassCell}
     <td style="border:1px solid var(--line);padding:6px;text-align:center;font-weight:700;color:var(--sub)" title="지난달 과목명 — 참고용, 수정 안 됨">${esc(r.subject)}</td>
     ${targetCells}
   </tr>`;
@@ -6386,6 +6406,31 @@ function bindHandoverGrid(){
     g.classOverrides=g.classOverrides||{};
     if(val.trim()) g.classOverrides[norm(key)]=val; else delete g.classOverrides[norm(key)];
     g.rows.forEach(r=>{ if(r.prevClass===key) r.targetClass=val; });
+    g.updatedAt=Date.now();
+    save(); render(true);
+  });
+  // ✂️ 반이 나뉘어서 과목마다 다음달 반명이 다를 때 — 이 그룹만 과목별로 따로 입력하는 모드로 전환
+  v.querySelectorAll('[data-hgsplittarget]').forEach(btn=>btn.onclick=(e)=>{
+    e.preventDefault(); e.stopPropagation();
+    const key=btn.dataset.hgsplittarget;
+    const g=handoverGridFor(a, state.hgMonth); if(!g) return;
+    g.splitTargetGroups=g.splitTargetGroups||{};
+    g.splitTargetGroups[norm(key)]=true;
+    g.updatedAt=Date.now();
+    save(); render(true);
+  });
+  // 🔗 과목별로 나눠 적었던 반명을 다시 하나로 합쳐서, 그룹 전체에 같은 반명이 적용되는 원래 방식으로 되돌리기
+  v.querySelectorAll('[data-hgmergetarget]').forEach(btn=>btn.onclick=(e)=>{
+    e.preventDefault(); e.stopPropagation();
+    const key=btn.dataset.hgmergetarget;
+    const g=handoverGridFor(a, state.hgMonth); if(!g) return;
+    if(!confirm('과목별로 다르게 입력해둔 반명을 다시 하나로 합칠까요? 첫 번째 과목에 적힌 반명으로 통일됩니다.')) return;
+    if(g.splitTargetGroups) delete g.splitTargetGroups[norm(key)];
+    const groupRows=g.rows.filter(r=>r.prevClass===key);
+    const val=(groupRows[0]||{}).targetClass||'';
+    g.classOverrides=g.classOverrides||{};
+    if(val.trim()) g.classOverrides[norm(key)]=val; else delete g.classOverrides[norm(key)];
+    groupRows.forEach(r=>{ r.targetClass=val; });
     g.updatedAt=Date.now();
     save(); render(true);
   });
