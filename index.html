@@ -644,22 +644,24 @@ function sanitizeKeysForFirebase(obj){
 }
 function toast(msg){ const el=document.getElementById('saved'); el.textContent=msg; el.classList.add('show');
   clearTimeout(saveTimer); saveTimer=setTimeout(()=>{el.classList.remove('show'); el.textContent='저장됨 ✓';},2200); }
-// 🔗 복사+방열기 — 카톡 오픈채팅방 링크가 등록돼있으면, 내용을 클립보드에 복사하고 그 방을 새 창으로 연다
-// (카톡 정책상 "누르면 바로 방까지 열리고 내용까지 전송 완료"는 불가능 — 방이 열리면 붙여넣기(Ctrl+V) 후 전송은 직접 눌러야 함)
-async function kakaoCopyAndOpen(memo, url, className){
+// 📋 복사 — 내용을 클립보드에 복사만 한다. 방은 열지 않는다(반이 여러 개일 때마다 카카오 웹 확인화면을 거치는 게
+// 오히려 더 느리고 번거롭다는 피드백을 반영 — 이미 켜져있는 PC 카카오톡에서 직접 그 방을 클릭하는 게 더 빠르다).
+async function kakaoCopy(memo, className){
   let copied=false;
   try{
     if(navigator.clipboard && navigator.clipboard.writeText){ await navigator.clipboard.writeText(memo||''); copied=true; }
   }catch(e){ copied=false; }
-  if(!copied){
+  if(copied){
+    toast(`📋 [${className||''}] 내용이 복사됐어요 — 카카오톡에서 그 반 채팅방에 붙여넣기(Ctrl+V) 해주세요`);
+  } else {
     // 클립보드 권한이 없는 환경(예: file://로 직접 연 경우)이면 직접 보고 복사할 수 있게 보여준다
     prompt('클립보드 자동 복사가 안 되는 환경이에요. 아래 내용을 직접 선택해서 복사(Ctrl+C)해주세요:', memo||'');
   }
-  if(url){
-    window.open(url, '_blank');
-  } else {
-    toast(`⚠ [${className||''}] 반에 카톡 오픈채팅방 링크가 등록되어 있지 않습니다 — 편집에서 먼저 등록해주세요${copied?' (내용은 복사됐어요)':''}`);
-  }
+}
+// ↗ 방 열기 — 카톡 오픈채팅방 링크가 등록돼있을 때만, 그 방을 새 창으로 연다(선택사항 — 링크로 새로 들어가야 할 때만 누르면 됨)
+function kakaoOpenRoom(url, className){
+  if(url){ window.open(url, '_blank'); }
+  else { toast(`⚠ [${className||''}] 반에 카톡 오픈채팅방 링크가 등록되어 있지 않습니다 — 편집에서 먼저 등록해주세요`); }
 }
 
 let UPFILTER=null; // 학원별 마스터 업로드 시 해당 학원 시트만 반영
@@ -4905,7 +4907,8 @@ function renderToday(list){
                       <input type="checkbox" class="hwkakaochk" data-k="${esc(x.k)}" data-s="${esc(x.s)}" data-subj="${esc(sj.subj||'')}" ${sj.kakaoSent?'checked':''}> 💬 ${sj.subj?esc(sj.subj)+' - ':''}카톡 전송
                     </label>
                     <input type="text" class="hwkakaomemo" data-k="${esc(x.k)}" data-s="${esc(x.s)}" data-subj="${esc(sj.subj||'')}" placeholder="전송할 숙제/진도 내용 입력" value="${esc(subjMemo)}" style="flex:1;min-width:180px;border:1px solid #dcdde1;border-radius:6px;padding:4px 8px;font-family:inherit;font-size:.8rem;">
-                    <button type="button" class="hwkakaoopen" data-memo="${esc(subjMemo)}" data-url="${esc(x.kakaoOpenChatUrl)}" data-classname="${esc(x.className)}" title="${x.kakaoOpenChatUrl?'내용을 복사하고 이 반 카톡 오픈채팅방을 새 창으로 엽니다 (열리면 붙여넣기 후 전송해주세요)':'이 반에 카톡 오픈채팅방 링크가 등록되어 있지 않습니다 — [반·교재] 편집에서 먼저 등록해주세요'}" style="flex:none;border:1px solid ${x.kakaoOpenChatUrl?'#f5c6cb':'#dcdde1'};background:${x.kakaoOpenChatUrl?'#fee500':'#f1f3f8'};color:#3c1e1e;border-radius:6px;padding:4px 8px;font-size:.76rem;font-weight:700;cursor:pointer;white-space:nowrap">🔗 복사+방열기</button>
+                    <button type="button" class="hwkakaocopy" data-memo="${esc(subjMemo)}" data-classname="${esc(x.className)}" title="내용을 클립보드에 복사합니다 — 카톡에서 그 반 채팅방에 붙여넣기만 하면 돼요" style="flex:none;border:1px solid #f5c6cb;background:#fee500;color:#3c1e1e;border-radius:6px;padding:4px 8px;font-size:.76rem;font-weight:700;cursor:pointer;white-space:nowrap">📋 복사</button>
+                    ${x.kakaoOpenChatUrl?`<button type="button" class="hwkakaoopenroom" data-url="${esc(x.kakaoOpenChatUrl)}" data-classname="${esc(x.className)}" title="이 반 카톡 오픈채팅방을 새 창으로 엽니다 (평소엔 안 눌러도 돼요 — PC 카카오톡에 이미 있는 방을 직접 클릭하는 게 더 빠릅니다)" style="flex:none;border:1px solid var(--line);background:#fff;color:#5a6478;border-radius:6px;padding:4px 7px;font-size:.76rem;cursor:pointer">↗</button>`:''}
                   </div>`;
                 }).join('')}
               </div>
@@ -4956,7 +4959,8 @@ function renderToday(list){
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:5px">
         <span style="font-size:.78rem;font-weight:800;color:${AC[c.academy].color};white-space:nowrap">📌 오늘의 과제 <span style="font-weight:600;color:#8b93a7">${esc(assignHeaderLabel(state.date))}</span></span>
         <button type="button" class="asgadditem" data-k="${esc(k)}" title="항목을 한 줄 더 추가합니다" style="flex:none;border:1px solid ${AC[c.academy].color}55;background:#fff;color:${AC[c.academy].color};border-radius:6px;padding:3px 9px;font-size:.74rem;font-weight:800;cursor:pointer">＋ 항목 추가</button>
-        <button type="button" class="asgkakaoopen" data-k="${esc(k)}" data-url="${esc(c.kakaoOpenChatUrl||'')}" data-classname="${esc(c.name)}" title="${c.kakaoOpenChatUrl?'위 항목들을 <날짜 과제> 형식으로 묶어 복사하고, 이 반 카톡 오픈채팅방을 새 창으로 엽니다 (열리면 붙여넣기 후 전송해주세요)':'이 반에 카톡 오픈채팅방 링크가 등록되어 있지 않습니다 — 편집에서 먼저 등록해주세요'}" style="flex:none;border:1px solid ${c.kakaoOpenChatUrl?'#f5c6cb':'#dcdde1'};background:${c.kakaoOpenChatUrl?'#fee500':'#f1f3f8'};color:#3c1e1e;border-radius:6px;padding:5px 9px;font-size:.76rem;font-weight:700;cursor:pointer;white-space:nowrap">🔗 복사+방열기</button>
+        <button type="button" class="asgkakaocopy" data-k="${esc(k)}" data-classname="${esc(c.name)}" title="위 항목들을 <날짜 과제> 형식으로 묶어 클립보드에 복사합니다 — 카톡에서 그 반 채팅방에 붙여넣기만 하면 돼요" style="flex:none;border:1px solid #f5c6cb;background:#fee500;color:#3c1e1e;border-radius:6px;padding:5px 9px;font-size:.76rem;font-weight:700;cursor:pointer;white-space:nowrap">📋 복사</button>
+        ${c.kakaoOpenChatUrl?`<button type="button" class="asgkakaoopenroom" data-url="${esc(c.kakaoOpenChatUrl)}" data-classname="${esc(c.name)}" title="이 반 카톡 오픈채팅방을 새 창으로 엽니다 (평소엔 안 눌러도 돼요 — PC 카카오톡에 이미 있는 방을 직접 클릭하는 게 더 빠릅니다)" style="flex:none;border:1px solid var(--line);background:#fff;color:#5a6478;border-radius:6px;padding:5px 7px;font-size:.76rem;cursor:pointer">↗</button>`:''}
       </div>
       <div style="display:flex;flex-direction:column;gap:5px">
         ${assignItems.map((val,i)=>`<div style="display:flex;gap:6px;align-items:center">
@@ -5248,19 +5252,23 @@ function bindToday(){
     }
     save();
   });
-  // 🔗 복사+방열기(결석생 숙제 패널) — 그 반 카톡 오픈채팅방 링크가 등록돼있으면, 메모 내용을 클립보드에 복사하고 그 방을 새 창으로 연다
-  v.querySelectorAll('.hwkakaoopen').forEach(btn=>btn.onclick=()=>{
+  // 📋 복사(결석생 숙제 패널) — 메모 내용만 클립보드에 복사. 방은 안 연다(PC 카카오톡에서 직접 그 방을 누르는 게 더 빠름)
+  v.querySelectorAll('.hwkakaocopy').forEach(btn=>btn.onclick=()=>{
     const row=btn.closest('div');
     const memoInp=row?row.querySelector('.hwkakaomemo'):null;
     const memo=memoInp?memoInp.value:(btn.dataset.memo||'');
-    kakaoCopyAndOpen(memo, btn.dataset.url, btn.dataset.classname);
+    kakaoCopy(memo, btn.dataset.classname);
   });
-  // 🔗 복사+방열기(오늘의 과제) — 반마다 매일 적는 "오늘의 과제" 항목들을 <날짜 과제> 형식으로 묶어서 복사하고, 그 반 카톡 오픈채팅방으로 바로 연결
-  v.querySelectorAll('.asgkakaoopen').forEach(btn=>btn.onclick=()=>{
+  // 📋 복사(오늘의 과제) — 반마다 매일 적는 "오늘의 과제" 항목들을 <날짜 과제> 형식으로 묶어서 복사만 한다
+  v.querySelectorAll('.asgkakaocopy').forEach(btn=>btn.onclick=()=>{
     const k=btn.dataset.k, hw=hwFor(state.date);
     const items=assignItemsFor((hw[k]||{})['_assign']||{});
     const memo=buildAssignNote(items, state.date);
-    kakaoCopyAndOpen(memo, btn.dataset.url, btn.dataset.classname);
+    kakaoCopy(memo, btn.dataset.classname);
+  });
+  // ↗ 방 열기 — 결석생 패널·오늘의 과제 두 곳 공통. 링크가 등록된 반에서만 버튼이 보이고, 누르면 그 방을 새 창으로 연다(선택사항)
+  v.querySelectorAll('.hwkakaoopenroom, .asgkakaoopenroom').forEach(btn=>btn.onclick=()=>{
+    kakaoOpenRoom(btn.dataset.url, btn.dataset.classname);
   });
 }
 
