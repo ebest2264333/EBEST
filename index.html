@@ -865,6 +865,30 @@ async function pullShared(silent){
   } finally { pullBusy=false; }
   updateSyncBadge();
 }
+async function refreshReplaceFieldsFromServer(fields){
+  // [버그 수정] 반·학생 엑셀 업로드처럼 "학생 명단(REPLACE_FIELDS)"을 직접 고치는 작업을 하기 직전에,
+  // 혹시 이 기기가 아직 못 받아온(최근 1분 폴링 주기 사이의) 더 최신 서버 내용이 있는지 먼저 확인해서 반영한다.
+  // 이 확인 없이 바로 store.students를 고치면, 예를 들어 다른 기기에서 방금 학생을 '퇴원' 처리했는데
+  // 이 기기가 그 사실을 아직 못 받아온 상태에서 업로드로 학생 명단을 살짝만 바꿔도 save()가 "방금 내가 고쳤다"고
+  // 판단해 이 기기의 (퇴원 처리 반영 전) 오래된 학생 명단 전체로 서버 내용을 덮어써버려, 퇴원 처리가 다시 재원으로
+  // 돌아와 보이는 사고가 난다.
+  if(!syncOn()) return;
+  try{
+    const pack=await fbGet('/shared', 12000);
+    if(!pack) return;
+    const rStamps=pack.fieldStamps||{};
+    const lStamps=store.fieldStamps||{};
+    (fields||REPLACE_FIELDS).forEach(f=>{
+      if(pack[f]==null) return;
+      if((rStamps[f]||0) > (lStamps[f]||0)){
+        store[f]=pack[f];
+        store.fieldStamps=store.fieldStamps||{}; store.fieldStamps[f]=rStamps[f];
+        syncSnap=syncSnap||{}; syncSnap[f]=JSON.stringify(pack[f]);
+      }
+    });
+    if(pack.updatedAt && pack.updatedAt>(store.sharedAt||0)) store.sharedAt=pack.updatedAt;
+  }catch(e){ /* 네트워크 문제면 그냥 이 기기에 있는 최신본으로 계속 진행 */ }
+}
 let syllabusSyncBusy=false, lastSylSyncAt=0;
 function schedulePushSyllabus(){
   if(!syncOn()) return;
@@ -7395,6 +7419,13 @@ function sylSheetsFromWorkbook(wb){
 }
 function sylCourseOf(en){ return (en.course||'').trim() || '기타과정'; }
 function sylEntrySize(en){ try{ return JSON.stringify(en).length; }catch(e){ return 0; } }
+function sylXlsxSheetsOf(en){
+  if(en.sheets) return en.sheets;
+  if(en.remote && sylAttCache[en.id]){
+    try{ const fd=sylAttCache[en.id].fileData; return JSON.parse(fd.slice(fd.indexOf(',')+1)); }catch(e){ return null; }
+  }
+  return null;
+}
 function sylIsQuotaErr(e){ return !!(e && (e.name==='QuotaExceededError' || e.code===22 || e.code===1014 || /quota/i.test(e.message||''))); }
 function sylErrAlert(e, what){
   if(sylIsQuotaErr(e)) alert('저장 공간이 부족해 '+what+'이 저장되지 못했습니다. 안 쓰는 자료를 삭제하거나 "🔗 링크로 추가"를 이용해주세요.\n('+(e&&e.message||e)+')');
@@ -7510,7 +7541,7 @@ function renderSyllabus(){
     const courseOptions=[...new Set(store.syllabus.filter(s=>!s._deleted).map(sylCourseOf))].sort((a,b)=>a.localeCompare(b,'ko'));
     const sylBytes=store.syllabus.reduce((n,s)=>n+sylEntrySize(s),0);
     const usageWarn=sylBytes>3*1024*1024;
-    const migratable=store.syllabus.filter(s=>!s._deleted && (s.kind==='pdf'||s.kind==='file') && s.fileData && !s.remote);
+    const migratable=store.syllabus.filter(s=>!s._deleted && !s.remote && (((s.kind==='pdf'||s.kind==='file') && s.fileData) || (s.kind==='xlsx' && s.sheets)));
     h+=`<div style="background:${usageWarn?'#fdf3e3':'#f7f9fc'};border:1px solid ${usageWarn?'var(--warn)':'var(--line)'};border-radius:10px;padding:10px;margin-bottom:12px">
       <div style="font-size:.78rem;font-weight:700;color:${usageWarn?'var(--warn)':'var(--sub)'};margin-bottom:8px;display:flex;align-items:center;flex-wrap:wrap;gap:8px">
         <span>💾 Syllabus 저장 용량 약 ${sylFmtBytes(sylBytes)} 사용 중 ${usageWarn?'— 브라우저 저장 공간이 얼마 안 남았을 수 있어요. 아래 "☁️ 서버로 옮겨서 공간 확보"를 눌러 큰 파일들을 서버 저장으로 옮기거나, 안 쓰는 자료를 삭제해주세요.':'(브라우저에 직접 저장 — 용량이 크면 저장이 안 될 수 있어 큰 파일은 서버 저장을 권장합니다)'}</span>
@@ -7544,7 +7575,7 @@ function renderSyllabus(){
     h+=`<div class="ccard syl-card ${open?'open':''}" data-syltitle="${esc((en.title||'').toLowerCase())}" style="border-left-color:var(--ebest);margin-bottom:12px">
       <div class="chead" data-toggle="${esc(en.id)}"><span class="arrow">▶</span>
         <span style="font-weight:800">${esc(en.title||'제목 없음')}</span>
-        <span style="font-size:.76rem;color:var(--sub);margin-left:8px">${en.kind==='pdf'?'📄 PDF · ':en.kind==='file'?'📎 파일 · ':en.kind==='link'?'🔗 링크 · ':''}${en.remote?'☁️ ':''}${esc(en.dept||'기타')} · ${esc(sylCourseOf(en))} · ${esc(en.uploadedBy||'')} · ${en.uploadedAt?new Date(en.uploadedAt).toLocaleDateString('ko-KR'):''}${admin&&en.kind!=='link'?' · '+sylFmtBytes(en.remote?(en.size||0):sylEntrySize(en)):''}</span>
+        <span style="font-size:.76rem;color:var(--sub);margin-left:8px">${en.kind==='pdf'?'📄 PDF · ':en.kind==='file'?'📎 파일 · ':en.kind==='link'?'🔗 링크 · ':en.kind==='xlsx'?'📊 엑셀 · ':''}${en.remote?'☁️ ':''}${esc(en.dept||'기타')} · ${esc(sylCourseOf(en))} · ${esc(en.uploadedBy||'')} · ${en.uploadedAt?new Date(en.uploadedAt).toLocaleDateString('ko-KR'):''}${admin&&en.kind!=='link'?' · '+sylFmtBytes(en.remote?(en.size||0):sylEntrySize(en)):''}</span>
         ${admin?`<span style="margin-left:auto;display:flex;gap:6px"><button class="btn small sylRename" data-id="${esc(en.id)}">✎ 이름 수정</button><button class="btn small sylCourseEdit" data-id="${esc(en.id)}">📂 과정 수정</button><button class="del sylDel" data-id="${esc(en.id)}">삭제</button></span>`:''}
       </div>
       <div class="cbody" style="padding:12px 16px">`;
@@ -7565,14 +7596,18 @@ function renderSyllabus(){
       const fd=en.fileData || sylAttCache[en.id].fileData;
       h+=`<div class="empty">이 파일 형식(${esc((en.fileName||'').split('.').pop()||'')})은 화면 미리보기를 지원하지 않아요. 다운로드해서 확인해주세요.</div>
         <div style="margin-top:10px"><a href="${fd}" download="${esc(en.fileName||'file')}" class="btn primary small">⬇ ${esc(en.fileName||'다운로드')}</a></div>`;
-    } else if(en.sheets && en.sheets.length>1){
+    } else if(en.kind==='xlsx' && en.remote && !sylAttCache[en.id]){
+      h+=`<div class="empty" style="text-align:left">☁️ 이 자료는 서버에 저장돼 있어요(브라우저 저장 공간을 쓰지 않아요). 눌러서 불러와주세요.</div>
+        <div style="margin-top:10px"><button class="btn primary small sylMainOpen" data-id="${esc(en.id)}">🔄 자료 불러오기</button></div>`;
+    } else if(sylXlsxSheetsOf(en) && sylXlsxSheetsOf(en).length>1){
+      const sheets=sylXlsxSheetsOf(en);
       state.sylSheetSel=state.sylSheetSel||{};
-      const cur=state.sylSheetSel[en.id]||en.sheets[0].name;
-      h+=`<div class="cbtns" style="margin-bottom:10px">${en.sheets.map(sh=>`<button class="btn ${cur===sh.name?'primary':'small'} sylSheetBtn" data-id="${esc(en.id)}" data-sheet="${esc(sh.name)}">${esc(sh.name)}</button>`).join('')}</div>`;
-      const active=en.sheets.find(sh=>sh.name===cur)||en.sheets[0];
+      const cur=state.sylSheetSel[en.id]||sheets[0].name;
+      h+=`<div class="cbtns" style="margin-bottom:10px">${sheets.map(sh=>`<button class="btn ${cur===sh.name?'primary':'small'} sylSheetBtn" data-id="${esc(en.id)}" data-sheet="${esc(sh.name)}">${esc(sh.name)}</button>`).join('')}</div>`;
+      const active=sheets.find(sh=>sh.name===cur)||sheets[0];
       h+=`<div style="overflow-x:auto">${active.html}</div>`;
-    } else if(en.sheets && en.sheets.length===1){
-      h+=`<div style="overflow-x:auto">${en.sheets[0].html}</div>`;
+    } else if(sylXlsxSheetsOf(en) && sylXlsxSheetsOf(en).length===1){
+      h+=`<div style="overflow-x:auto">${sylXlsxSheetsOf(en)[0].html}</div>`;
     } else {
       h+='<div class="empty">표시할 내용이 없습니다.</div>';
     }
@@ -7696,7 +7731,15 @@ function bindSyllabus(){
       try{
         if(ext==='xlsx'||ext==='xls'){
           const sheets=await readOneXlsx(f);
-          store.syllabus.push({id, title, dept, course, kind:'xlsx', sheets, uploadedBy:myName, uploadedAt:Date.now()});
+          if(syncOn()){
+            // 이미지·PDF·기타 파일과 마찬가지로, 엑셀 표 내용(sheets)도 이 기기에 쌓아두지 않고 서버에 조각내어 저장한다
+            if(upBtn) upBtn.textContent='⏳ 업로드 중...';
+            const json='sylxlsx:,'+JSON.stringify(sheets);
+            await sylChunkPut(id, f.name, json, (i,total)=>{ if(upBtn && total>1) upBtn.textContent=`⏳ 업로드 중... (${i}/${total})`; });
+            store.syllabus.push({id, title, dept, course, kind:'xlsx', remote:true, fileName:f.name, size:json.length, uploadedBy:myName, uploadedAt:Date.now()});
+          } else {
+            store.syllabus.push({id, title, dept, course, kind:'xlsx', sheets, uploadedBy:myName, uploadedAt:Date.now()});
+          }
         } else {
           const kind = ext==='pdf' ? 'pdf' : 'file'; // pdf는 화면 미리보기, 그 외(한글·워드 등)는 다운로드로만 제공
           const fileData=await readAsDataURL(f);
@@ -7810,17 +7853,22 @@ function bindSyllabus(){
   const migrateBtn=v.querySelector('#sylMigrateBtn');
   if(migrateBtn) migrateBtn.onclick=async()=>{
     if(!isAdminRole()) return;
-    const targets=store.syllabus.filter(s=>!s._deleted && (s.kind==='pdf'||s.kind==='file') && s.fileData && !s.remote);
+    const targets=store.syllabus.filter(s=>!s._deleted && !s.remote && (((s.kind==='pdf'||s.kind==='file') && s.fileData) || (s.kind==='xlsx' && s.sheets)));
     if(!targets.length) return;
-    if(!confirm(`${targets.length}개 파일을 서버로 옮겨서 이 기기의 저장 공간을 확보할까요? (파일 내용은 그대로 유지되고, 다른 기기에서도 그대로 볼 수 있어요)`)) return;
+    if(!confirm(`${targets.length}개 자료를 서버로 옮겨서 이 기기의 저장 공간을 확보할까요? (내용은 그대로 유지되고, 다른 기기에서도 그대로 볼 수 있어요)`)) return;
     migrateBtn.disabled=true;
     let done=0, failed=[];
     for(const en of targets){
       migrateBtn.textContent=`⏳ 옮기는 중... (${done+1}/${targets.length})`;
       try{
-        await sylChunkPut(en.id, en.fileName||en.title, en.fileData);
         const size=sylEntrySize(en);
-        delete en.fileData;
+        if(en.kind==='xlsx'){
+          await sylChunkPut(en.id, en.fileName||en.title, 'sylxlsx:,'+JSON.stringify(en.sheets));
+          delete en.sheets;
+        } else {
+          await sylChunkPut(en.id, en.fileName||en.title, en.fileData);
+          delete en.fileData;
+        }
         en.remote=true; en.size=size; en.updatedAt=Date.now();
         done++;
       }catch(e){ failed.push(en.title||en.fileName); }
@@ -10233,7 +10281,8 @@ function bindSet(){
     deleteClassAction(a,m,id);
   });
   const backfillBtn=v.querySelector('#backfillStudentsBtn');
-  if(backfillBtn) backfillBtn.onclick=()=>{
+  if(backfillBtn) backfillBtn.onclick=async()=>{
+    await refreshReplaceFieldsFromServer(['students']); // 다른 기기의 최신 학생 상태(퇴원 처리 등)를 먼저 받아온 뒤에 채운다
     const {created}=backfillStudentsFromRosters();
     save(); render(true);
     alert(created?`학생 명단에 ${created}명을 새로 채워넣었습니다.`:'채울 항목이 없습니다.');
@@ -10320,13 +10369,16 @@ function bindSet(){
   if(upFile) upFile.onchange=()=>{
     const f=upFile.files[0]; if(!f) return;
     const r=new FileReader();
-    r.onload=()=>{ try{
+    r.onload=async()=>{ try{
       const wb=XLSX.read(new Uint8Array(r.result),{type:'array'});
       const {found,yearly,skipped}=parseWorkbook(wb);
       const ks=Object.keys(found);
       const yks=Object.keys(yearly).filter(k=>!k.startsWith('_count_')&&k!=='_calendar');
       const calN=yearly['_calendar']?yearly['_calendar'].length:0;
       if(!ks.length && !yks.length && !calN){ alert('반영할 시트를 찾지 못했습니다.\n월별 시트는 「2026-08 이베스트」, 연간교재 시트는 「연간 이베스트」 형식이어야 합니다.'+(skipped.length?'\n\n건너뛴 시트: '+skipped.join(', '):'')); return; }
+      // 이 기기가 아직 못 받아온 더 최신 서버 학생 명단(예: 다른 기기에서 방금 처리한 퇴원)이 있으면 먼저 받아와서,
+      // 아래에서 학생 명단을 만질 때 오래된 내용으로 덮어쓰지 않도록 한다.
+      await refreshReplaceFieldsFromServer(['students','uploads']);
       ks.forEach(k=>{ store.uploads[k]=found[k]; delete store.uploadTombstones[k]; });
       yks.forEach(k=>{ if(k!=='_calendar') store.bookedit[k]=yearly[k]; });
       if(yearly['_calendar']){
