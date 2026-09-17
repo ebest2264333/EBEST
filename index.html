@@ -360,6 +360,25 @@ const PALETTE = ['#2563EB','#0E9F6E','#FFC700','#9333EA','#DC2626','#0891B2','#D
 const KEY='academy-dash-v2';
 let store = {teachers:null, assign:{}, records:{}, cmemo:{}, uploads:{}, homework:{}, attend:{}, login:null};
 try{ const s=localStorage.getItem(KEY); if(s) store=Object.assign(store, JSON.parse(s)); }catch(e){}
+// 이 브라우저(기기)에 store 전체를 저장한다. 데이터가 쌓여서 이 기기의 저장 용량(localStorage 한도, 보통 5~10MB)을
+// 넘기면 setItem이 예외를 던지는데, 예전엔 이 예외가 그대로 save()를 중단시켜서 (1) 서버(파이어베이스) 동기화까지
+// 같이 막히고 (2) 방금 한 작업(회의록 이미지 첨부 등)이 화면 갱신 전에 조용히 실패하는 문제가 있었다.
+// 이제는 실패해도 여기서 잡아서, 이 함수를 부르는 쪽(save() 등)은 항상 이어서 서버 동기화를 계속 진행할 수 있게 한다.
+let lastStorageQuotaWarnAt=0;
+function persistStoreLocal(){
+  try{
+    localStorage.setItem(KEY, JSON.stringify(store));
+    return true;
+  }catch(e){
+    const now=Date.now();
+    if(now-lastStorageQuotaWarnAt>120000){ // 계속 반복해서 뜨면 방해가 되니 2분에 한 번만 알려준다
+      lastStorageQuotaWarnAt=now;
+      console.error('이 기기 저장 실패(용량 초과로 추정)', e);
+      try{ toast('⚠ 이 기기의 저장 공간이 가득 찼어요 — 서버 동기화는 계속 시도되지만, 이 브라우저에는 오프라인 백업이 안 될 수 있어요. [설정]에서 용량을 확인해주세요.'); }catch(e2){}
+    }
+    return false;
+  }
+}
 if(!store.uploads) store.uploads={};
 if(!store.homework) store.homework={};
 if(!store.attend) store.attend={};
@@ -425,7 +444,7 @@ function subjKeyDecode(s){ let out=String(s||''); SUBJKEY_MAP.forEach(([ch,rep])
       }
     }
   }
-  if(changed){ try{ localStorage.setItem(KEY, JSON.stringify(store)); }catch(e){} }
+  if(changed){ persistStoreLocal(); }
 })();
 // "L/C" 과목은 이제 별도로 관리하지 않고 전부 "IBT"로 합치기로 함(선생님 요청) — 이미 저장돼 있던 예전 자료도
 // 한 번 IBT로 옮겨준다(과목명 자체는 물론, 교재 배부·결석 숙제 카톡·오늘 남는 학생 메모처럼 과목별로 따로 저장된
@@ -471,7 +490,7 @@ if(!store.lcMergedIntoIbt2609){
     }
   }
   store.lcMergedIntoIbt2609=true;
-  try{ localStorage.setItem(KEY, JSON.stringify(store)); }catch(e){}
+  persistStoreLocal();
 }
 // [내신전용반 기능 폐지] 예전엔 "내신전용반"(별도 반 레코드)·내신 기간·🎓내신 탭이 있었는데 기능을 통째로 없앴다.
 // 이미 각 기기·서버에 저장돼 있을 수 있는 예전 자료(내신전용반 반 레코드, 내신 기간, 탭 켬 여부)를 여기서 한 번 정리한다.
@@ -487,7 +506,7 @@ if(!store.lcMergedIntoIbt2609){
   }
   if(store.examPeriod!==undefined){ delete store.examPeriod; changed=true; }
   if(store.examTabOn!==undefined){ delete store.examTabOn; changed=true; }
-  if(changed){ try{ localStorage.setItem(KEY, JSON.stringify(store)); }catch(e){} }
+  if(changed){ persistStoreLocal(); }
 })();
 // [수정] meetings는 이베스트·아이콘이 공용 서버 자료(SHARE_FIELDS)를 같이 쓰기 때문에, 이 학원 전용 화면(단일 학원 파일)에서는
 // 다른 학원 것까지 전부 섞여서 알림·목록에 뜨는 문제가 있었다 — 이 학원(MODE) 것과 "공통"(a 없음/all)만 걸러서 보여준다.
@@ -586,7 +605,7 @@ function save(){
       if(syncSnap[f]!==cur){ store.fieldStamps[f]=Date.now(); syncSnap[f]=cur; }
     });
   }
-  localStorage.setItem(KEY, JSON.stringify(store));
+  persistStoreLocal();
   const el=document.getElementById('saved'); el.classList.add('show');
   clearTimeout(saveTimer); saveTimer=setTimeout(()=>el.classList.remove('show'),900);
   if(MODE==='all' || isAdminRole() || loginTeacher()) schedulePushShared(); }
@@ -762,7 +781,7 @@ async function pushShared(){
     SHARE_FIELDS.forEach(f=>pack[f]=store[f]);
     await fbPut('/shared', sanitizeKeysForFirebase(pack));
     store.sharedAt=pack.updatedAt;
-    localStorage.setItem(KEY, JSON.stringify(store));
+    persistStoreLocal();
     lastSyncError=null; lastSyncOkAt=Date.now();
     toast('☁ 학원 자료 전송됨 ✓');
   }catch(e){ console.warn('sync push 실패', e); lastSyncError=e.message; toast('⚠ 전송 실패: '+e.message); }
@@ -783,7 +802,7 @@ async function forcePushShared(){
     SHARE_FIELDS.forEach(f=>pack[f]=store[f]);
     await fbPut('/shared', sanitizeKeysForFirebase(pack));
     store.sharedAt=pack.updatedAt;
-    localStorage.setItem(KEY, JSON.stringify(store));
+    persistStoreLocal();
     toast('☁ 서버 자료를 이 기기 자료로 완전히 덮어썼습니다');
   }catch(e){ console.warn('강제 전송 실패', e); toast('⚠ 전송 실패: '+e.message); }
   finally{ syncBusy=false; }
@@ -824,7 +843,7 @@ async function pullShared(silent){
         store[f]=mergeField(store[f], pack[f]);
       });
       store.sharedAt=pack.updatedAt;
-      localStorage.setItem(KEY, JSON.stringify(store));
+      persistStoreLocal();
       if(isEditingNow()){
         // 입력칸에 타이핑하는 도중에 자동 수신이 화면을 다시 그리면 아직 저장 안 된 글자가 사라지므로,
         // 지금 편집 중이면 화면 갱신을 미뤄뒀다가 입력을 마치고(포커스를 벗어나면) 그때 반영한다
@@ -868,7 +887,7 @@ async function pushSyllabusShared(){
     store.fieldStamps=store.fieldStamps||{};
     store.fieldStamps.syllabus=Date.now();
     await fbPut('/syllabus', {updatedAt:store.fieldStamps.syllabus, list:store.syllabus}, 25000);
-    localStorage.setItem(KEY, JSON.stringify(store));
+    persistStoreLocal();
     lastSyncError=null; lastSyncOkAt=Date.now();
   }catch(e){ console.warn('syllabus sync push 실패', e); lastSyncError=e.message; }
   finally{ syllabusSyncBusy=false; updateSyncBadge(); }
@@ -882,7 +901,7 @@ async function pullSyllabusShared(silent){
       if(rStamp>lStamp){
         store.syllabus=remote.list;
         store.fieldStamps=store.fieldStamps||{}; store.fieldStamps.syllabus=rStamp;
-        localStorage.setItem(KEY, JSON.stringify(store));
+        persistStoreLocal();
         if(state.tab==='syllabus' && !isEditingNow()) render(true);
         if(!silent) toast('☁ Syllabus 자료 자동 적용됨');
       }
@@ -912,7 +931,7 @@ async function pollInbox(){
       store.inboxDone[k]=true;
       fbDel('/inbox/'+k);
     }
-    if(n){ localStorage.setItem(KEY, JSON.stringify(store)); render(true); toast('📥 새 제출 '+n+'건 수신'); schedulePushShared(); }
+    if(n){ persistStoreLocal(); render(true); toast('📥 새 제출 '+n+'건 수신'); schedulePushShared(); }
   }catch(e){ console.warn('inbox 확인 실패', e); }
 }
 let __syncLoopStarted=false;
@@ -1078,7 +1097,7 @@ function editArr(a,m){
       }
     }
   });
-  if(changed) localStorage.setItem(KEY, JSON.stringify(store));
+  if(changed) persistStoreLocal();
   return store.uploads[key];
 }
 function findClassById(a,m,id){ return editArr(a,m).find(x=>x._id===id); }
@@ -3812,7 +3831,7 @@ function ensureAssign(){
     const i=(store.teachers[c.academy]||[]).findIndex(t=>t.name.trim().toLowerCase()===String(c.consult).trim().toLowerCase());
     if(i>=0){ store.assign[mo][k]=i; changed=true; }
   });
-  if(changed) localStorage.setItem(KEY, JSON.stringify(store));
+  if(changed) persistStoreLocal();
 }
 function teacherCards(list){
   let h='<div class="tsum">';
@@ -7075,7 +7094,7 @@ function markMeetingsRead(ids){
   const cur=new Set(store.meetingReadIds[key]||[]);
   ids.forEach(id=>cur.add(id));
   store.meetingReadIds[key]=[...cur];
-  localStorage.setItem(KEY, JSON.stringify(store));
+  persistStoreLocal();
 }
 function renderBell(){
   const badge=document.getElementById('bellBadge'); const panel=document.getElementById('bellPanel');
@@ -9691,10 +9710,39 @@ function applyTtGridUpdate(){
   render();
   alert(`반영 완료! 반 ${clsN}개, 과목 항목 ${subN}개가 갱신됐습니다.`);
 }
+// 이 브라우저(기기)에 저장된 store의 항목별 크기를 대략 추정한다 — localStorage 저장 실패(용량 초과)를 진단할 때 사용
+function storeFieldSizes(){
+  const out=[];
+  Object.keys(store).forEach(k=>{
+    let size=0;
+    try{ size=JSON.stringify(store[k]).length; }catch(e){ size=0; }
+    out.push({key:k, size});
+  });
+  out.sort((a,b)=>b.size-a.size);
+  return out;
+}
+function fmtBytesKo(n){
+  if(n>1024*1024) return (n/1024/1024).toFixed(2)+'MB';
+  if(n>1024) return (n/1024).toFixed(1)+'KB';
+  return n+'B';
+}
 function renderSet(){
   let h='';
   h+=`<div style="font-size:.7rem;color:#c7cbd6;text-align:right;margin-bottom:6px">build: MONTHFORK-2</div>`;
   const isTeacher=!!loginTeacher() && !isMgr();
+  // 💾 이 기기 저장 용량 — localStorage 한도(보통 5~10MB)에 가까워지면 저장이 실패할 수 있어 미리 확인할 수 있게 해둔다
+  if(!isTeacher){
+    const sizes=storeFieldSizes();
+    const total=sizes.reduce((s,x)=>s+x.size,0);
+    const top6=sizes.slice(0,6).filter(x=>x.size>0);
+    const warnColor = total>4*1024*1024 ? '#c0392b' : total>2*1024*1024 ? '#b45309' : '#16a34a';
+    h+=`<div class="setsec" style="border:2px solid ${warnColor}"><h3>💾 이 기기 저장 용량</h3>
+      <div class="desc">이 브라우저(기기)에 저장된 전체 자료 크기는 대략 <b style="color:${warnColor}">${fmtBytesKo(total)}</b> 입니다. 브라우저마다 다르지만 보통 5~10MB 정도가 한도라, 여기에 가까워지면 "저장 공간이 가득 찼다"는 오류가 뜨면서 새 기록(특히 회의록 이미지 첨부처럼 용량이 큰 항목)이 저장 안 될 수 있어요. 아래는 용량을 가장 많이 차지하는 항목이에요 — 오래된 회의록 이미지나 필요 없는 기록을 정리하면 도움이 됩니다.</div>
+      <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+        ${top6.map(x=>`<tr><td style="padding:4px 8px;border-bottom:1px solid #eef0f6">${esc(x.key)}</td><td style="padding:4px 8px;border-bottom:1px solid #eef0f6;text-align:right;font-weight:700">${fmtBytesKo(x.size)}</td></tr>`).join('')}
+      </table>
+    </div>`;
+  }
   // 이 달 자료를 최근 자료로 통째로 다시 시작 — 혹시 자료가 꼬였을 때(다른 달 자료가 섞였거나 비어있는데 채워야 할 때) 수동으로 복구하는 안전판
   if(!isTeacher){
     h+=`<div class="setsec" style="border:2px solid #6366f1"><h3>🔁 이 달 자료 초기화 (최근 자료로 다시 시작)</h3>
@@ -10754,7 +10802,7 @@ function cleanupStaleJasup2608(){
     });
   }
   store.zisupCleaned2608=true;
-  localStorage.setItem(KEY, JSON.stringify(store));
+  persistStoreLocal();
 }
 function cleanupExpiredAlerts(){
   // 노출 기간이 지난 "오늘 공지"는 학생 명단에서도 자동으로 비워준다 (홈 화면뿐 아니라 편집칸에도 안 남게)
