@@ -7180,7 +7180,15 @@ function renderCal(){
         <button class="del mtDel" data-id="${mt.id}" style="margin-left:auto">삭제</button></h2>
       <div class="sub">주관: <b>${esc(mt.host||'-')}</b> · 참석: ${esc(mt.att||'-')}</div>
       <div style="font-size:.86rem;white-space:pre-wrap;background:#fbfcfe;border:1px solid #eef0f6;border-radius:10px;padding:10px 13px">${hl(mt.body||'')}</div>
-      ${(mt.attachments&&mt.attachments.length)?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">${mt.attachments.map(f=>(f.type&&f.type.startsWith('image/'))?`<a href="${f.dataUrl}" target="_blank" title="${esc(f.name)}"><img src="${f.dataUrl}" style="width:92px;height:92px;object-fit:cover;border-radius:8px;border:1px solid var(--line)"></a>`:`<a href="${f.dataUrl}" download="${esc(f.name)}" style="font-size:.78rem;background:#eef0f6;border-radius:8px;padding:6px 10px;text-decoration:none;color:var(--ink);border:1px solid var(--line)">📎 ${esc(f.name)}</a>`).join('')}</div>`:''}
+      ${(mt.attachments&&mt.attachments.length)?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">${mt.attachments.map(f=>{
+        const isImg=f.type&&f.type.startsWith('image/');
+        if(f.remote && !mtgAttCache[f.id]){
+          return `<button type="button" class="mtAttLoad" data-id="${esc(f.id)}" data-mtid="${esc(mt.id)}" title="${esc(f.name)}" style="font-size:.78rem;background:#eef0f6;border-radius:8px;padding:6px 10px;border:1px solid var(--line);cursor:pointer">☁️ ${isImg?'🖼':'📎'} ${esc(f.name)} · 불러오기</button>`;
+        }
+        const fd=f.remote?mtgAttCache[f.id].fileData:f.dataUrl;
+        return isImg?`<a href="${fd}" target="_blank" title="${esc(f.name)}"><img src="${fd}" style="width:92px;height:92px;object-fit:cover;border-radius:8px;border:1px solid var(--line)"></a>`
+          :`<a href="${fd}" download="${esc(f.name)}" style="font-size:.78rem;background:#eef0f6;border-radius:8px;padding:6px 10px;text-decoration:none;color:var(--ink);border:1px solid var(--line)">📎 ${esc(f.name)}</a>`;
+      }).join('')}</div>`:''}
       </div>`;
   });
   h+='</div></div>';
@@ -7231,13 +7239,24 @@ function bindCal(){
   if(attFile) attFile.onchange=async ()=>{
     const files=[...attFile.files];
     state.mtPendingAttachments=state.mtPendingAttachments||[];
+    const origLabel=attBtn?attBtn.textContent:'';
+    const failed=[];
     for(const f of files){
       if(f.size>5*1024*1024){ alert(f.name+' 파일이 너무 큽니다 (5MB 이하만 첨부할 수 있어요)'); continue; }
       const dataUrl=await fileToDataUrl(f, f.type.startsWith('image/'));
-      if(dataUrl) state.mtPendingAttachments.push({name:f.name, type:f.type, dataUrl});
+      if(!dataUrl) continue;
+      const attId='mtg'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+      if(attBtn){ attBtn.disabled=true; attBtn.textContent='⏳ 서버로 올리는 중...'; }
+      try{
+        await mtgChunkPut(attId, f.name, dataUrl); // 브라우저에 남겨두지 않고 곧바로 서버(파이어베이스)에만 저장
+        mtgAttCache[attId]={fileName:f.name, fileData:dataUrl};
+        state.mtPendingAttachments.push({id:attId, name:f.name, type:f.type, remote:true});
+      }catch(e){ failed.push(f.name); }
     }
+    if(attBtn){ attBtn.disabled=false; attBtn.textContent=origLabel||'📎 파일/이미지 첨부'; }
     attFile.value='';
     render(true);
+    if(failed.length) alert('다음 파일은 서버로 올리지 못했습니다(네트워크 확인 후 다시 시도해주세요):\n'+failed.join('\n'));
   };
   v.querySelectorAll('[data-mtattrm]').forEach(b=>b.onclick=()=>{
     state.mtPendingAttachments.splice(Number(b.dataset.mtattrm),1); render(true);
@@ -7255,6 +7274,15 @@ function bindCal(){
   v.querySelectorAll('.mtDel').forEach(b=>b.onclick=()=>{
     if(!confirm('이 회의록을 삭제할까요?')) return;
     store.meetings=store.meetings.filter(x=>String(x.id)!==b.dataset.id); save(); render(true); });
+  v.querySelectorAll('.mtAttLoad').forEach(b=>b.onclick=async()=>{
+    const origLabel=b.textContent;
+    b.disabled=true; b.textContent='⏳ 불러오는 중...';
+    try{
+      const result=await mtgChunkGet(b.dataset.id); // 여러 조각으로 저장된 큰 파일도 자동으로 합쳐서 내려받는다
+      mtgAttCache[b.dataset.id]=result;
+      render(true);
+    }catch(e){ alert('파일을 불러오지 못했습니다: '+(e.message||e)); b.disabled=false; b.textContent=origLabel; }
+  });
   bindAdmission();
 }
 /* ---------- 게시판 (공지사항 · 오류 제보/사용법 문의 · 1:1 문의) ---------- */
@@ -7414,6 +7442,50 @@ async function sylChunkGet(attId){
   if(!result) throw new Error('파일을 찾을 수 없습니다');
   sylAttCache[attId]=result;
   return result;
+}
+// ---- 회의록(주간회의) 첨부파일도 같은 방식으로 처리 ----
+// Syllabus와 똑같이 "값 하나 크기 제한"·"용량 큰 첨부가 로컬 저장 공간을 갉아먹는 문제"를 겪기 때문에,
+// 같은 청크 분할 저장 방식을 별도 경로(/meetingFiles)로 그대로 재사용한다 (Syllabus 코드는 그대로 두고 복제만 함 — 서로 영향 없음).
+async function mtgChunkPut(attId, fileName, fileDataUrl, onProgress){
+  const commaIdx=fileDataUrl.indexOf(',');
+  const prefix=fileDataUrl.slice(0,commaIdx+1);
+  const payload=fileDataUrl.slice(commaIdx+1);
+  if(payload.length<=SYL_CHUNK_CHARS){
+    await fbPut('/meetingFiles/'+attId, {fileName, fileData:fileDataUrl}, 60000);
+    return;
+  }
+  const total=Math.ceil(payload.length/SYL_CHUNK_CHARS);
+  for(let i=0;i<total;i++){
+    if(onProgress) onProgress(i+1, total);
+    await fbPut('/meetingFiles/'+attId+'/p'+i, {d:payload.slice(i*SYL_CHUNK_CHARS,(i+1)*SYL_CHUNK_CHARS)}, 60000);
+  }
+  await fbPut('/meetingFiles/'+attId+'/meta', {fileName, prefix, parts:total}, 30000);
+}
+const mtgAttCache={};
+async function mtgChunkGet(attId){
+  if(mtgAttCache[attId]) return mtgAttCache[attId];
+  const data=await fbGet('/meetingFiles/'+attId, 90000);
+  if(!data) throw new Error('파일을 찾을 수 없습니다');
+  let result=null;
+  if(data.meta){
+    let payload='';
+    for(let i=0;i<data.meta.parts;i++){
+      const part=data['p'+i];
+      if(!part) throw new Error('파일 일부가 누락되었습니다(재업로드가 필요할 수 있어요)');
+      payload+=part.d;
+    }
+    result={fileName:data.meta.fileName, fileData:data.meta.prefix+payload};
+  } else if(data.fileData){
+    result={fileName:data.fileName, fileData:data.fileData};
+  }
+  if(!result) throw new Error('파일을 찾을 수 없습니다');
+  mtgAttCache[attId]=result;
+  return result;
+}
+function mtgMigratableCount(){
+  let n=0;
+  (store.meetings||[]).forEach(mt=>{ (mt.attachments||[]).forEach(f=>{ if(f.dataUrl && !f.remote) n++; }); });
+  return n;
 }
 function renderSyllabus(){
   const admin=isAdminRole();
@@ -9741,6 +9813,7 @@ function renderSet(){
       <table style="width:100%;border-collapse:collapse;font-size:.82rem">
         ${top6.map(x=>`<tr><td style="padding:4px 8px;border-bottom:1px solid #eef0f6">${esc(x.key)}</td><td style="padding:4px 8px;border-bottom:1px solid #eef0f6;text-align:right;font-weight:700">${fmtBytesKo(x.size)}</td></tr>`).join('')}
       </table>
+      ${(()=>{ const n=mtgMigratableCount(); return n?`<div style="margin-top:10px"><button class="btn small" id="mtgMigrateBtn" title="회의록에 첨부된 이미지·파일을 서버(파이어베이스)로 옮겨서 이 기기의 저장 공간을 비웁니다 (내용은 그대로 유지돼요)">☁️ 회의록 첨부파일 서버로 옮겨서 공간 확보 (${n}개)</button></div>`:''; })()}
     </div>`;
   }
   // 이 달 자료를 최근 자료로 통째로 다시 시작 — 혹시 자료가 꼬였을 때(다른 달 자료가 섞였거나 비어있는데 채워야 할 때) 수동으로 복구하는 안전판
@@ -10120,6 +10193,31 @@ function resetMonthFromPrev(a, m){
 function bindSet(){
   bindTtGrid();
   const v=document.getElementById('view');
+  const mtgMigBtn=v.querySelector('#mtgMigrateBtn');
+  if(mtgMigBtn) mtgMigBtn.onclick=async()=>{
+    const targets=[];
+    (store.meetings||[]).forEach(mt=>{ (mt.attachments||[]).forEach(f=>{ if(f.dataUrl && !f.remote) targets.push({mt, f}); }); });
+    if(!targets.length) return;
+    if(!confirm(`${targets.length}개 첨부파일을 서버로 옮겨서 이 기기의 저장 공간을 확보할까요? (내용은 그대로 유지되고, 다른 기기에서도 그대로 볼 수 있어요)`)) return;
+    mtgMigBtn.disabled=true;
+    let done=0, failed=[];
+    for(const {mt,f} of targets){
+      mtgMigBtn.textContent=`⏳ 옮기는 중... (${done+1}/${targets.length})`;
+      try{
+        const attId=f.id||('mtg'+Date.now().toString(36)+Math.random().toString(36).slice(2,6));
+        await mtgChunkPut(attId, f.name, f.dataUrl);
+        mtgAttCache[attId]={fileName:f.name, fileData:f.dataUrl};
+        f.id=attId; f.remote=true; delete f.dataUrl;
+        done++;
+      }catch(e){ failed.push(f.name); }
+    }
+    let saveErr=null;
+    try{ save(); }catch(e){ saveErr=e; }
+    render(true);
+    if(saveErr) alert('서버로 옮긴 정보 저장 중 문제가 발생했습니다: '+(saveErr.message||saveErr));
+    if(failed.length) alert(`다음 파일은 옮기지 못했습니다(네트워크 확인 후 다시 시도해주세요):\n${failed.join('\n')}`);
+    if(done) alert(`${done}개 첨부파일을 서버로 옮겼습니다. 이 기기의 저장 공간이 확보됐어요.`);
+  };
   v.querySelectorAll('[data-resetmonth]').forEach(b=>b.onclick=()=>{
     const a=b.dataset.resetmonth;
     const sel=document.getElementById('rmMonth_'+a);
