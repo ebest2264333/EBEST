@@ -644,6 +644,23 @@ function sanitizeKeysForFirebase(obj){
 }
 function toast(msg){ const el=document.getElementById('saved'); el.textContent=msg; el.classList.add('show');
   clearTimeout(saveTimer); saveTimer=setTimeout(()=>{el.classList.remove('show'); el.textContent='저장됨 ✓';},2200); }
+// 🔗 복사+방열기 — 카톡 오픈채팅방 링크가 등록돼있으면, 내용을 클립보드에 복사하고 그 방을 새 창으로 연다
+// (카톡 정책상 "누르면 바로 방까지 열리고 내용까지 전송 완료"는 불가능 — 방이 열리면 붙여넣기(Ctrl+V) 후 전송은 직접 눌러야 함)
+async function kakaoCopyAndOpen(memo, url, className){
+  let copied=false;
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){ await navigator.clipboard.writeText(memo||''); copied=true; }
+  }catch(e){ copied=false; }
+  if(!copied){
+    // 클립보드 권한이 없는 환경(예: file://로 직접 연 경우)이면 직접 보고 복사할 수 있게 보여준다
+    prompt('클립보드 자동 복사가 안 되는 환경이에요. 아래 내용을 직접 선택해서 복사(Ctrl+C)해주세요:', memo||'');
+  }
+  if(url){
+    window.open(url, '_blank');
+  } else {
+    toast(`⚠ [${className||''}] 반에 카톡 오픈채팅방 링크가 등록되어 있지 않습니다 — 편집에서 먼저 등록해주세요${copied?' (내용은 복사됐어요)':''}`);
+  }
+}
 
 let UPFILTER=null; // 학원별 마스터 업로드 시 해당 학원 시트만 반영
 let pushTimer=null, syncBusy=false, pullBusy=false;
@@ -1897,6 +1914,7 @@ function classCard(c, admin, dayFilter, dupCount){
         <option value="">🔗 합반 없음</option>
         ${editArr(c.academy, c._src||state.month).filter(x=>x._id!==c._id).map(x=>`<option value="${esc(x._id)}" ${c.mergedWith===x._id?'selected':''}>🔗 ${esc(x.name)}</option>`).join('')}
       </select>
+      <input type="text" value="${esc(c.kakaoOpenChatUrl||'')}" data-cfield="kakaoOpenChatUrl" ${attrs} placeholder="💬 이 반 카톡 오픈채팅방 링크(https://open.kakao.com/...)" title="여기에 링크를 등록해두면, 결석생 숙제 카톡 전송 화면에서 버튼 한 번으로 이 반의 오픈채팅방을 바로 열 수 있습니다." style="flex:2;min-width:220px;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;background:#fff7e6">
       <button class="btn small" data-toggleedit ${attrs}>편집 종료</button>
       <button class="btn small" style="color:#c0392b;border-color:#e7b3ab" data-delclass ${attrs}>🗑 반 삭제</button>
     </div>
@@ -4191,6 +4209,23 @@ function fmtH24(x){ const hh=Math.floor(x), mm=Math.round((x-hh)*60); return `${
 function fmtDur(x){ const mm=Math.round(x*60); return mm>=60? Math.floor(mm/60)+'시간'+(mm%60?' '+(mm%60)+'분':'') : mm+'분'; }
 const wdOf = d => WD[new Date(d+'T00:00:00').getDay()];
 function hwFor(d){ return store.homework[d]=store.homework[d]||{}; }
+// "오늘의 과제"를 카톡에 바로 붙여넣을 수 있는 "<9월 15일 과제>\n1. ...\n2. ..." 형식으로 관리하기 위한 도우미들.
+// 실제 항목들은 배열(items)로 따로 저장하고, note는 그 배열로부터 매번 다시 만들어지는 값(기존 인쇄·리포트 화면이 그대로 쓰는 문자열)이다.
+function assignHeaderLabel(dateISO){
+  const d=new Date((dateISO||todayISO())+'T00:00:00');
+  if(isNaN(d.getTime())) return '';
+  return `<${d.getMonth()+1}월 ${d.getDate()}일 과제>`;
+}
+function assignItemsFor(rec){
+  if(rec && Array.isArray(rec.items) && rec.items.length) return rec.items;
+  if(rec && rec.note) return [rec.note]; // 항목 배열이 생기기 전(예전 방식)에 적어둔 한 줄짜리 내용은 첫 항목으로 이어받는다
+  return [''];
+}
+function buildAssignNote(items, dateISO){
+  const nonEmpty=(items||[]).map(x=>String(x||'').trim()).filter(Boolean);
+  if(!nonEmpty.length) return '';
+  return assignHeaderLabel(dateISO)+'\n'+nonEmpty.map((t,i)=>`${i+1}. ${t}`).join('\n');
+}
 function atFor(d){ return store.attend[d]=store.attend[d]||{}; }
 function stayFor(d){ return store.stayback[d]=store.stayback[d]||{}; }
 function cdays(c){ return store.daysedit[ckey(c)] || c.days || ''; }
@@ -4819,6 +4854,7 @@ function renderToday(list){
         dept: cl.dept || '기타',
         className: cl.name,
         academy: cl.academy,
+        kakaoOpenChatUrl: cl.kakaoOpenChatUrl || '',
         student: studentDisplayName(cl.academy, sname, cl.name),
         k: k,
         s: sname,
@@ -4869,6 +4905,7 @@ function renderToday(list){
                       <input type="checkbox" class="hwkakaochk" data-k="${esc(x.k)}" data-s="${esc(x.s)}" data-subj="${esc(sj.subj||'')}" ${sj.kakaoSent?'checked':''}> 💬 ${sj.subj?esc(sj.subj)+' - ':''}카톡 전송
                     </label>
                     <input type="text" class="hwkakaomemo" data-k="${esc(x.k)}" data-s="${esc(x.s)}" data-subj="${esc(sj.subj||'')}" placeholder="전송할 숙제/진도 내용 입력" value="${esc(subjMemo)}" style="flex:1;min-width:180px;border:1px solid #dcdde1;border-radius:6px;padding:4px 8px;font-family:inherit;font-size:.8rem;">
+                    <button type="button" class="hwkakaoopen" data-memo="${esc(subjMemo)}" data-url="${esc(x.kakaoOpenChatUrl)}" data-classname="${esc(x.className)}" title="${x.kakaoOpenChatUrl?'내용을 복사하고 이 반 카톡 오픈채팅방을 새 창으로 엽니다 (열리면 붙여넣기 후 전송해주세요)':'이 반에 카톡 오픈채팅방 링크가 등록되어 있지 않습니다 — [반·교재] 편집에서 먼저 등록해주세요'}" style="flex:none;border:1px solid ${x.kakaoOpenChatUrl?'#f5c6cb':'#dcdde1'};background:${x.kakaoOpenChatUrl?'#fee500':'#f1f3f8'};color:#3c1e1e;border-radius:6px;padding:4px 8px;font-size:.76rem;font-weight:700;cursor:pointer;white-space:nowrap">🔗 복사+방열기</button>
                   </div>`;
                 }).join('')}
               </div>
@@ -4912,12 +4949,21 @@ function renderToday(list){
     const cStudents=activeStudentsForDate(c, state.date); // 퇴원생은 오늘 기록에서 제외 (반 배정 취소)
     const present=cStudents.filter(s=>attStatusAgg(c,wd,s,at)==='출').length;
     const hwdone=cStudents.filter(s=>hw[k]&&hw[k][s]&&hw[k][s].done).length;
-    const asg=((hw[k]||{})['_assign']||{}).note||'';
+    const assignRec=(hw[k]||{})['_assign']||{};
+    const assignItems=assignItemsFor(assignRec);
     const ref=daySubjects.filter(s=>s.hw).map(s=>`${esc(s.subject)}: ${esc(s.hw)}`).join('  ·  ');
     const asgBox=`<div style="padding:9px 0 4px;border-bottom:1px solid #f1f3f8">
-      <div style="display:flex;gap:8px;align-items:center">
-        <span style="font-size:.78rem;font-weight:800;color:${AC[c.academy].color};white-space:nowrap">📌 오늘의 과제</span>
-        <input type="text" class="asgin" data-k="${esc(k)}" placeholder="${c.academy==='icon'?'수업 공지문자로 나간 과제를 적어두세요':'과제표 기준 과제 (수정 가능)'}" value="${esc(asg)}" style="flex:1;border:1.5px solid ${AC[c.academy].color}33;border-radius:8px;padding:6px 10px;font-family:inherit;font-size:.84rem;background:#fffdf5">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:5px">
+        <span style="font-size:.78rem;font-weight:800;color:${AC[c.academy].color};white-space:nowrap">📌 오늘의 과제 <span style="font-weight:600;color:#8b93a7">${esc(assignHeaderLabel(state.date))}</span></span>
+        <button type="button" class="asgadditem" data-k="${esc(k)}" title="항목을 한 줄 더 추가합니다" style="flex:none;border:1px solid ${AC[c.academy].color}55;background:#fff;color:${AC[c.academy].color};border-radius:6px;padding:3px 9px;font-size:.74rem;font-weight:800;cursor:pointer">＋ 항목 추가</button>
+        <button type="button" class="asgkakaoopen" data-k="${esc(k)}" data-url="${esc(c.kakaoOpenChatUrl||'')}" data-classname="${esc(c.name)}" title="${c.kakaoOpenChatUrl?'위 항목들을 <날짜 과제> 형식으로 묶어 복사하고, 이 반 카톡 오픈채팅방을 새 창으로 엽니다 (열리면 붙여넣기 후 전송해주세요)':'이 반에 카톡 오픈채팅방 링크가 등록되어 있지 않습니다 — 편집에서 먼저 등록해주세요'}" style="flex:none;border:1px solid ${c.kakaoOpenChatUrl?'#f5c6cb':'#dcdde1'};background:${c.kakaoOpenChatUrl?'#fee500':'#f1f3f8'};color:#3c1e1e;border-radius:6px;padding:5px 9px;font-size:.76rem;font-weight:700;cursor:pointer;white-space:nowrap">🔗 복사+방열기</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:5px">
+        ${assignItems.map((val,i)=>`<div style="display:flex;gap:6px;align-items:center">
+          <span style="flex:none;width:20px;text-align:right;font-size:.82rem;font-weight:800;color:${AC[c.academy].color}">${i+1}.</span>
+          <input type="text" class="asgitem" data-k="${esc(k)}" data-idx="${i}" placeholder="${c.academy==='icon'?'수업 공지문자로 나간 과제를 적어두세요':'과제표 기준 과제 (수정 가능)'}" value="${esc(val)}" style="flex:1;border:1.5px solid ${AC[c.academy].color}33;border-radius:8px;padding:6px 10px;font-family:inherit;font-size:.84rem;background:#fffdf5">
+          ${assignItems.length>1?`<button type="button" class="asgrmitem" data-k="${esc(k)}" data-idx="${i}" title="이 항목 삭제" style="flex:none;border:none;background:#f1f3f8;color:#8b93a7;border-radius:6px;padding:4px 8px;font-size:.72rem;cursor:pointer">✕</button>`:''}
+        </div>`).join('')}
       </div>
       ${ref?`<div style="font-size:.72rem;color:#8b93a7;margin-top:4px">과제표 참고 — ${ref}</div>`:''}
     </div>`;
@@ -5082,9 +5128,36 @@ function bindToday(){
     const k=cb.dataset.k, st=cb.dataset.s, hw=hwFor(state.date);
     hw[k]=hw[k]||{}; hw[k][st]=hw[k][st]||{}; hw[k][st].done=cb.checked; save(); render(true);
   });
-  v.querySelectorAll('.asgin').forEach(inp=>inp.onchange=()=>{
-    const k=inp.dataset.k, hw=hwFor(state.date);
-    hw[k]=hw[k]||{}; hw[k]['_assign']=hw[k]['_assign']||{}; hw[k]['_assign'].note=inp.value; save();
+  // "오늘의 과제" 항목 하나(N번째 줄) 내용 수정 — items 배열을 갱신하고, 카톡에 붙여넣을 note(문자열)도 같이 다시 만들어 저장
+  v.querySelectorAll('.asgitem').forEach(inp=>inp.onchange=()=>{
+    const k=inp.dataset.k, idx=Number(inp.dataset.idx), hw=hwFor(state.date);
+    hw[k]=hw[k]||{}; hw[k]['_assign']=hw[k]['_assign']||{};
+    const items=assignItemsFor(hw[k]['_assign']).slice();
+    items[idx]=inp.value;
+    hw[k]['_assign'].items=items;
+    hw[k]['_assign'].note=buildAssignNote(items, state.date);
+    save();
+  });
+  // ＋ 항목 추가 — 빈 줄 하나를 새로 더한다 (번호는 화면에서 자동으로 매겨짐)
+  v.querySelectorAll('.asgadditem').forEach(btn=>btn.onclick=()=>{
+    const k=btn.dataset.k, hw=hwFor(state.date);
+    hw[k]=hw[k]||{}; hw[k]['_assign']=hw[k]['_assign']||{};
+    const items=assignItemsFor(hw[k]['_assign']).slice();
+    items.push('');
+    hw[k]['_assign'].items=items;
+    hw[k]['_assign'].note=buildAssignNote(items, state.date);
+    save(); render(true);
+  });
+  // ✕ 항목 삭제
+  v.querySelectorAll('.asgrmitem').forEach(btn=>btn.onclick=()=>{
+    const k=btn.dataset.k, idx=Number(btn.dataset.idx), hw=hwFor(state.date);
+    hw[k]=hw[k]||{}; hw[k]['_assign']=hw[k]['_assign']||{};
+    const items=assignItemsFor(hw[k]['_assign']).slice();
+    if(items.length<=1) return; // 최소 한 줄은 남겨둔다
+    items.splice(idx,1);
+    hw[k]['_assign'].items=items;
+    hw[k]['_assign'].note=buildAssignNote(items, state.date);
+    save(); render(true);
   });
   v.querySelectorAll('.hwnote').forEach(inp=>inp.onchange=()=>{
     const k=inp.dataset.k, st=inp.dataset.s, hw=hwFor(state.date);
@@ -5171,9 +5244,23 @@ function bindToday(){
       hw2[k][s].bySubject[sk]=hw2[k][s].bySubject[sk]||{};
       hw2[k][s].bySubject[sk].kakaoMemo=inp.value;
     } else {
-      hw2[k][s].kakaoMemo=inp.value; 
+      hw2[k][s].kakaoMemo=inp.value;
     }
-    save(); 
+    save();
+  });
+  // 🔗 복사+방열기(결석생 숙제 패널) — 그 반 카톡 오픈채팅방 링크가 등록돼있으면, 메모 내용을 클립보드에 복사하고 그 방을 새 창으로 연다
+  v.querySelectorAll('.hwkakaoopen').forEach(btn=>btn.onclick=()=>{
+    const row=btn.closest('div');
+    const memoInp=row?row.querySelector('.hwkakaomemo'):null;
+    const memo=memoInp?memoInp.value:(btn.dataset.memo||'');
+    kakaoCopyAndOpen(memo, btn.dataset.url, btn.dataset.classname);
+  });
+  // 🔗 복사+방열기(오늘의 과제) — 반마다 매일 적는 "오늘의 과제" 항목들을 <날짜 과제> 형식으로 묶어서 복사하고, 그 반 카톡 오픈채팅방으로 바로 연결
+  v.querySelectorAll('.asgkakaoopen').forEach(btn=>btn.onclick=()=>{
+    const k=btn.dataset.k, hw=hwFor(state.date);
+    const items=assignItemsFor((hw[k]||{})['_assign']||{});
+    const memo=buildAssignNote(items, state.date);
+    kakaoCopyAndOpen(memo, btn.dataset.url, btn.dataset.classname);
   });
 }
 
@@ -5348,7 +5435,7 @@ function repWorkDaily(dateISO){
     const hwd=(c.students||[]).filter(s=>(((hw[k]||{})[s])||{}).done).length;
     const asg=(((hw[k]||{})['_assign'])||{}).note || (c.subjects||[]).filter(s=>s.hw).map(s=>s.subject+': '+s.hw).join(' · ');
     const prob=(c.students||[]).filter(s=>['지','결','조'].includes(attStatusAgg(c,dailyWd,s,at))).map(s=>{const a=attStatusAgg(c,dailyWd,s,at);return s+'('+a+')';}).join(', ');
-    h+=`<tr>${rTD(`<b style="color:${AC[c.academy].color}">${esc(c.name)}</b>`,z+'white-space:nowrap')}${rTD(n?pres+'/'+n:'-',z+'text-align:center')}${rTD(n?hwd+'/'+n:'-',z+'text-align:center')}${rTD(esc(asg),z)}${rTD(prob?'<span style="color:#b45309">'+esc(prob)+'</span>':'',z)}</tr>`;
+    h+=`<tr>${rTD(`<b style="color:${AC[c.academy].color}">${esc(c.name)}</b>`,z+'white-space:nowrap')}${rTD(n?pres+'/'+n:'-',z+'text-align:center')}${rTD(n?hwd+'/'+n:'-',z+'text-align:center')}${rTD(esc(asg),z+'white-space:pre-wrap')}${rTD(prob?'<span style="color:#b45309">'+esc(prob)+'</span>':'',z)}</tr>`;
   });
   h+='</table>';
   if(st.notes.length){
@@ -10343,7 +10430,7 @@ function repToday(list){
       <td style="padding:6px 10px;background:${AC[c.academy].tint};border:none">
       <span style="font-weight:bold;font-size:10.5pt">${esc(c.name)}</span>
       <span style="font-size:8.5pt;color:#5a6478">&nbsp; ${AC[c.academy].label} · ${esc(cdays(c))}${teas.length?' · 담당: '+esc(teas.join(', ')):''}</span>
-      ${asg?`<div style="font-size:8.5pt;margin-top:2px"><b style="color:${AC[c.academy].color}">📌 오늘의 과제:</b> ${esc(asg)}</div>`:''}</td></tr></table>`;
+      ${asg?`<div style="font-size:8.5pt;margin-top:2px;white-space:pre-wrap"><b style="color:${AC[c.academy].color}">📌 오늘의 과제:</b> ${esc(asg)}</div>`:''}</td></tr></table>`;
     if(c.students&&c.students.length){
       h+=`<table style="width:100%;border-collapse:collapse;${rF}"><tr>${rTH('학생')}${rTH('출결')}${rTH('숙제')}${rTH('숙제 확인 · 수업 메모')}</tr>`;
       c.students.forEach((s,i)=>{
