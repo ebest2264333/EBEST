@@ -5179,7 +5179,8 @@ function renderToday(list){
   const absentSecOpen = state.absentSectionOpen===true; // 기본값: 닫힘, 마지막으로 클릭한 상태를 유지
   const absentTodaySection=`<details id="absentTodayDetails" ${absentSecOpen?'open':''} class="ysec" style="margin-top:16px;border-top:4px solid #c0392b;background:#fff8f8">
     <summary style="cursor:pointer;list-style:none">
-    <h3 style="display:inline-flex;align-items:center;flex-wrap:wrap;gap:8px;width:100%">🚨 오늘 결석생 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">${state.date} 전체 반 기준 (${absentHwList.length}명)</span>${reasonMissingCount?` <span style="background:#c0392b;color:#fff;font-size:.68rem;font-weight:800;border-radius:6px;padding:2px 8px">⚠ 사유 미입력 ${reasonMissingCount}명</span>`:''}</h3>
+    <h3 style="display:inline-flex;align-items:center;flex-wrap:wrap;gap:8px;width:100%">🚨 오늘 결석생 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">${state.date} 전체 반 기준 (${absentHwList.length}명)</span>${reasonMissingCount?` <span style="background:#c0392b;color:#fff;font-size:.68rem;font-weight:800;border-radius:6px;padding:2px 8px">⚠ 사유 미입력 ${reasonMissingCount}명</span>`:''}
+      <button type="button" class="absentAsgRefresh" data-date="${esc(state.date)}" title="다른 선생님이 방금 적은 오늘의 과제 내용을 지금 바로 받아와서, 아래 카톡 전송 메모칸에 자동 입력된 내용을 최신으로 갱신합니다 (자동으로는 1분마다 확인돼요)" style="margin-left:auto;flex:none;border:1px solid var(--line);background:#fff;color:#5a6478;border-radius:6px;padding:4px 9px;font-size:.74rem;font-weight:700;cursor:pointer">🔄 과제 새로고침</button></h3>
     </summary>
     <div style="padding:0 16px 14px">
       ${absentGroupsHTML}
@@ -5438,6 +5439,13 @@ function bindToday(){
   // 🔄 오늘의 과제 새로고침 — 자동(1분 주기) 확인을 기다리지 않고, 다른 선생님이 방금 적은 내용을 지금 바로 받아온다(그 부분만, 전체 새로고침 아님)
   v.querySelectorAll('.asgrefresh').forEach(btn=>btn.onclick=async()=>{
     btn.disabled=true; const orig=btn.textContent; btn.textContent='…';
+    try{ await pullTodayAssign(btn.dataset.date||state.date, false); }
+    finally{ btn.disabled=false; btn.textContent=orig; }
+  });
+  // 🚨 오늘 결석생 영역의 새로고침 버튼 — "오늘의 과제"에서 자동 입력되는 카톡 전송 메모칸이 최신 내용인지 지금 바로 확인
+  v.querySelectorAll('.absentAsgRefresh').forEach(btn=>btn.onclick=async(e)=>{
+    e.preventDefault(); e.stopPropagation(); // <summary> 안에 있어서 클릭하면 결석생 섹션이 접히지 않도록 막는다
+    btn.disabled=true; const orig=btn.textContent; btn.textContent='🔄 확인 중…';
     try{ await pullTodayAssign(btn.dataset.date||state.date, false); }
     finally{ btn.disabled=false; btn.textContent=orig; }
   });
