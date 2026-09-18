@@ -865,6 +865,75 @@ async function pullShared(silent){
   } finally { pullBusy=false; }
   updateSyncBadge();
 }
+// Firebase Realtime DB 키에 못 쓰는 문자('.', '#', '$', '[', ']')가 반 이름(ckey)에 섞여 있을 수 있어 안전하게 이스케이프한다
+function fbKeyEncode(s){ return encodeURIComponent(String(s||'')).replace(/\./g,'%2E'); }
+function fbKeyDecode(s){ try{ return decodeURIComponent(String(s||'')); }catch(e){ return String(s||''); } }
+// ── "오늘의 과제"만 따로 빠르게 주고받는 경량 동기화 ──
+// 전체 학원 자료(학생·출결·게시판 등)를 다 받아오는 pullShared()는 1분 주기라, 다른 선생님이 방금 적은 과제를
+// 화면 새로고침 없이 좀 더 빨리 보고 싶다는 요청으로 추가한 것. "오늘의 과제" 내용만 담아서 훨씬 자주(15초) 확인한다.
+// 각 반(k)마다 자체 updatedAt을 찍어서, 이 값이 더 최신인 쪽만 반영한다(기존 방식처럼 "내 것이면 무조건 우선"이 아니라
+// "더 최근에 적힌 쪽이 우선"이 되도록 해서, 다른 선생님이 방금 추가한 과목별 항목이 무시되지 않게 한다).
+let __assignPullBusy=false;
+function scheduleTodayAssignPush(date){
+  if(!syncOn()) return;
+  clearTimeout(scheduleTodayAssignPush._t);
+  scheduleTodayAssignPush._t=setTimeout(()=>pushTodayAssign(date), 400);
+}
+async function pushTodayAssign(date){
+  if(!syncOn()) return;
+  if(MODE!=='all' && !isAdminRole() && !loginTeacher()) return;
+  try{
+    const hw=hwFor(date);
+    const out={};
+    Object.keys(hw).forEach(k=>{
+      const rec=hw[k] && hw[k]['_assign'];
+      if(!rec) return;
+      const items=assignItemsFor(rec);
+      if(!items.some(x=>String(x||'').trim())) return; // 빈 칸뿐이면 전송 생략
+      out[fbKeyEncode(k)]={ k, items, note: rec.note||buildAssignNote(items, date), updatedAt: rec.updatedAt||Date.now() };
+    });
+    await fbPut('/todayAssign/'+date, out, 8000);
+  }catch(e){ console.warn('오늘의 과제 빠른 동기화 전송 실패', e); }
+}
+async function pullTodayAssign(date){
+  if(!syncOn()) return;
+  if(__assignPullBusy) return;
+  __assignPullBusy=true;
+  try{
+    const pack=await fbGet('/todayAssign/'+date, 8000);
+    if(!pack) return;
+    const hw=hwFor(date);
+    store.assignPullStamps=store.assignPullStamps||{};
+    let changed=false;
+    Object.keys(pack).forEach(encK=>{
+      const entry=pack[encK]; if(!entry) return;
+      const k=entry.k || fbKeyDecode(encK);
+      const stampKey=date+'|'+k;
+      const remoteTs=entry.updatedAt||0;
+      const localRec=(hw[k]||{})['_assign'];
+      const localOwnTs=(localRec&&localRec.updatedAt)||0;
+      if(remoteTs<=localOwnTs) return; // 이 기기에 이미 그만큼(또는 더) 최신 내용이 있으면 건너뜀 — 편집 중인 내용을 오래된 걸로 덮어쓰지 않도록
+      if(remoteTs<=(store.assignPullStamps[stampKey]||0)) return; // 이미 받아본 내용
+      hw[k]=hw[k]||{};
+      hw[k]['_assign']={items: entry.items&&entry.items.length?entry.items:[''], note: entry.note||'', updatedAt: remoteTs};
+      store.assignPullStamps[stampKey]=remoteTs;
+      changed=true;
+    });
+    if(changed){
+      persistStoreLocal();
+      if(isEditingNow()){ pendingRenderAfterEdit=true; return; }
+      if(state.tab==='today'){
+        // 화면 위치는 그대로 두고 "오늘의 과제"/결석생 패널 부분만 다시 그린다
+        const scrollY=window.scrollY;
+        const ttEl=document.getElementById('ttWeekScroll'); const ttScroll=ttEl?ttEl.scrollTop:null;
+        render(true);
+        window.scrollTo(0, scrollY);
+        if(ttScroll!=null){ const ttEl2=document.getElementById('ttWeekScroll'); if(ttEl2) ttEl2.scrollTop=ttScroll; }
+      }
+    }
+  }catch(e){ /* 조용히 무시 — 다음 주기(15초)에 다시 시도 */ }
+  finally{ __assignPullBusy=false; }
+}
 async function refreshReplaceFieldsFromServer(fields){
   // [버그 수정] 반·학생 엑셀 업로드처럼 "학생 명단(REPLACE_FIELDS)"을 직접 고치는 작업을 하기 직전에,
   // 혹시 이 기기가 아직 못 받아온(최근 1분 폴링 주기 사이의) 더 최신 서버 내용이 있는지 먼저 확인해서 반영한다.
@@ -959,7 +1028,7 @@ async function pollInbox(){
   }catch(e){ console.warn('inbox 확인 실패', e); }
 }
 let __syncLoopStarted=false;
-let __pullTimerId=null, __sylTimerId=null;
+let __pullTimerId=null, __sylTimerId=null, __assignTimerId=null;
 function startSyncLoop(){
   if(!syncOn()) return;
   pullShared(true);
@@ -979,6 +1048,9 @@ function startSyncLoop(){
   // 다시 화면을 보면(visibilitychange) 그 즉시 한 번 받아와서 놓친 내용을 바로 따라잡는다.
   if(MODE==='all'){ pollInbox(); __pullTimerId=setInterval(()=>{ if(document.hidden) return; pullShared(false); pollInbox(); }, 60000); }
   else __pullTimerId=setInterval(()=>{ if(document.hidden) return; pullShared(false); }, 60000);
+  // "오늘의 과제"만 따로 훨씬 자주(15초) 확인 — 오늘 탭을 보고 있을 때만, 전체 자료는 안 건드리고 그 부분만 가볍게 받아온다
+  if(__assignTimerId) clearInterval(__assignTimerId);
+  __assignTimerId=setInterval(()=>{ if(document.hidden) return; if(state.tab==='today') pullTodayAssign(state.date); }, 15000);
   if(__syncLoopStarted) return; // 껐다 켰다를 반복해도 화면 이벤트 리스너는 한 번만 등록
   __syncLoopStarted=true;
   document.addEventListener('visibilitychange',()=>{
@@ -5287,7 +5359,9 @@ function bindToday(){
     items[idx]=tag?`[${tag}] ${inp.value}`:inp.value;
     hw[k]['_assign'].items=items;
     hw[k]['_assign'].note=buildAssignNote(items, state.date);
+    hw[k]['_assign'].updatedAt=Date.now();
     save(); render(true); // 저장 후 바로 다시 그려서, 아래 결석생 패널 자동입력 등이 새로고침 없이 바로 반영되게 함
+    scheduleTodayAssignPush(state.date); // 다른 선생님 화면에도 새로고침 없이 빨리 보이도록 "오늘의 과제"만 따로 즉시 전송
   });
   // ＋ 항목 추가 — 로그인한 선생님이 이 반에서 오늘 담당하는 과목을 "[과목명] "으로 자동으로 붙인 새 줄을 더한다 (번호는 화면에서 자동으로 매겨짐)
   v.querySelectorAll('.asgadditem').forEach(btn=>btn.onclick=()=>{
@@ -5299,7 +5373,9 @@ function bindToday(){
     items.push(c?myAssignSubjectPrefix(c, wd, loginTeacher()):'');
     hw[k]['_assign'].items=items;
     hw[k]['_assign'].note=buildAssignNote(items, state.date);
+    hw[k]['_assign'].updatedAt=Date.now();
     save(); render(true);
+    scheduleTodayAssignPush(state.date);
   });
   // ✕ 항목 삭제
   v.querySelectorAll('.asgrmitem').forEach(btn=>btn.onclick=()=>{
@@ -5312,7 +5388,9 @@ function bindToday(){
     items.splice(idx,1);
     hw[k]['_assign'].items=items;
     hw[k]['_assign'].note=buildAssignNote(items, state.date);
+    hw[k]['_assign'].updatedAt=Date.now();
     save(); render(true);
+    scheduleTodayAssignPush(state.date);
   });
   v.querySelectorAll('.hwnote').forEach(inp=>inp.onchange=()=>{
     const k=inp.dataset.k, st=inp.dataset.s, hw=hwFor(state.date);
