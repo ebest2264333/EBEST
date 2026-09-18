@@ -4559,10 +4559,11 @@ function mySubjectKeys(c, wd, lt){
     if(!at[key][sname]) at[key][sname]='결';
   }
 }
-function attStatusAgg(c, wd, sname, atForDate){
-  // 과목이 여러 개인 반의 그날 출결을 하나로 요약한다 (월별 출결부·통계용).
-  const keys=attKeysFor(c, wd); // attKeysFor가 이미 시간 순서로 정렬해서 준다
-  if(!keys.length) return '';
+// attKeysFor(c,wd) 등으로 이미 계산해둔 출결 키 목록을 받아서 상태를 요약한다 — 합반 파트너 반처럼
+// "실제 저장된 키"가 그 반 자체 과목이 아니라 다른 반(메인) 과목을 빌려온 키(attKeysWithOwner)일 때도
+// 같은 로직을 재사용할 수 있도록 키 계산과 요약 로직을 분리해뒀다.
+function attStatusFromKeys(keys, sname, atForDate){
+  if(!keys || !keys.length) return '';
   const vals=keys.map(({key})=>(atForDate[key]||{})[sname]||'');
   if(vals.includes('조퇴')) return '조퇴'; // 어느 과목이든 명시적으로 조퇴 처리되어 있으면 그걸 우선 반영
   if(keys.length>1){
@@ -4579,6 +4580,10 @@ function attStatusAgg(c, wd, sname, atForDate){
     else if(v==='출' && !worst) worst='출';
   }
   return worst;
+}
+function attStatusAgg(c, wd, sname, atForDate){
+  // 과목이 여러 개인 반의 그날 출결을 하나로 요약한다 (월별 출결부·통계용).
+  return attStatusFromKeys(attKeysFor(c, wd), sname, atForDate); // attKeysFor가 이미 시간 순서로 정렬해서 준다
 }
 function wordDutyForDay(c,wd){
   if(c.wordDutyByDay && c.wordDutyByDay[wd]!=null && c.wordDutyByDay[wd]!=='') return c.wordDutyByDay[wd];
@@ -5079,15 +5084,23 @@ function renderToday(list){
     </div></div>`:'';
 // 🚨 오늘 결석생 — 오늘 결석 처리된 학생을 한 곳에 모아 사유 입력·과목별 숙제 카톡 전송 여부를 관리 (모든 선생님에게 표시)
   const absentHwList=[]; const seenAbsent=new Set();
-  const collectAbsent=(cl)=>{
+  // borrowFrom: 이 반(cl)이 합반 상대이고 그날 자체 과목이 하나도 없어서(=메인 반에만 과목을 등록해둔 합반) 출결이
+  // 메인 반(borrowFrom)의 과목 구성을 빌려 "cl의 ckey_과목명" 키로 저장돼 있을 때, 그 메인 반을 넘겨준다.
+  // 실제 출석 체크 화면(studentAttRow, attKeysWithOwner)이 저장하는 키와 여기서 읽어오는 키가 반드시 같아야
+  // 합반 학생의 결석이 이 목록에 정상적으로 잡힌다 — 전에는 이 반영이 안 돼 있어서 합반 학생 결석이 누락됐었다.
+  const collectAbsent=(cl, borrowFrom)=>{
     const k=ckey(cl);
     let daySubjNames=[...new Set((cl.subjects||[]).filter(s=>subjOnDay(s,wd)&&!isWordTestSubject(s)).map(s=>s.subject).filter(Boolean))];
-    if(!daySubjNames.length){
-      const mp=mergedCounterpart(cl);
-      if(mp) daySubjNames=[...new Set((mp.subjects||[]).filter(s=>subjOnDay(s,wd)&&!isWordTestSubject(s)).map(s=>s.subject).filter(Boolean))];
+    const hasOwnSubjects=daySubjNames.length>0;
+    const mp=borrowFrom||mergedCounterpart(cl);
+    if(!hasOwnSubjects && mp){
+      daySubjNames=[...new Set((mp.subjects||[]).filter(s=>subjOnDay(s,wd)&&!isWordTestSubject(s)).map(s=>s.subject).filter(Boolean))];
     }
+    const attKeys=hasOwnSubjects ? attKeysFor(cl, wd) : (mp ? attKeysWithOwner(mp, k, wd) : attKeysFor(cl, wd));
+    // 이 반 자체에 오픈채팅방 링크가 없으면, 합반 상대 반에 등록된 링크를 그대로 같이 써서 결석 카톡 전송 때도 바로 그 방을 열 수 있게 한다
+    const roomUrl=cl.kakaoOpenChatUrl || (mp && mp.kakaoOpenChatUrl) || '';
     activeStudentsForDate(cl, state.date).forEach(sname=>{
-      if(attStatusAgg(cl,wd,sname,at)!=='결') return;
+      if(attStatusFromKeys(attKeys, sname, at)!=='결') return;
       const studentKey=k+'|'+sname;
       if(seenAbsent.has(studentKey)) return;
       seenAbsent.add(studentKey);
@@ -5101,7 +5114,7 @@ function renderToday(list){
         dept: cl.dept || '기타',
         className: cl.name,
         academy: cl.academy,
-        kakaoOpenChatUrl: cl.kakaoOpenChatUrl || '',
+        kakaoOpenChatUrl: roomUrl,
         student: studentDisplayName(cl.academy, sname, cl.name),
         k: k,
         s: sname,
@@ -5113,7 +5126,7 @@ function renderToday(list){
   clsForAbsent.forEach(c=>{
     collectAbsent(c);
     const partner=mergedPartnerClass(c);
-    if(partner && classMeets(partner, wd) && partner.students && partner.students.length) collectAbsent(partner);
+    if(partner && classMeets(partner, wd) && partner.students && partner.students.length) collectAbsent(partner, c);
   });
 
   const depts = ['초등', '중등', '고등', '기타'];
@@ -5215,13 +5228,15 @@ function renderToday(list){
       if(prefix) assignItems[0]=prefix;
     }
     const ref=daySubjects.filter(s=>s.hw).map(s=>`${esc(s.subject)}: ${esc(s.hw)}`).join('  ·  ');
+    // 이 반에 오픈채팅방 링크가 없으면 합반 상대 반의 링크를 같이 써서, 어느 쪽 반 화면에서든 같은 방으로 연결되게 한다
+    const roomUrlForThisClass=c.kakaoOpenChatUrl || (mergedCounterpart(c) && mergedCounterpart(c).kakaoOpenChatUrl) || '';
     const asgBox=`<div style="padding:9px 0 4px;border-bottom:1px solid #f1f3f8">
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:5px">
         <span style="font-size:.78rem;font-weight:800;color:${AC[c.academy].color};white-space:nowrap">📌 오늘의 과제 <span style="font-weight:600;color:#8b93a7">${esc(assignHeaderLabel(state.date))}</span></span>
         <button type="button" class="asgadditem" data-k="${esc(k)}" title="항목을 한 줄 더 추가합니다" style="flex:none;border:1px solid ${AC[c.academy].color}55;background:#fff;color:${AC[c.academy].color};border-radius:6px;padding:3px 9px;font-size:.74rem;font-weight:800;cursor:pointer">＋ 항목 추가</button>
         <button type="button" class="asgrefresh" data-date="${esc(state.date)}" title="다른 선생님이 방금 적은 과제가 있는지 지금 바로 확인합니다 (자동으로는 1분마다 확인돼요)" style="flex:none;border:1px solid var(--line);background:#fff;color:#5a6478;border-radius:6px;padding:5px 7px;font-size:.76rem;cursor:pointer">🔄</button>
         <button type="button" class="asgkakaocopy" data-k="${esc(k)}" data-classname="${esc(c.name)}" title="위 항목들을 <날짜 과제> 형식으로 묶어 클립보드에 복사합니다 — 카톡에서 그 반 채팅방에 붙여넣기만 하면 돼요" style="flex:none;border:1px solid #f5c6cb;background:#fee500;color:#3c1e1e;border-radius:6px;padding:5px 9px;font-size:.76rem;font-weight:700;cursor:pointer;white-space:nowrap">📋 복사</button>
-        ${c.kakaoOpenChatUrl?`<button type="button" class="asgkakaoopenroom" data-url="${esc(c.kakaoOpenChatUrl)}" data-classname="${esc(c.name)}" title="이 반 카톡 오픈채팅방을 새 창으로 엽니다 (평소엔 안 눌러도 돼요 — PC 카카오톡에 이미 있는 방을 직접 클릭하는 게 더 빠릅니다)" style="flex:none;border:1px solid var(--line);background:#fff;color:#5a6478;border-radius:6px;padding:5px 7px;font-size:.76rem;cursor:pointer">↗</button>`:''}
+        ${roomUrlForThisClass?`<button type="button" class="asgkakaoopenroom" data-url="${esc(roomUrlForThisClass)}" data-classname="${esc(c.name)}" title="이 반 카톡 오픈채팅방을 새 창으로 엽니다 (평소엔 안 눌러도 돼요 — PC 카카오톡에 이미 있는 방을 직접 클릭하는 게 더 빠릅니다)" style="flex:none;border:1px solid var(--line);background:#fff;color:#5a6478;border-radius:6px;padding:5px 7px;font-size:.76rem;cursor:pointer">↗</button>`:''}
       </div>
       <div style="display:flex;flex-direction:column;gap:5px">
         ${assignItems.map((val,i)=>{
