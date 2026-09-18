@@ -868,11 +868,12 @@ async function pullShared(silent){
 // Firebase Realtime DB 키에 못 쓰는 문자('.', '#', '$', '[', ']')가 반 이름(ckey)에 섞여 있을 수 있어 안전하게 이스케이프한다
 function fbKeyEncode(s){ return encodeURIComponent(String(s||'')).replace(/\./g,'%2E'); }
 function fbKeyDecode(s){ try{ return decodeURIComponent(String(s||'')); }catch(e){ return String(s||''); } }
-// ── "오늘의 과제"만 따로 빠르게 주고받는 경량 동기화 ──
-// 전체 학원 자료(학생·출결·게시판 등)를 다 받아오는 pullShared()는 1분 주기라, 다른 선생님이 방금 적은 과제를
-// 화면 새로고침 없이 좀 더 빨리 보고 싶다는 요청으로 추가한 것. "오늘의 과제" 내용만 담아서 훨씬 자주(15초) 확인한다.
-// 각 반(k)마다 자체 updatedAt을 찍어서, 이 값이 더 최신인 쪽만 반영한다(기존 방식처럼 "내 것이면 무조건 우선"이 아니라
-// "더 최근에 적힌 쪽이 우선"이 되도록 해서, 다른 선생님이 방금 추가한 과목별 항목이 무시되지 않게 한다).
+// ── "오늘의 과제"만 따로 주고받는 경량 동기화 ──
+// 전체 학원 자료(학생·출결·게시판 등)를 다 받아오는 pullShared()는 용량이 커서 1분 주기로 두고,
+// "오늘의 과제"만 훨씬 작은 별도 경로(/todayAssign)로 주고받아 자동 폴링(1분) + 수동 새로고침 버튼으로 확인한다.
+// 항목(줄) 하나하나마다 고유 id와 "그 줄을 마지막으로 고친 시각"을 같이 보내서, 반 전체를 통째로 비교하는 게 아니라
+// "같은 줄(id)끼리 누가 더 최근에 고쳤는지"로 병합한다 — 그래야 여러 선생님이 서로 다른 줄을 거의 동시에 고쳐도
+// 한쪽이 다른 쪽을 통째로 덮어써버리지 않는다.
 let __assignPullBusy=false;
 function scheduleTodayAssignPush(date){
   if(!syncOn()) return;
@@ -890,38 +891,73 @@ async function pushTodayAssign(date){
       if(!rec) return;
       const items=assignItemsFor(rec);
       if(!items.some(x=>String(x||'').trim())) return; // 빈 칸뿐이면 전송 생략
-      out[fbKeyEncode(k)]={ k, items, note: rec.note||buildAssignNote(items, date), updatedAt: rec.updatedAt||Date.now() };
+      const ids=ensureEntryIds(rec, items.length);
+      const meta=rec.entryMeta||{};
+      const entries=items.map((val,i)=>({id: ids[i], value: val, updatedAt: meta[ids[i]]||rec.updatedAt||Date.now()}));
+      out[fbKeyEncode(k)]={ k, entries, note: rec.note||buildAssignNote(items, date) };
     });
     await fbPut('/todayAssign/'+date, out, 8000);
   }catch(e){ console.warn('오늘의 과제 빠른 동기화 전송 실패', e); }
 }
-async function pullTodayAssign(date){
-  if(!syncOn()) return;
-  if(__assignPullBusy) return;
+// silent=true면 "받아올 내용 없음/실패"를 알림으로 띄우지 않는다(자동 폴링용). 수동 새로고침 버튼에서는 silent=false로 결과를 알려준다.
+async function pullTodayAssign(date, silent){
+  if(!syncOn()){ if(!silent) toast('⏸ 동기화 꺼짐 — 받아올 수 없어요'); return false; }
+  if(__assignPullBusy) return false;
   __assignPullBusy=true;
+  let changed=false;
   try{
     const pack=await fbGet('/todayAssign/'+date, 8000);
-    if(!pack) return;
+    if(!pack){ return false; }
     const hw=hwFor(date);
-    store.assignPullStamps=store.assignPullStamps||{};
-    let changed=false;
     Object.keys(pack).forEach(encK=>{
       const entry=pack[encK]; if(!entry) return;
       const k=entry.k || fbKeyDecode(encK);
-      const stampKey=date+'|'+k;
-      const remoteTs=entry.updatedAt||0;
-      const localRec=(hw[k]||{})['_assign'];
-      const localOwnTs=(localRec&&localRec.updatedAt)||0;
-      if(remoteTs<=localOwnTs) return; // 이 기기에 이미 그만큼(또는 더) 최신 내용이 있으면 건너뜀 — 편집 중인 내용을 오래된 걸로 덮어쓰지 않도록
-      if(remoteTs<=(store.assignPullStamps[stampKey]||0)) return; // 이미 받아본 내용
-      hw[k]=hw[k]||{};
-      hw[k]['_assign']={items: entry.items&&entry.items.length?entry.items:[''], note: entry.note||'', updatedAt: remoteTs};
-      store.assignPullStamps[stampKey]=remoteTs;
-      changed=true;
+      const remoteEntries=Array.isArray(entry.entries)?entry.entries:null;
+      const existingRec=hw[k] && hw[k]['_assign'];
+      // 이 반은 이 기기에서 아직 한 번도 손댄 적 없는 "빈 상태"인지 — 그렇다면 화면에 표시용으로 만들어지는 빈 첫 줄(placeholder)을
+      // 진짜 항목처럼 취급해 원격 내용 앞에 빈 줄이 끼워지지 않도록, 그 자리를 만들지 않고 원격 내용을 그대로 받는다
+      const wasVirgin=!existingRec || (!(existingRec.items&&existingRec.items.length) && !existingRec.note && !(existingRec.entryIds&&existingRec.entryIds.length));
+      hw[k]=hw[k]||{}; hw[k]['_assign']=hw[k]['_assign']||{};
+      const rec=hw[k]['_assign'];
+      const localItems=wasVirgin?[]:assignItemsFor(rec).slice();
+      const localIds=wasVirgin?[]:ensureEntryIds(rec, localItems.length).slice();
+      const localMeta=Object.assign({}, rec.entryMeta||{});
+      if(!remoteEntries){
+        // (구버전 payload 호환) entries가 없는 옛 형태면 반 전체 updatedAt 비교로만 처리
+        const remoteTs=entry.updatedAt||0;
+        if(remoteTs>(rec.updatedAt||0) && Array.isArray(entry.items) && entry.items.length){
+          rec.items=entry.items; rec.note=entry.note||buildAssignNote(entry.items, date); rec.updatedAt=remoteTs;
+          changed=true;
+        }
+        return;
+      }
+      const idxById={}; localIds.forEach((id,i)=>{ idxById[id]=i; });
+      const mergedIds=localIds.slice(), mergedValues=localItems.slice();
+      let recChanged=false;
+      remoteEntries.forEach(re=>{
+        if(!re || re.id==null) return;
+        const remoteTs=re.updatedAt||0;
+        const i=idxById[re.id];
+        if(i==null){
+          // 이 기기엔 없는 줄 — 다른 선생님이 새로 추가한 항목이므로 뒤에 더한다
+          mergedIds.push(re.id); mergedValues.push(re.value||''); localMeta[re.id]=remoteTs; recChanged=true;
+        } else if(remoteTs>(localMeta[re.id]||0)){
+          // 같은 줄인데 원격 쪽이 더 최근에 고쳤으면 그 내용으로 교체 — "가장 최근 수정" 기준
+          mergedValues[i]=re.value||''; localMeta[re.id]=remoteTs; recChanged=true;
+        }
+      });
+      if(recChanged){
+        rec.items=mergedValues.length?mergedValues:[''];
+        rec.entryIds=mergedValues.length?mergedIds:[];
+        rec.entryMeta=localMeta;
+        rec.note=buildAssignNote(rec.items, date);
+        rec.updatedAt=Math.max(rec.updatedAt||0, ...Object.values(localMeta));
+        changed=true;
+      }
     });
     if(changed){
       persistStoreLocal();
-      if(isEditingNow()){ pendingRenderAfterEdit=true; return; }
+      if(isEditingNow()){ pendingRenderAfterEdit=true; return true; }
       if(state.tab==='today'){
         // 화면 위치는 그대로 두고 "오늘의 과제"/결석생 패널 부분만 다시 그린다
         const scrollY=window.scrollY;
@@ -930,8 +966,14 @@ async function pullTodayAssign(date){
         window.scrollTo(0, scrollY);
         if(ttScroll!=null){ const ttEl2=document.getElementById('ttWeekScroll'); if(ttEl2) ttEl2.scrollTop=ttScroll; }
       }
-    }
-  }catch(e){ /* 조용히 무시 — 다음 주기(15초)에 다시 시도 */ }
+      if(!silent) toast('☁ 오늘의 과제 최신 내용을 받아왔어요');
+    } else if(!silent){ toast('오늘의 과제 — 새로 받아올 내용이 없어요'); }
+    return changed;
+  }catch(e){
+    console.warn('오늘의 과제 빠른 동기화 수신 실패', e);
+    if(!silent) toast('⚠ 오늘의 과제 새로고침 실패: '+e.message);
+    return false;
+  }
   finally{ __assignPullBusy=false; }
 }
 async function refreshReplaceFieldsFromServer(fields){
@@ -1048,9 +1090,9 @@ function startSyncLoop(){
   // 다시 화면을 보면(visibilitychange) 그 즉시 한 번 받아와서 놓친 내용을 바로 따라잡는다.
   if(MODE==='all'){ pollInbox(); __pullTimerId=setInterval(()=>{ if(document.hidden) return; pullShared(false); pollInbox(); }, 60000); }
   else __pullTimerId=setInterval(()=>{ if(document.hidden) return; pullShared(false); }, 60000);
-  // "오늘의 과제"만 따로 훨씬 자주(15초) 확인 — 오늘 탭을 보고 있을 때만, 전체 자료는 안 건드리고 그 부분만 가볍게 받아온다
+  // "오늘의 과제"만 따로 확인 — 오늘 탭을 보고 있을 때만, 전체 자료는 안 건드리고 그 부분만 가볍게 받아온다 (자동은 1분 주기, 더 빨리 보고 싶으면 옆의 🔄 새로고침 버튼으로)
   if(__assignTimerId) clearInterval(__assignTimerId);
-  __assignTimerId=setInterval(()=>{ if(document.hidden) return; if(state.tab==='today') pullTodayAssign(state.date); }, 15000);
+  __assignTimerId=setInterval(()=>{ if(document.hidden) return; if(state.tab==='today') pullTodayAssign(state.date, true); }, 60000);
   if(__syncLoopStarted) return; // 껐다 켰다를 반복해도 화면 이벤트 리스너는 한 번만 등록
   __syncLoopStarted=true;
   document.addEventListener('visibilitychange',()=>{
@@ -4338,6 +4380,15 @@ function assignItemsFor(rec){
   if(rec && rec.note) return [rec.note]; // 항목 배열이 생기기 전(예전 방식)에 적어둔 한 줄짜리 내용은 첫 항목으로 이어받는다
   return [''];
 }
+// "오늘의 과제" 각 줄(항목)마다 고유 id를 매겨둔다 — 나중에 다른 선생님 기기와 합칠 때, 줄 번호(위치)가 아니라
+// 이 id로 같은 항목인지 판단해서 "그 항목을 누가 더 최근에 고쳤는지"로 병합할 수 있게 하기 위함.
+function newAssignEntryId(){ return 'e'+Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
+function ensureEntryIds(rec, len){
+  rec.entryIds=Array.isArray(rec.entryIds)?rec.entryIds.slice():[];
+  while(rec.entryIds.length<len) rec.entryIds.push(newAssignEntryId());
+  if(rec.entryIds.length>len) rec.entryIds.length=len;
+  return rec.entryIds;
+}
 // 그 반의 "오늘의 과제" 항목 중, 과목 태그("[GR] ...")가 붙은 항목에서 그 과목의 내용만 뽑아온다.
 // 결석생 카톡 전송 메모칸을 위에서 적은 오늘의 과제 내용으로 자동 채워주기 위해 씀.
 // onlySubject: 이 반이 오늘 과목 하나뿐이면(=태그를 안 붙여도 헷갈릴 일이 없으면) 태그가 없어도 적어둔 내용을 그대로 가져온다.
@@ -5167,6 +5218,7 @@ function renderToday(list){
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:5px">
         <span style="font-size:.78rem;font-weight:800;color:${AC[c.academy].color};white-space:nowrap">📌 오늘의 과제 <span style="font-weight:600;color:#8b93a7">${esc(assignHeaderLabel(state.date))}</span></span>
         <button type="button" class="asgadditem" data-k="${esc(k)}" title="항목을 한 줄 더 추가합니다" style="flex:none;border:1px solid ${AC[c.academy].color}55;background:#fff;color:${AC[c.academy].color};border-radius:6px;padding:3px 9px;font-size:.74rem;font-weight:800;cursor:pointer">＋ 항목 추가</button>
+        <button type="button" class="asgrefresh" data-date="${esc(state.date)}" title="다른 선생님이 방금 적은 과제가 있는지 지금 바로 확인합니다 (자동으로는 1분마다 확인돼요)" style="flex:none;border:1px solid var(--line);background:#fff;color:#5a6478;border-radius:6px;padding:5px 7px;font-size:.76rem;cursor:pointer">🔄</button>
         <button type="button" class="asgkakaocopy" data-k="${esc(k)}" data-classname="${esc(c.name)}" title="위 항목들을 <날짜 과제> 형식으로 묶어 클립보드에 복사합니다 — 카톡에서 그 반 채팅방에 붙여넣기만 하면 돼요" style="flex:none;border:1px solid #f5c6cb;background:#fee500;color:#3c1e1e;border-radius:6px;padding:5px 9px;font-size:.76rem;font-weight:700;cursor:pointer;white-space:nowrap">📋 복사</button>
         ${c.kakaoOpenChatUrl?`<button type="button" class="asgkakaoopenroom" data-url="${esc(c.kakaoOpenChatUrl)}" data-classname="${esc(c.name)}" title="이 반 카톡 오픈채팅방을 새 창으로 엽니다 (평소엔 안 눌러도 돼요 — PC 카카오톡에 이미 있는 방을 직접 클릭하는 게 더 빠릅니다)" style="flex:none;border:1px solid var(--line);background:#fff;color:#5a6478;border-radius:6px;padding:5px 7px;font-size:.76rem;cursor:pointer">↗</button>`:''}
       </div>
@@ -5360,8 +5412,11 @@ function bindToday(){
     hw[k]['_assign'].items=items;
     hw[k]['_assign'].note=buildAssignNote(items, state.date);
     hw[k]['_assign'].updatedAt=Date.now();
+    const eids=ensureEntryIds(hw[k]['_assign'], items.length);
+    hw[k]['_assign'].entryMeta=hw[k]['_assign'].entryMeta||{};
+    hw[k]['_assign'].entryMeta[eids[idx]]=Date.now(); // 이 줄(항목) 자체를 언제 고쳤는지 — 다른 기기와 합칠 때 "이 줄"만 따로 최신 여부를 비교하기 위함
     save(); render(true); // 저장 후 바로 다시 그려서, 아래 결석생 패널 자동입력 등이 새로고침 없이 바로 반영되게 함
-    scheduleTodayAssignPush(state.date); // 다른 선생님 화면에도 새로고침 없이 빨리 보이도록 "오늘의 과제"만 따로 즉시 전송
+    scheduleTodayAssignPush(state.date); // 다른 선생님 화면에도 (수동 새로고침·다음 주기 확인 때) 최신 내용이 보이도록 "오늘의 과제"만 따로 즉시 전송
   });
   // ＋ 항목 추가 — 로그인한 선생님이 이 반에서 오늘 담당하는 과목을 "[과목명] "으로 자동으로 붙인 새 줄을 더한다 (번호는 화면에서 자동으로 매겨짐)
   v.querySelectorAll('.asgadditem').forEach(btn=>btn.onclick=()=>{
@@ -5374,8 +5429,17 @@ function bindToday(){
     hw[k]['_assign'].items=items;
     hw[k]['_assign'].note=buildAssignNote(items, state.date);
     hw[k]['_assign'].updatedAt=Date.now();
+    const eids2=ensureEntryIds(hw[k]['_assign'], items.length);
+    hw[k]['_assign'].entryMeta=hw[k]['_assign'].entryMeta||{};
+    hw[k]['_assign'].entryMeta[eids2[eids2.length-1]]=Date.now();
     save(); render(true);
     scheduleTodayAssignPush(state.date);
+  });
+  // 🔄 오늘의 과제 새로고침 — 자동(1분 주기) 확인을 기다리지 않고, 다른 선생님이 방금 적은 내용을 지금 바로 받아온다(그 부분만, 전체 새로고침 아님)
+  v.querySelectorAll('.asgrefresh').forEach(btn=>btn.onclick=async()=>{
+    btn.disabled=true; const orig=btn.textContent; btn.textContent='…';
+    try{ await pullTodayAssign(btn.dataset.date||state.date, false); }
+    finally{ btn.disabled=false; btn.textContent=orig; }
   });
   // ✕ 항목 삭제
   v.querySelectorAll('.asgrmitem').forEach(btn=>btn.onclick=()=>{
@@ -5385,7 +5449,10 @@ function bindToday(){
     if(items.length<=1) return; // 최소 한 줄은 남겨둔다
     const c=classByCkeyInMonth(k, state.month), wd=wdOf(state.date);
     if(c && !canEditAssignItem(c, wd, items[idx], loginTeacher())) return; // 담당 선생님/관리자만 삭제 가능
+    const eidsBefore=ensureEntryIds(hw[k]['_assign'], items.length);
     items.splice(idx,1);
+    eidsBefore.splice(idx,1);
+    hw[k]['_assign'].entryIds=eidsBefore;
     hw[k]['_assign'].items=items;
     hw[k]['_assign'].note=buildAssignNote(items, state.date);
     hw[k]['_assign'].updatedAt=Date.now();
