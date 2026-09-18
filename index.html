@@ -4294,6 +4294,23 @@ function myAssignSubjectPrefix(c, wd, lt){
 function classByCkeyInMonth(k, month){
   return classesFor(month||state.month).find(x=>ckey(x)===k)||null;
 }
+// "[GR] 문법책 12쪽" 같은 항목에서 "GR" 태그를 읽어, 그 과목을 오늘 이 반에서 가르치는 담당 선생님 이름을 찾아준다(없으면 '')
+function assignItemOwnerTeacherName(c, wd, val){
+  const m=String(val||'').trim().match(/^\[([^\]]+)\]/);
+  if(!m || !c) return '';
+  const tag=norm(m[1]);
+  const daySubjs=(c.subjects||[]).filter(s=>subjOnDay(s,wd)&&!isWordTestSubject(s));
+  const hit=daySubjs.find(s=>s.subject&&norm(s.subject)===tag);
+  return hit&&hit.teacher ? hit.teacher : '';
+}
+// 오늘의 과제 항목을 지금 로그인한 사람이 수정할 수 있는지 — 관리자/실장이거나, 그 항목에 붙은 [과목] 태그의 담당 선생님 본인일 때만 가능.
+// 태그가 없는 항목은 담당을 특정할 수 없으니 그대로 수정 허용한다.
+function canEditAssignItem(c, wd, val, lt){
+  if(isAdminRole()) return true;
+  const owner=assignItemOwnerTeacherName(c, wd, val);
+  if(!owner) return true;
+  return !!(lt && norm(lt.t.name)===norm(owner));
+}
 function buildAssignNote(items, dateISO){
   const nonEmpty=(items||[]).map(x=>String(x||'').trim()).filter(Boolean);
   if(!nonEmpty.length) return '';
@@ -5066,11 +5083,14 @@ function renderToday(list){
         ${c.kakaoOpenChatUrl?`<button type="button" class="asgkakaoopenroom" data-url="${esc(c.kakaoOpenChatUrl)}" data-classname="${esc(c.name)}" title="이 반 카톡 오픈채팅방을 새 창으로 엽니다 (평소엔 안 눌러도 돼요 — PC 카카오톡에 이미 있는 방을 직접 클릭하는 게 더 빠릅니다)" style="flex:none;border:1px solid var(--line);background:#fff;color:#5a6478;border-radius:6px;padding:5px 7px;font-size:.76rem;cursor:pointer">↗</button>`:''}
       </div>
       <div style="display:flex;flex-direction:column;gap:5px">
-        ${assignItems.map((val,i)=>`<div style="display:flex;gap:6px;align-items:center">
+        ${assignItems.map((val,i)=>{
+          const editable=canEditAssignItem(c, wd, val, lt);
+          const ownerName=editable?'':assignItemOwnerTeacherName(c, wd, val);
+          return `<div style="display:flex;gap:6px;align-items:center">
           <span style="flex:none;width:20px;text-align:right;font-size:.82rem;font-weight:800;color:${AC[c.academy].color}">${i+1}.</span>
-          <input type="text" class="asgitem" data-k="${esc(k)}" data-idx="${i}" placeholder="${c.academy==='icon'?'수업 공지문자로 나간 과제를 적어두세요':'과제표 기준 과제 (수정 가능)'}" value="${esc(val)}" style="flex:1;border:1.5px solid ${AC[c.academy].color}33;border-radius:8px;padding:6px 10px;font-family:inherit;font-size:.84rem;background:#fffdf5">
-          ${assignItems.length>1?`<button type="button" class="asgrmitem" data-k="${esc(k)}" data-idx="${i}" title="이 항목 삭제" style="flex:none;border:none;background:#f1f3f8;color:#8b93a7;border-radius:6px;padding:4px 8px;font-size:.72rem;cursor:pointer">✕</button>`:''}
-        </div>`).join('')}
+          <input type="text" class="asgitem" data-k="${esc(k)}" data-idx="${i}" ${editable?'':'readonly title="'+esc(ownerName?`${ownerName} 선생님 또는 관리자만 수정할 수 있어요`:'담당 선생님 또는 관리자만 수정할 수 있어요')+'"'} placeholder="${c.academy==='icon'?'수업 공지문자로 나간 과제를 적어두세요':'과제표 기준 과제 (수정 가능)'}" value="${esc(val)}" style="flex:1;border:1.5px solid ${AC[c.academy].color}33;border-radius:8px;padding:6px 10px;font-family:inherit;font-size:.84rem;background:${editable?'#fffdf5':'#f1f3f8'};color:${editable?'inherit':'#8b93a7'}">
+          ${assignItems.length>1&&editable?`<button type="button" class="asgrmitem" data-k="${esc(k)}" data-idx="${i}" title="이 항목 삭제" style="flex:none;border:none;background:#f1f3f8;color:#8b93a7;border-radius:6px;padding:4px 8px;font-size:.72rem;cursor:pointer">✕</button>`:''}
+        </div>`;}).join('')}
       </div>
       ${ref?`<div style="font-size:.72rem;color:#8b93a7;margin-top:4px">과제표 참고 — ${ref}</div>`:''}
     </div>`;
@@ -5240,6 +5260,8 @@ function bindToday(){
     const k=inp.dataset.k, idx=Number(inp.dataset.idx), hw=hwFor(state.date);
     hw[k]=hw[k]||{}; hw[k]['_assign']=hw[k]['_assign']||{};
     const items=assignItemsFor(hw[k]['_assign']).slice();
+    const c=classByCkeyInMonth(k, state.month), wd=wdOf(state.date);
+    if(c && !canEditAssignItem(c, wd, items[idx], loginTeacher())){ render(true); return; } // 담당 선생님/관리자 아니면 저장 안 함(방어)
     items[idx]=inp.value;
     hw[k]['_assign'].items=items;
     hw[k]['_assign'].note=buildAssignNote(items, state.date);
@@ -5263,6 +5285,8 @@ function bindToday(){
     hw[k]=hw[k]||{}; hw[k]['_assign']=hw[k]['_assign']||{};
     const items=assignItemsFor(hw[k]['_assign']).slice();
     if(items.length<=1) return; // 최소 한 줄은 남겨둔다
+    const c=classByCkeyInMonth(k, state.month), wd=wdOf(state.date);
+    if(c && !canEditAssignItem(c, wd, items[idx], loginTeacher())) return; // 담당 선생님/관리자만 삭제 가능
     items.splice(idx,1);
     hw[k]['_assign'].items=items;
     hw[k]['_assign'].note=buildAssignNote(items, state.date);
