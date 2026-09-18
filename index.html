@@ -4297,7 +4297,25 @@ function classByCkeyInMonth(k, month){
 function buildAssignNote(items, dateISO){
   const nonEmpty=(items||[]).map(x=>String(x||'').trim()).filter(Boolean);
   if(!nonEmpty.length) return '';
-  return assignHeaderLabel(dateISO)+'\n'+nonEmpty.map((t,i)=>`${i+1}. ${t}`).join('\n');
+  // 과목 태그("[GR] ...")가 붙은 항목은 과목별로 묶어서, 그 과목에 항목이 하나뿐이면 번호 없이 "[GR] 내용"으로,
+  // 같은 과목에 항목이 여러 개면 그 과목 안에서만 번호를 매겨 "[GR] 1.~ / 2.~" 형태로 붙여준다.
+  const groups=[];
+  nonEmpty.forEach(raw=>{
+    const m=raw.match(/^\[([^\]]+)\]\s*(.*)$/);
+    const tag=m?m[1]:null;
+    const text=m?m[2]:raw;
+    if(!text) return;
+    let g=groups.find(g=>g.tag===tag);
+    if(!g){ g={tag, texts:[]}; groups.push(g); }
+    g.texts.push(text);
+  });
+  const lines=groups.map(g=>{
+    const label=g.tag?`[${g.tag}] `:'';
+    if(g.texts.length<=1) return `${label}${g.texts[0]||''}`;
+    const indent=' '.repeat(label.length);
+    return g.texts.map((t,i)=>(i===0?label:indent)+`${i+1}. ${t}`).join('\n');
+  });
+  return assignHeaderLabel(dateISO)+'\n'+lines.join('\n');
 }
 function atFor(d){ return store.attend[d]=store.attend[d]||{}; }
 function stayFor(d){ return store.stayback[d]=store.stayback[d]||{}; }
@@ -4977,6 +4995,9 @@ function renderToday(list){
                   const autoMemo = savedMemo ? '' : assignItemTextForSubject(x.k, sj.subj);
                   const subjMemo = savedMemo || autoMemo;
                   return `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                    <label class="hwlab" style="display:flex;align-items:center;gap:3px;font-weight:700;color:var(--sub);white-space:nowrap" title="체크 해제하면 이번 복사에서 이 과목은 빠집니다">
+                      <input type="checkbox" class="hwkakaoinclude" data-k="${esc(x.k)}" data-s="${esc(x.s)}" data-subj="${esc(sj.subj||'')}" checked> 복사에 포함
+                    </label>
                     <label class="hwlab" style="color:${sj.kakaoSent?'#27ae60':'#b45309'};font-weight:800;background:#fff;padding:3px 8px;border:1px solid ${sj.kakaoSent?'#27ae60':'#f5c6cb'};border-radius:6px;min-width:140px;text-align:center">
                       <input type="checkbox" class="hwkakaochk" data-k="${esc(x.k)}" data-s="${esc(x.s)}" data-subj="${esc(sj.subj||'')}" ${sj.kakaoSent?'checked':''}> 💬 ${sj.subj?esc(sj.subj)+' - ':''}카톡 전송
                     </label>
@@ -5340,7 +5361,11 @@ function bindToday(){
   v.querySelectorAll('.hwkakaocopy').forEach(btn=>btn.onclick=()=>{
     const block=btn.closest('div').parentElement; // 복사 버튼 줄의 부모 = 이 학생 전체 블록(과목별 메모칸들을 담고 있음)
     const memoInputs=block?[...block.querySelectorAll('.hwkakaomemo')]:[];
-    const items=memoInputs.map(inp=>{
+    const items=memoInputs.filter(inp=>{
+      const row=inp.closest('div');
+      const inc=row?row.querySelector('.hwkakaoinclude'):null;
+      return !inc || inc.checked; // 체크 해제한 과목은 이번 복사에서 빠진다
+    }).map(inp=>{
       const val=(inp.value||'').trim();
       if(!val) return '';
       return inp.dataset.subj?`[${inp.dataset.subj}] ${val}`:val;
