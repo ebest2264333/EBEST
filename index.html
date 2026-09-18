@@ -4266,6 +4266,19 @@ function assignItemsFor(rec){
   if(rec && rec.note) return [rec.note]; // 항목 배열이 생기기 전(예전 방식)에 적어둔 한 줄짜리 내용은 첫 항목으로 이어받는다
   return [''];
 }
+// 그 반의 "오늘의 과제" 항목 중, 과목 태그("[GR] ...")가 붙은 항목에서 그 과목의 내용만 뽑아온다.
+// 결석생 카톡 전송 메모칸을 위에서 적은 오늘의 과제 내용으로 자동 채워주기 위해 씀.
+function assignItemTextForSubject(k, subj){
+  if(!subj) return '';
+  const hw=hwFor(state.date);
+  const items=assignItemsFor((hw[k]||{})['_assign']||{});
+  const nm=norm(subj);
+  for(const raw of items){
+    const m=String(raw||'').match(/^\s*\[([^\]]+)\]\s*(.*)$/);
+    if(m && norm(m[1])===nm && m[2].trim()) return m[2].trim();
+  }
+  return '';
+}
 // 오늘의 과제 새 항목을 만들 때, 지금 로그인한 선생님이 이 반에서 오늘 담당하는 과목을 앞에 "[과목명] "으로 자동으로 붙여준다.
 // (여러 과목을 담당하면 시간이 이른 과목부터, 담당 표기가 아예 없거나 로그인 안 했으면 그냥 빈 칸)
 function myAssignSubjectPrefix(c, wd, lt){
@@ -4959,12 +4972,16 @@ function renderToday(list){
               </div>
               <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px">
                 ${x.subjects.map(sj=>{
-                  const subjMemo = (sj.subj ? (bySubj[subjKey(sj.subj)] && bySubj[subjKey(sj.subj)].kakaoMemo) : hrecTop.kakaoMemo) || '';
+                  const savedMemo = (sj.subj ? (bySubj[subjKey(sj.subj)] && bySubj[subjKey(sj.subj)].kakaoMemo) : hrecTop.kakaoMemo) || '';
+                  // 이 학생만 따로 적어둔 메모가 없으면, 위(오늘의 과제)에 그 과목으로 적어둔 내용을 기본값으로 보여준다 — 직접 고치면 그 학생만 따로 저장됨
+                  const autoMemo = savedMemo ? '' : assignItemTextForSubject(x.k, sj.subj);
+                  const subjMemo = savedMemo || autoMemo;
                   return `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
                     <label class="hwlab" style="color:${sj.kakaoSent?'#27ae60':'#b45309'};font-weight:800;background:#fff;padding:3px 8px;border:1px solid ${sj.kakaoSent?'#27ae60':'#f5c6cb'};border-radius:6px;min-width:140px;text-align:center">
                       <input type="checkbox" class="hwkakaochk" data-k="${esc(x.k)}" data-s="${esc(x.s)}" data-subj="${esc(sj.subj||'')}" ${sj.kakaoSent?'checked':''}> 💬 ${sj.subj?esc(sj.subj)+' - ':''}카톡 전송
                     </label>
-                    <input type="text" class="hwkakaomemo" data-k="${esc(x.k)}" data-s="${esc(x.s)}" data-subj="${esc(sj.subj||'')}" placeholder="전송할 숙제/진도 내용 입력" value="${esc(subjMemo)}" style="flex:1;min-width:180px;border:1px solid #dcdde1;border-radius:6px;padding:4px 8px;font-family:inherit;font-size:.8rem;">
+                    <input type="text" class="hwkakaomemo" data-k="${esc(x.k)}" data-s="${esc(x.s)}" data-subj="${esc(sj.subj||'')}" placeholder="전송할 숙제/진도 내용 입력" value="${esc(subjMemo)}" title="${autoMemo?'오늘의 과제에 적어둔 내용이 자동으로 채워졌어요 — 이 학생만 다르게 보내려면 직접 수정하세요':''}" style="flex:1;min-width:180px;border:1px solid ${autoMemo?'#cfe3ff':'#dcdde1'};border-radius:6px;padding:4px 8px;font-family:inherit;font-size:.8rem;background:${autoMemo?'#f7fbff':'#fff'}">
+                    ${autoMemo?'<span style="font-size:.68rem;color:#5a8fd6;font-weight:700;white-space:nowrap">↳ 오늘의 과제에서 자동 입력</span>':''}
                     <button type="button" class="hwkakaocopy" data-memo="${esc(subjMemo)}" data-classname="${esc(x.className)}" title="내용을 클립보드에 복사합니다 — 카톡에서 그 반 채팅방에 붙여넣기만 하면 돼요" style="flex:none;border:1px solid #f5c6cb;background:#fee500;color:#3c1e1e;border-radius:6px;padding:4px 8px;font-size:.76rem;font-weight:700;cursor:pointer;white-space:nowrap">📋 복사</button>
                     ${x.kakaoOpenChatUrl?`<button type="button" class="hwkakaoopenroom" data-url="${esc(x.kakaoOpenChatUrl)}" data-classname="${esc(x.className)}" title="이 반 카톡 오픈채팅방을 새 창으로 엽니다 (평소엔 안 눌러도 돼요 — PC 카카오톡에 이미 있는 방을 직접 클릭하는 게 더 빠릅니다)" style="flex:none;border:1px solid var(--line);background:#fff;color:#5a6478;border-radius:6px;padding:4px 7px;font-size:.76rem;cursor:pointer">↗</button>`:''}
                   </div>`;
