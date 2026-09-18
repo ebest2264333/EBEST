@@ -5287,7 +5287,7 @@ function bindToday(){
     items[idx]=tag?`[${tag}] ${inp.value}`:inp.value;
     hw[k]['_assign'].items=items;
     hw[k]['_assign'].note=buildAssignNote(items, state.date);
-    save();
+    save(); render(true); // 저장 후 바로 다시 그려서, 아래 결석생 패널 자동입력 등이 새로고침 없이 바로 반영되게 함
   });
   // ＋ 항목 추가 — 로그인한 선생님이 이 반에서 오늘 담당하는 과목을 "[과목명] "으로 자동으로 붙인 새 줄을 더한다 (번호는 화면에서 자동으로 매겨짐)
   v.querySelectorAll('.asgadditem').forEach(btn=>btn.onclick=()=>{
