@@ -228,6 +228,9 @@ footer{max-width:1180px;margin:0 auto;padding:0 20px 40px;font-size:.73rem;color
 .atable th,.atable td{border:1px solid #e7eaf2;padding:4px 6px;text-align:center;white-space:nowrap}
 .atable thead th{background:#f4f6fb;color:var(--sub);font-size:.68rem}
 .atable td.nm{text-align:left;font-weight:700;background:#fbfcfe;min-width:110px}
+/* 옆으로 스크롤해도 학생 이름 칸(첫 열)은 항상 고정되어 보이도록 */
+.atable thead th:first-child,.atable td.nm{position:sticky;left:0;z-index:2;box-shadow:2px 0 4px -2px rgba(23,27,46,.2)}
+.atable thead th:first-child{z-index:3;background:#f4f6fb}
 .atable td.mk{cursor:pointer;min-width:30px;user-select:none}
 .atable td.mk:hover{outline:2px solid #9db4e4}
 .mk.m출{color:var(--ok);font-weight:800}
