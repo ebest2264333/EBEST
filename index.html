@@ -3937,7 +3937,7 @@ function renderHwRange(list){
         let doneCnt=0, applicable=0;
         let row=`<tr><td class="nm">${hl(studentDisplayName(c.academy,s,c.name))}</td>`;
         dates.forEach(d=>{
-          if(!subjectMeetsOnDate(c, subj, d)){ row+=`<td class="mk" style="cursor:default;color:#c8ccd6">-</td>`; return; }
+          if(!subjectMeetsOnDate(c, subj, d) || noHwMapFor(k, d)[subj]){ row+=`<td class="mk" style="cursor:default;color:#c8ccd6">-</td>`; return; }
           applicable++;
           const rec=(store.homework[d]&&store.homework[d][k])?store.homework[d][k][s]:null;
           const done=!!(rec&&rec.doneSubjects&&rec.doneSubjects[subj]);
@@ -3951,12 +3951,14 @@ function renderHwRange(list){
     } else {
       h+=`<div class="attwrap"><table class="atable"><thead><tr><th>학생</th>${dates.map(d=>`<th>${Number(d.slice(8))}일<br>${wdOf(d)}</th>`).join('')}<th>완료</th></tr></thead><tbody>`;
       c.students.forEach(s=>{
-        let doneCnt=0;
+        let doneCnt=0, applicable=0;
         let row=`<tr><td class="nm">${hl(studentDisplayName(c.academy,s,c.name))}</td>`;
         dates.forEach(d=>{
-          const subjectNames=hwDaySubjectNames(c,d);
           const rec=(store.homework[d]&&store.homework[d][k])?store.homework[d][k][s]:null;
-          const status=hwDoneStatus(rec, subjectNames);
+          const status=hwDayStatusFor(c, d, rec);
+          if(status==='na'){ row+=`<td class="mk" style="cursor:default;color:#c8ccd6" title="이 날은 숙제없음으로 표시되어 계산에서 빠집니다">-</td>`; return; }
+          applicable++;
+          const subjectNames=hwEffectiveSubjectNames(c,d);
           if(status==='done') doneCnt++;
           const symbol=status==='done'?'O':status==='partial'?'△':'X';
           // O(다 함)=출석색, △(일부만)=지각색, X(전혀 안 함)=결석색 — 기존 출결표 색상 그대로 재사용
@@ -3965,7 +3967,7 @@ function renderHwRange(list){
             ? `<td class="mk ${clsName}" style="cursor:default" title="이 날은 과목이 여러 개라 [오늘 수업] 탭에서 과목별로 체크하거나, 위의 과목 탭을 눌러주세요 (${subjectNames.join(', ')})" data-multi="1">${symbol}</td>`
             : `<td class="mk ${clsName}" data-d="${d}" data-k="${esc(k)}" data-s="${esc(s)}">${symbol}</td>`;
         });
-        row+=`<td class="tot">${doneCnt}/${dates.length}</td></tr>`;
+        row+=`<td class="tot">${doneCnt}/${applicable}</td></tr>`;
         h+=row;
       });
       h+='</tbody></table></div>';
@@ -3973,7 +3975,7 @@ function renderHwRange(list){
     h+='</details>';
   });
   if(!any) h+='<div class="empty">표시할 반이 없습니다. (요일 정보와 학생 명단이 있는 반만 표시됩니다)</div>';
-  h+='<div class="legend2">O 숙제 다 함 · <span style="color:var(--warn)">△</span> 한 과목이라도 안 함 · <span style="color:#c02b2b">X</span> 전혀 안 함 <span style="font-size:.72rem;color:#8b93a7">(과목이 여러 개인 반은 반 이름 옆 "전체 / 과목명" 탭을 눌러 과목별로도 볼 수 있어요)</span></div>';
+  h+='<div class="legend2">O 숙제 다 함 · <span style="color:var(--warn)">△</span> 한 과목이라도 안 함 · <span style="color:#c02b2b">X</span> 전혀 안 함 · <span style="color:#c8ccd6">-</span> 숙제없음(계산 제외) <span style="font-size:.72rem;color:#8b93a7">(과목이 여러 개인 반은 반 이름 옆 "전체 / 과목명" 탭을 눌러 과목별로도 볼 수 있어요)</span></div>';
   return h;
 }
 function bindHwRange(){
@@ -4509,6 +4511,32 @@ function hwDoneStatus(hrec, subjectNames){
     return 'partial';
   }
   return (hrec&&hrec.done) ? 'done' : 'none';
+}
+// 선생님이 "오늘의 과제" 항목 옆 "숙제없음"으로 표시해둔 과목 맵({과목명: true}, 태그 없는 항목은 '' 키)
+function noHwMapFor(k, dateISO){
+  const rec=((store.homework[dateISO]||{})[k])?store.homework[dateISO][k]['_assign']:null;
+  return (rec && rec.noHw) || {};
+}
+// 그 날 실제로 "체크가 필요한" 과목만 남긴다 — "숙제없음"으로 표시한 과목은 체크 대상에서 제외
+function hwEffectiveSubjectNames(c, dateISO){
+  const noHw=noHwMapFor(ckey(c), dateISO);
+  return hwDaySubjectNames(c, dateISO).filter(sn=>!noHw[sn]);
+}
+// 학생 한 명의 숙제 상태를 'done'/'partial'/'none'/'na'(그날 숙제 자체가 "없음"으로 표시됨)로 판정
+function hwDayStatusFor(c, dateISO, hrec){
+  const raw=hwDaySubjectNames(c, dateISO);
+  const eff=hwEffectiveSubjectNames(c, dateISO);
+  if(raw.length>0 && eff.length===0) return 'na'; // 오늘 있는 과목이 전부 "숙제없음"으로 표시됨
+  // 원래 과목이 여러 개였던 반은, "숙제없음" 처리로 남은 과목이 하나뿐이어도 과목별 체크(doneSubjects)를 계속 봐야 한다
+  // (hwDoneStatus는 목록이 1개면 옛날 단일 체크(.done)를 보는 방식이라, 여기서는 그 분기를 타지 않게 직접 계산한다)
+  if(raw.length>1){
+    const ds=(hrec&&hrec.doneSubjects)||{};
+    const doneCount=eff.filter(sn=>ds[sn]).length;
+    if(doneCount===0) return 'none';
+    if(doneCount>=eff.length) return 'done';
+    return 'partial';
+  }
+  return hwDoneStatus(hrec, eff.length?eff:raw);
 }
 // "오늘의 과제"를 카톡에 바로 붙여넣을 수 있는 "<9월 15일 과제>\n1. ...\n2. ..." 형식으로 관리하기 위한 도우미들.
 // 실제 항목들은 배열(items)로 따로 저장하고, note는 그 배열로부터 매번 다시 만들어지는 값(기존 인쇄·리포트 화면이 그대로 쓰는 문자열)이다.
@@ -5367,7 +5395,7 @@ function renderToday(list){
     // "출석 X/Y"는 실제로 출석한 인원이 아니라, 출/지/결/조 중 뭐든 출결 체크가 "된" 인원 수를 보여준다
     // (출결 체크를 다 마쳤는지 확인하는 용도라서, 지각·결석·조퇴도 체크된 걸로 쳐야 한다)
     const present=cStudents.filter(s=>!!attStatusAgg(c,wd,s,at)).length;
-    const hwdone=cStudents.filter(s=>hwDoneStatus(hw[k]&&hw[k][s], subjNames)==='done').length;
+    const hwdone=cStudents.filter(s=>hwDayStatusFor(c, state.date, hw[k]&&hw[k][s])==='done').length;
     const assignRec=(hw[k]||{})['_assign']||{};
     const assignItems=assignItemsFor(assignRec);
     // 아직 한 번도 입력된 적 없는 빈 첫 줄이면, 지금 로그인한 선생님이 오늘 이 반에서 담당하는 과목을 미리 채워둔다(수정 가능)
@@ -5417,6 +5445,12 @@ function renderToday(list){
           })()}
           
           <input type="text" class="asgitem" data-k="${esc(k)}" data-idx="${i}" data-tag="${esc(tag)}" ${editable?'':'readonly title="'+esc(ownerName?`${ownerName} 선생님 또는 관리자만 수정할 수 있어요`:'담당 선생님 또는 관리자만 수정할 수 있어요')+'"'} placeholder="${c.academy==='icon'?'수업 공지문자로 나간 과제를 적어두세요':'과제표 기준 과제 (수정 가능)'}" value="${esc(textOnly)}" style="flex:1;border:1.5px solid ${AC[c.academy].color}33;border-radius:8px;padding:6px 10px;font-family:inherit;font-size:.84rem;background:${editable?'#fffdf5':'#f1f3f8'};color:${editable?'inherit':'#8b93a7'}">
+          ${editable?(()=>{
+            // "숙제없음" 체크 — 오늘 이 과목은 숙제를 안 냈다는 뜻으로, 체크해두면 아래 숙제 체크(체크표 포함)에서 이 과목은 아예 빼고 계산한다
+            const noHwKey=tag||'';
+            const isNoHw=!!(assignRec.noHw&&assignRec.noHw[noHwKey]);
+            return `<label class="hwlab asgNoHwLab" style="flex:none;font-size:.72rem;color:${isNoHw?'#b45309':'var(--sub)'};white-space:nowrap"><input type="checkbox" class="asgNoHw" data-k="${esc(k)}" data-tag="${esc(noHwKey)}" ${isNoHw?'checked':''}>숙제없음</label>`;
+          })():''}
           ${assignItems.length>1&&editable?`<button type="button" class="asgrmitem" data-k="${esc(k)}" data-idx="${i}" title="이 항목 삭제" style="flex:none;border:none;background:#f1f3f8;color:#8b93a7;border-radius:6px;padding:4px 8px;font-size:.72rem;cursor:pointer">✕</button>`:''}
         </div>`;}).join('')}
       </div>
@@ -5469,7 +5503,9 @@ function renderToday(list){
 
       if(rowMulti){
       // 과목이 여러 개인 반은 "숙제" 체크를 과목별로 따로 한다 (다 하면 O, 일부만 하면 △, 아무것도 안 하면 X로 표로 볼 수 있게)
+      const dayNoHw = noHwMapFor(k, state.date);
       const hwGroups = ownerAttKeys.map(({subject})=>{
+        if(dayNoHw[subject]) return `<span class="hwlab hwsub" style="color:#b45309;font-size:.68rem;font-weight:800">${esc(subject)} 숙제없음</span>`;
         const d=!!(hrec.doneSubjects&&hrec.doneSubjects[subject]);
         return `<label class="hwlab hwsub" style="color:${d?'var(--ok)':'var(--sub)'}"><input type="checkbox" class="hwchk-sub" data-k="${esc(ownerK)}" data-s="${esc(s)}" data-subj="${esc(subject)}" ${d?'checked':''}><b style="font-size:.68rem">${esc(subject)}</b></label>`;
       }).join('');
@@ -5488,15 +5524,17 @@ function renderToday(list){
         ${absReasonRow}
       </div>${stayRow}`;
     }
+    const soleSubjTag = (ownerAttKeys[0]&&ownerAttKeys[0].subject)||'';
+    const soleNoHw = !!noHwMapFor(k, state.date)[soleSubjTag];
     return `<div class="trow2">
       <span class="sn">${hl(studentDisplayName(c.academy,s,ownerK.slice(ownerK.indexOf('|')+1)))}</span>
-      
+
       <!-- ▼ 출/지/결/조 한 줄로 나오게 수정 (flex-wrap: nowrap 으로 변경) ▼ -->
       <span class="atg" style="display:flex;flex-wrap:nowrap;align-items:center;gap:4px">${atGroups}${allAbsentChk}</span>
-      
-      <label class="hwlab" style="color:${hrec.done?'var(--ok)':'var(--sub)'}"><input type="checkbox" class="hwchk" data-k="${esc(ownerK)}" data-s="${esc(s)}" ${hrec.done?'checked':''}>숙제</label>
+
+      ${soleNoHw?`<span class="hwlab" style="color:#b45309;font-weight:800">숙제없음</span>`:`<label class="hwlab" style="color:${hrec.done?'var(--ok)':'var(--sub)'}"><input type="checkbox" class="hwchk" data-k="${esc(ownerK)}" data-s="${esc(s)}" ${hrec.done?'checked':''}>숙제</label>`}
       <input type="text" class="hwnote" data-k="${esc(ownerK)}" data-s="${esc(s)}" placeholder="숙제 확인 · 수정 지시 · 수업 메모…" value="${esc(hrec.note||'')}" style="display:none;"></div>
-      
+
       ${absReasonRow}
     ${stayRow}`;
   };
@@ -5593,6 +5631,16 @@ function bindToday(){
     hw[k][st].doneSubjects=hw[k][st].doneSubjects||{};
     hw[k][st].doneSubjects[subj]=cb.checked;
     save(); render(true);
+  });
+  // "숙제없음" — 오늘의 과제 항목 옆에서 선생님이 체크하면, 그 과목은 그날 숙제 체크 대상에서 빠진다
+  // (학생별 숙제 체크칸도 숨겨지고, 숙제 체크표에도 '-'로 표시되어 안 한 걸로 잡히지 않는다)
+  v.querySelectorAll('.asgNoHw').forEach(cb=>cb.onchange=()=>{
+    const k=cb.dataset.k, tag=cb.dataset.tag, hw=hwFor(state.date);
+    hw[k]=hw[k]||{}; hw[k]['_assign']=hw[k]['_assign']||{};
+    hw[k]['_assign'].noHw=hw[k]['_assign'].noHw||{};
+    hw[k]['_assign'].noHw[tag]=cb.checked;
+    save(); render(true);
+    scheduleTodayAssignPush(state.date);
   });
 // "오늘의 과제" 항목 하나(N번째 줄) 내용 수정 (텍스트 칸 & 과목 드롭다운 공통 처리)
   const saveAssignItem = (k, idx, inp) => {
