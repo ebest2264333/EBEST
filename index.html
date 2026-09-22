@@ -1601,14 +1601,14 @@ function tabDefs(){
   const lt=loginTeacher();
   if(lt && !isMgr()){
     return {main:[['today','🏠 홈'],['consult','상담'],['report','업무일지'],['dash','반 · 교재']],
-            more:[['bookgive','📦 교재배부'],['wordrange','📝 단어 범위'],['syllabus','📘 Syllabus'],['examrpt','📊 내신분석'],['roster','학생 명단'],['timetable','🕒 시간표'],['yearly','연간 교재'],['cal','일정 · 회의'],['board','📋 게시판'],['archive','전체 기록'],['set','설정']]};
+            more:[['bookgive','📦 교재배부'],['wordrange','📝 단어 범위'],['hwrange','✅ 숙제 체크표'],['syllabus','📘 Syllabus'],['examrpt','📊 내신분석'],['roster','학생 명단'],['timetable','🕒 시간표'],['yearly','연간 교재'],['cal','일정 · 회의'],['board','📋 게시판'],['archive','전체 기록'],['set','설정']]};
   }
   if(isMgr()){
     return {main:[['today','🏠 홈'],['consult','상담'],['report','업무보고'],['dash','반 · 교재']],
-            more:[['bookgive','📦 교재배부'],['wordrange','📝 단어 범위'],['syllabus','📘 Syllabus'],['examrpt','📊 내신분석'],['roster','학생 명단'],['timetable','🕒 시간표'],['attend','출결 (월별)'],['yearly','연간 교재'],['cal','일정 · 회의'],['board','📋 게시판'],['archive','전체 기록'],['set','설정']]};
+            more:[['bookgive','📦 교재배부'],['wordrange','📝 단어 범위'],['hwrange','✅ 숙제 체크표'],['syllabus','📘 Syllabus'],['examrpt','📊 내신분석'],['roster','학생 명단'],['timetable','🕒 시간표'],['attend','출결 (월별)'],['yearly','연간 교재'],['cal','일정 · 회의'],['board','📋 게시판'],['archive','전체 기록'],['set','설정']]};
   }
   return {main:[['today','오늘 수업'],['consult','상담 관리'],['report','업무보고'],['dash','반 · 교재']],
-          more:[['bookgive','📦 교재배부'],['wordrange','📝 단어 범위'],['syllabus','📘 Syllabus'],['examrpt','📊 내신분석'],['roster','학생 명단'],['timetable','🕒 시간표'],['attend','출결 (월별)'],['yearly','연간 교재'],['cal','일정 · 회의'],['board','📋 게시판'],['archive','전체 기록'],['set','설정 · 업로드']]};
+          more:[['bookgive','📦 교재배부'],['wordrange','📝 단어 범위'],['hwrange','✅ 숙제 체크표'],['syllabus','📘 Syllabus'],['examrpt','📊 내신분석'],['roster','학생 명단'],['timetable','🕒 시간표'],['attend','출결 (월별)'],['yearly','연간 교재'],['cal','일정 · 회의'],['board','📋 게시판'],['archive','전체 기록'],['set','설정 · 업로드']]};
 }
 function goTab(t){
   state.tab=t;
@@ -3896,6 +3896,110 @@ function renderWordRange(list){
   return h;
 }
 function bindWordRange(){}
+/* ---------- 숙제 체크표 (월별, 출결부/단어 범위와 같은 표 형식) ---------- */
+// 그 반의 이번 달 날짜들 중에서, 이 특정 과목이 실제로 있는 날인지
+function subjectMeetsOnDate(c, subj, dateISO){
+  const wd=wdOf(dateISO);
+  return (c.subjects||[]).some(x=>x.subject===subj && !isWordTestSubject(x) && subjOnDay(x, wd));
+}
+function renderHwRange(list){
+  const lt=loginTeacher();
+  let cls=list;
+  if(lt && state.myOnly) cls=cls.filter(c=>teacherTeaches(c,lt));
+  state.hwSubjView=state.hwSubjView||{};
+  let h=`<div class="todaybar"><span class="wd">${mLabel(state.month)} 숙제 체크표</span>
+    ${lt?`<span class="mytag" style="background:${lt.t.color}">👤 ${esc(lt.t.name)}</span>
+      <label class="hwlab"><input type="checkbox" id="myOnly" ${state.myOnly?'checked':''}> 내 수업만 보기</label>`:''}
+    <span style="font-size:.76rem;color:var(--sub)">칸을 누르면 숙제 완료 여부가 바로 바뀝니다 · 그날그날 체크는 [오늘 수업] 탭에서도 가능합니다</span></div>`;
+  let any=false;
+  cls.forEach(c=>{
+    if(!(c.students&&c.students.length)) return;
+    if(!cdays(c)) return;
+    const k=ckey(c);
+    const dates=monthDates(c);
+    if(!dates.length) return;
+    any=true;
+    const allSubjNames=[...new Set(dates.flatMap(d=>hwDaySubjectNames(c,d)))];
+    const curView = allSubjNames.includes(state.hwSubjView[k]) ? state.hwSubjView[k] : 'all';
+    // 과목이 여러 개인 반은 반 이름 옆에 "전체 / 과목1 / 과목2 …" 탭을 두어, 누른 탭의 표만 보여준다
+    const tabs = allSubjNames.length>1
+      ? `<span style="display:inline-flex;gap:4px;margin-left:6px;flex-wrap:wrap">
+          <button type="button" class="btn small hwSubjTab" data-k="${esc(k)}" data-view="all" style="padding:2px 9px;${curView==='all'?'background:var(--ink);color:#fff':'background:#eef0f6;color:var(--sub)'}">전체</button>
+          ${allSubjNames.map(sn=>`<button type="button" class="btn small hwSubjTab" data-k="${esc(k)}" data-view="${esc(sn)}" style="padding:2px 9px;${curView===sn?'background:var(--ink);color:#fff':'background:#eef0f6;color:var(--sub)'}">${esc(sn)}</button>`).join('')}
+        </span>`
+      : '';
+    h+=`<details class="ysec" open><summary style="cursor:pointer;padding:10px 16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:1.02rem">${hl(c.name)}</b> ${bdg(c.academy)}
+      <span style="font-size:.75rem;font-weight:400;color:var(--sub)">${esc(cdays(c))} · ${c.students.length}명</span>${tabs}</summary>`;
+    if(curView!=='all'){
+      const subj=curView;
+      h+=`<div class="attwrap"><table class="atable"><thead><tr><th>학생</th>${dates.map(d=>`<th>${Number(d.slice(8))}일<br>${wdOf(d)}</th>`).join('')}<th>완료</th></tr></thead><tbody>`;
+      c.students.forEach(s=>{
+        let doneCnt=0, applicable=0;
+        let row=`<tr><td class="nm">${hl(studentDisplayName(c.academy,s,c.name))}</td>`;
+        dates.forEach(d=>{
+          if(!subjectMeetsOnDate(c, subj, d)){ row+=`<td class="mk" style="cursor:default;color:#c8ccd6">-</td>`; return; }
+          applicable++;
+          const rec=(store.homework[d]&&store.homework[d][k])?store.homework[d][k][s]:null;
+          const done=!!(rec&&rec.doneSubjects&&rec.doneSubjects[subj]);
+          if(done) doneCnt++;
+          row+=`<td class="mk ${done?'m출':'m결'}" data-d="${d}" data-k="${esc(k)}" data-s="${esc(s)}" data-subj="${esc(subj)}">${done?'✓':'·'}</td>`;
+        });
+        row+=`<td class="tot">${doneCnt}/${applicable}</td></tr>`;
+        h+=row;
+      });
+      h+='</tbody></table></div>';
+    } else {
+      h+=`<div class="attwrap"><table class="atable"><thead><tr><th>학생</th>${dates.map(d=>`<th>${Number(d.slice(8))}일<br>${wdOf(d)}</th>`).join('')}<th>완료</th></tr></thead><tbody>`;
+      c.students.forEach(s=>{
+        let doneCnt=0;
+        let row=`<tr><td class="nm">${hl(studentDisplayName(c.academy,s,c.name))}</td>`;
+        dates.forEach(d=>{
+          const subjectNames=hwDaySubjectNames(c,d);
+          const rec=(store.homework[d]&&store.homework[d][k])?store.homework[d][k][s]:null;
+          const status=hwDoneStatus(rec, subjectNames);
+          if(status==='done') doneCnt++;
+          const symbol=status==='done'?'O':status==='partial'?'△':'X';
+          // O(다 함)=출석색, △(일부만)=지각색, X(전혀 안 함)=결석색 — 기존 출결표 색상 그대로 재사용
+          const clsName=status==='done'?'m출':status==='partial'?'m지':'m결';
+          row+= subjectNames.length>1
+            ? `<td class="mk ${clsName}" style="cursor:default" title="이 날은 과목이 여러 개라 [오늘 수업] 탭에서 과목별로 체크하거나, 위의 과목 탭을 눌러주세요 (${subjectNames.join(', ')})" data-multi="1">${symbol}</td>`
+            : `<td class="mk ${clsName}" data-d="${d}" data-k="${esc(k)}" data-s="${esc(s)}">${symbol}</td>`;
+        });
+        row+=`<td class="tot">${doneCnt}/${dates.length}</td></tr>`;
+        h+=row;
+      });
+      h+='</tbody></table></div>';
+    }
+    h+='</details>';
+  });
+  if(!any) h+='<div class="empty">표시할 반이 없습니다. (요일 정보와 학생 명단이 있는 반만 표시됩니다)</div>';
+  h+='<div class="legend2">O 숙제 다 함 · <span style="color:var(--warn)">△</span> 한 과목이라도 안 함 · <span style="color:#c02b2b">X</span> 전혀 안 함 <span style="font-size:.72rem;color:#8b93a7">(과목이 여러 개인 반은 반 이름 옆 "전체 / 과목명" 탭을 눌러 과목별로도 볼 수 있어요)</span></div>';
+  return h;
+}
+function bindHwRange(){
+  const v=document.getElementById('view');
+  const mo=v.querySelector('#myOnly'); if(mo) mo.onchange=()=>{state.myOnly=mo.checked; render();};
+  v.querySelectorAll('.hwSubjTab').forEach(b=>b.onclick=(e)=>{
+    e.preventDefault(); e.stopPropagation(); // <summary> 안에 있어서 눌러도 반 카드가 접히지 않도록
+    state.hwSubjView=state.hwSubjView||{};
+    state.hwSubjView[b.dataset.k]=b.dataset.view;
+    render(true);
+  });
+  v.querySelectorAll('td.mk').forEach(td=>td.onclick=()=>{
+    if(td.dataset.multi==='1'){ alert('이 날은 과목이 여러 개라 여기서는 수정할 수 없어요.\n[오늘 수업] 탭에서 그 날짜로 이동해 과목별로 숙제를 체크하거나, 반 이름 옆 과목 탭을 눌러주세요.'); return; }
+    const d=td.dataset.d, k=td.dataset.k, s=td.dataset.s, subj=td.dataset.subj;
+    if(!d||!k||!s) return; // '-' 처럼 그 과목이 없는 날 칸은 클릭해도 아무 일도 안 일어난다
+    const hw=hwFor(d);
+    hw[k]=hw[k]||{}; hw[k][s]=hw[k][s]||{};
+    if(subj){
+      hw[k][s].doneSubjects=hw[k][s].doneSubjects||{};
+      hw[k][s].doneSubjects[subj]=!hw[k][s].doneSubjects[subj];
+    } else {
+      hw[k][s].done=!hw[k][s].done;
+    }
+    save(); render(true);
+  });
+}
 function renderStudent(list){
   const rows=[]; list.forEach(c=>(c.students||[]).forEach(s=>rows.push({s,c})));
   let f=state.q?rows.filter(r=>matches(r.s)||matches(r.c.name)):rows;
@@ -4389,6 +4493,23 @@ function fmtH24(x){ const hh=Math.floor(x), mm=Math.round((x-hh)*60); return `${
 function fmtDur(x){ const mm=Math.round(x*60); return mm>=60? Math.floor(mm/60)+'시간'+(mm%60?' '+(mm%60)+'분':'') : mm+'분'; }
 const wdOf = d => WD[new Date(d+'T00:00:00').getDay()];
 function hwFor(d){ return store.homework[d]=store.homework[d]||{}; }
+// 그 반의 그 날짜(요일)에 실제로 진행되는 과목명 목록 (숙제 완료 체크 기준으로 쓰임) — 워드테스트 전용 과목은 제외
+function hwDaySubjectNames(c, dateISO){
+  const wd=wdOf(dateISO);
+  return [...new Set((c.subjects||[]).filter(s=>subjOnDay(s,wd)&&!isWordTestSubject(s)&&s.subject).map(s=>s.subject))];
+}
+// 학생 한 명의 숙제 완료 상태를 'done'(다 함) / 'partial'(한 과목이라도 안 함) / 'none'(전혀 안 함)으로 판정한다.
+// 과목이 여러 개인 반은 과목별 체크(hrec.doneSubjects)를 보고, 과목이 하나뿐이거나 없는 반은 기존 단일 체크(hrec.done)를 본다.
+function hwDoneStatus(hrec, subjectNames){
+  if((subjectNames||[]).length>1){
+    const ds=(hrec&&hrec.doneSubjects)||{};
+    const doneCount=subjectNames.filter(sn=>ds[sn]).length;
+    if(doneCount===0) return 'none';
+    if(doneCount>=subjectNames.length) return 'done';
+    return 'partial';
+  }
+  return (hrec&&hrec.done) ? 'done' : 'none';
+}
 // "오늘의 과제"를 카톡에 바로 붙여넣을 수 있는 "<9월 15일 과제>\n1. ...\n2. ..." 형식으로 관리하기 위한 도우미들.
 // 실제 항목들은 배열(items)로 따로 저장하고, note는 그 배열로부터 매번 다시 만들어지는 값(기존 인쇄·리포트 화면이 그대로 쓰는 문자열)이다.
 function assignHeaderLabel(dateISO){
@@ -5243,8 +5364,10 @@ function renderToday(list){
     const subjNames=[...new Set(daySubjects.map(s=>s.subject).filter(Boolean))];
     const attMulti=attKeys.length>1;
     const cStudents=activeStudentsForDate(c, state.date); // 퇴원생은 오늘 기록에서 제외 (반 배정 취소)
-    const present=cStudents.filter(s=>attStatusAgg(c,wd,s,at)==='출').length;
-    const hwdone=cStudents.filter(s=>hw[k]&&hw[k][s]&&hw[k][s].done).length;
+    // "출석 X/Y"는 실제로 출석한 인원이 아니라, 출/지/결/조 중 뭐든 출결 체크가 "된" 인원 수를 보여준다
+    // (출결 체크를 다 마쳤는지 확인하는 용도라서, 지각·결석·조퇴도 체크된 걸로 쳐야 한다)
+    const present=cStudents.filter(s=>!!attStatusAgg(c,wd,s,at)).length;
+    const hwdone=cStudents.filter(s=>hwDoneStatus(hw[k]&&hw[k][s], subjNames)==='done').length;
     const assignRec=(hw[k]||{})['_assign']||{};
     const assignItems=assignItemsFor(assignRec);
     // 아직 한 번도 입력된 적 없는 빈 첫 줄이면, 지금 로그인한 선생님이 오늘 이 반에서 담당하는 과목을 미리 채워둔다(수정 가능)
@@ -5345,18 +5468,23 @@ function renderToday(list){
       </div>`;
 
       if(rowMulti){
+      // 과목이 여러 개인 반은 "숙제" 체크를 과목별로 따로 한다 (다 하면 O, 일부만 하면 △, 아무것도 안 하면 X로 표로 볼 수 있게)
+      const hwGroups = ownerAttKeys.map(({subject})=>{
+        const d=!!(hrec.doneSubjects&&hrec.doneSubjects[subject]);
+        return `<label class="hwlab hwsub" style="color:${d?'var(--ok)':'var(--sub)'}"><input type="checkbox" class="hwchk-sub" data-k="${esc(ownerK)}" data-s="${esc(s)}" data-subj="${esc(subject)}" ${d?'checked':''}><b style="font-size:.68rem">${esc(subject)}</b></label>`;
+      }).join('');
       return `<div style="padding:7px 0;border-bottom:1px solid #f1f3f8">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <span class="sn" style="min-width:96px;font-weight:800">${hl(studentDisplayName(c.academy,s,ownerK.slice(ownerK.indexOf('|')+1)))}</span>
-          
-          <!-- 숙제 체크와 메모칸 숨김 처리 -->
-          <label class="hwlab" style="display:none;"><input type="checkbox" class="hwchk" data-k="${esc(ownerK)}" data-s="${esc(s)}" ${hrec.done?'checked':''}>숙제</label>
+
+          <span style="font-size:.72rem;font-weight:800;color:var(--sub)">숙제</span>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">${hwGroups}</div>
           <input type="text" class="hwnote" data-k="${esc(ownerK)}" data-s="${esc(s)}" placeholder="숙제 확인 · 수정 지시 · 수업 메모…" value="${esc(hrec.note||'')}" style="display:none; flex:1;min-width:160px;border:1px solid var(--line);border-radius:7px;padding:5px 9px;font-family:inherit;font-size:.83rem">
         </div>
-        
+
         <!-- ▼ 출/지/결/조 한 줄로 나오게 수정 (flex-wrap: nowrap 으로 변경) ▼ -->
         <div class="atg" style="display:flex;flex-wrap:nowrap;align-items:center;gap:6px;margin-top:6px">${atGroups}${allAbsentChk}</div>
-        
+
         ${absReasonRow}
       </div>${stayRow}`;
     }
@@ -5366,8 +5494,7 @@ function renderToday(list){
       <!-- ▼ 출/지/결/조 한 줄로 나오게 수정 (flex-wrap: nowrap 으로 변경) ▼ -->
       <span class="atg" style="display:flex;flex-wrap:nowrap;align-items:center;gap:4px">${atGroups}${allAbsentChk}</span>
       
-      <!-- 숙제 체크와 메모칸 숨김 처리 -->
-      <label class="hwlab" style="display:none;"><input type="checkbox" class="hwchk" data-k="${esc(ownerK)}" data-s="${esc(s)}" ${hrec.done?'checked':''}>숙제</label>
+      <label class="hwlab" style="color:${hrec.done?'var(--ok)':'var(--sub)'}"><input type="checkbox" class="hwchk" data-k="${esc(ownerK)}" data-s="${esc(s)}" ${hrec.done?'checked':''}>숙제</label>
       <input type="text" class="hwnote" data-k="${esc(ownerK)}" data-s="${esc(s)}" placeholder="숙제 확인 · 수정 지시 · 수업 메모…" value="${esc(hrec.note||'')}" style="display:none;"></div>
       
       ${absReasonRow}
@@ -5459,6 +5586,13 @@ function bindToday(){
   v.querySelectorAll('.hwchk').forEach(cb=>cb.onchange=()=>{
     const k=cb.dataset.k, st=cb.dataset.s, hw=hwFor(state.date);
     hw[k]=hw[k]||{}; hw[k][st]=hw[k][st]||{}; hw[k][st].done=cb.checked; save(); render(true);
+  });
+  v.querySelectorAll('.hwchk-sub').forEach(cb=>cb.onchange=()=>{
+    const k=cb.dataset.k, st=cb.dataset.s, subj=cb.dataset.subj, hw=hwFor(state.date);
+    hw[k]=hw[k]||{}; hw[k][st]=hw[k][st]||{};
+    hw[k][st].doneSubjects=hw[k][st].doneSubjects||{};
+    hw[k][st].doneSubjects[subj]=cb.checked;
+    save(); render(true);
   });
 // "오늘의 과제" 항목 하나(N번째 줄) 내용 수정 (텍스트 칸 & 과목 드롭다운 공통 처리)
   const saveAssignItem = (k, idx, inp) => {
@@ -11312,6 +11446,8 @@ function render(keepOpen){
     v.innerHTML=renderBookGive(list); bindBookGive();
   } else if(state.tab==='wordrange'){
     v.innerHTML=renderWordRange(list); bindWordRange();
+  } else if(state.tab==='hwrange'){
+    v.innerHTML=renderHwRange(list); bindHwRange();
   } else if(state.tab==='yearly'){
     v.innerHTML=renderYearly(); bindYearly();
   } else if(state.tab==='stats'){
