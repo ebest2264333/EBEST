@@ -4011,7 +4011,6 @@ function bindHwRange(){
 }
 /* ---------- 과제검사표 (반별 시험/과제 채점 현황 — 쓰기로 한 반만 사용) ---------- */
 const PAPERCHECK_DEFAULT_OPTIONS=['채점완료','풀이완료','풀이미완료','오답완료'];
-function paperCheckCanEdit(c){ return isAdminRole() || teacherTeaches(c, loginTeacher()); }
 function paperCheckCols(k){ return store.papercheckCols[k]=store.papercheckCols[k]||[]; }
 function paperCheckDataFor(k){ return store.papercheckData[k]=store.papercheckData[k]||{}; }
 // 재시험 등으로 여러 번 본 점수는 배열로 저장해두고, 화면엔 "32 / 41 (재시)"처럼 이어 붙여 보여준다
@@ -4020,51 +4019,73 @@ function paperCheckScoreDisplay(arr){
   if(!vals.length) return '';
   return vals.join(' / ')+(vals.length>1?' (재시)':'');
 }
-function renderPaperCheck(list){
+// 반에 과목이 여러 개면(담당 선생님이 다를 수 있으니) 과목별로 표를 따로 관리한다
+function paperCheckSubjectsOf(c){
+  return [...new Set((c.subjects||[]).filter(s=>s.subject && !isWordTestSubject(s)).map(s=>s.subject))];
+}
+function paperCheckKey(k, subject){ return subject ? k+'::'+subject : k; }
+// 과목이 지정된 표는 그 과목 담당 선생님만, 과목 구분이 없는 반은 반 전체 담당 기준으로 편집 가능
+function paperCheckEntryCanEdit(c, subject){
+  if(isAdminRole()) return true;
   const lt=loginTeacher();
+  if(!lt) return false;
+  if(c.academy!==lt.a) return false;
+  if(subject){
+    const nm=lt.t.name.trim().toLowerCase();
+    return (c.subjects||[]).some(s=>s.subject===subject && s.teacher && s.teacher.trim().toLowerCase()===nm);
+  }
+  return teacherTeaches(c, lt);
+}
+// 반 하나당, 과목이 여러 개면 과목별로 각각 하나씩, 아니면 반 전체로 하나의 "표 후보"를 만든다
+function paperCheckEntries(list){
+  const out=[];
+  list.forEach(c=>{
+    if(!(c.students&&c.students.length)) return;
+    const subs=paperCheckSubjectsOf(c);
+    if(subs.length>1) subs.forEach(subject=>out.push({c, subject, key:paperCheckKey(ckey(c),subject)}));
+    else out.push({c, subject:null, key:ckey(c)});
+  });
+  return out;
+}
+function renderPaperCheck(list){
   const admin=isAdminRole();
-  let cls=list;
-  if(lt && state.myOnly) cls=cls.filter(c=>teacherTeaches(c,lt));
-  const enabledClasses=cls.filter(c=>store.papercheckEnabled[ckey(c)] && c.students && c.students.length);
-  // 아직 이 탭에서 켜지 않은 반 중, 지금 로그인한 사람이 켤 수 있는 반만 추가 후보로 보여준다
-  const addableClasses=cls.filter(c=>!store.papercheckEnabled[ckey(c)] && (c.students&&c.students.length) && (admin || teacherTeaches(c, lt)));
+  const entries=paperCheckEntries(list);
+  // 이 표는 볼 수 있는 사람(그 과목/반 담당 선생님·관리자)에게만 보이고, 보이는 사람은 항상 편집도 가능하다
+  const visible=entries.filter(e=>store.papercheckEnabled[e.key] && (admin || paperCheckEntryCanEdit(e.c, e.subject)));
+  const addable=entries.filter(e=>!store.papercheckEnabled[e.key] && (admin || paperCheckEntryCanEdit(e.c, e.subject)));
   let h=`<div class="todaybar"><span class="wd">${mLabel(state.month)} 과제검사표</span>
-    ${lt?`<span class="mytag" style="background:${lt.t.color}">👤 ${esc(lt.t.name)}</span>
-      <label class="hwlab"><input type="checkbox" id="myOnly" ${state.myOnly?'checked':''}> 내 수업만 보기</label>`:''}
-    <span style="font-size:.76rem;color:var(--sub)">사용하기로 한 반만 아래에 표시돼요. 담당 선생님과 관리자가 가로로 시험을 추가하고 체크할 수 있어요.</span></div>`;
-  if(addableClasses.length){
+    <span style="font-size:.76rem;color:var(--sub)">사용하기로 한 반(과목)만 아래에 표시돼요. 그 과목·반 담당 선생님과 관리자만 보고 체크할 수 있어요.</span></div>`;
+  if(addable.length){
     h+=`<div style="display:flex;gap:8px;align-items:center;padding:9px 16px;background:#f4f6fb;border-radius:10px;margin-bottom:12px;flex-wrap:wrap">
       <b style="font-size:.82rem">＋ 이 탭에 반 추가</b>
       <select id="pcAddSel" style="border:1px solid var(--line);border-radius:7px;padding:5px 9px;font-size:.82rem">
         <option value="">반 선택…</option>
-        ${addableClasses.map(c=>`<option value="${esc(ckey(c))}">${esc(c.name)}${MODE==='all'?' ('+esc(AC[c.academy].label)+')':''}</option>`).join('')}
+        ${addable.map(e=>`<option value="${esc(e.key)}">${esc(e.c.name)}${e.subject?' ('+esc(e.subject)+')':''}${MODE==='all'?' · '+esc(AC[e.c.academy].label):''}</option>`).join('')}
       </select>
       <button type="button" class="btn small" id="pcAddBtn">추가</button>
     </div>`;
   }
-  enabledClasses.forEach(c=>{
-    const k=ckey(c);
-    const canEdit=paperCheckCanEdit(c);
+  visible.forEach(({c,subject,key:k})=>{
     const cols=paperCheckCols(k);
     const data=paperCheckDataFor(k);
     h+=`<details class="ysec" open><summary style="cursor:pointer;padding:10px 16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-      <b style="font-size:1.02rem">${hl(c.name)}</b> ${bdg(c.academy)}
+      <b style="font-size:1.02rem">${hl(c.name)}</b>${subject?` <span style="font-size:.82rem;font-weight:800;color:var(--sub)">· ${esc(subject)}</span>`:''} ${bdg(c.academy)}
       <span style="font-size:.75rem;font-weight:400;color:var(--sub)">${c.students.length}명</span>
-      ${canEdit?`<button type="button" class="btn small pcOff" data-k="${esc(k)}" title="이 반을 과제검사표 탭에서 뺍니다 (입력해둔 자료는 남아있어요)" style="margin-left:auto;border:1px solid #f5c6cb;color:#c0392b;background:#fff;border-radius:6px;padding:3px 9px;font-size:.72rem;cursor:pointer">사용 해제</button>`:''}
+      <button type="button" class="btn small pcOff" data-k="${esc(k)}" title="이 표를 과제검사표 탭에서 뺍니다 (입력해둔 자료는 남아있어요)" style="margin-left:auto;border:1px solid #f5c6cb;color:#c0392b;background:#fff;border-radius:6px;padding:3px 9px;font-size:.72rem;cursor:pointer">사용 해제</button>
     </summary>
     <div class="attwrap"><table class="atable"><thead><tr><th>학생</th>
       ${cols.map(col=>`<th style="min-width:100px;vertical-align:top">
         <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
           <span>${esc(col.name)}</span>
           <span style="font-size:.62rem;color:var(--sub);font-weight:400">${col.type==='score'?'점수입력':'드롭다운'}</span>
-          ${canEdit?`<span style="display:flex;gap:5px;margin-top:2px">
+          <span style="display:flex;gap:5px;margin-top:2px">
             <button type="button" class="pcColRename" data-k="${esc(k)}" data-col="${esc(col.id)}" title="이름 변경" style="border:none;background:none;color:var(--sub);cursor:pointer;font-size:.72rem">✎</button>
             ${col.type==='select'?`<button type="button" class="pcColOpts" data-k="${esc(k)}" data-col="${esc(col.id)}" title="옵션 편집" style="border:none;background:none;color:var(--sub);cursor:pointer;font-size:.72rem">⚙</button>`:''}
             <button type="button" class="pcColDel" data-k="${esc(k)}" data-col="${esc(col.id)}" title="이 시험(컬럼) 삭제" style="border:none;background:none;color:#c0392b;cursor:pointer;font-size:.72rem">✕</button>
-          </span>`:''}
+          </span>
         </div>
       </th>`).join('')}
-      ${canEdit?`<th style="min-width:96px;vertical-align:top">
+      <th style="min-width:96px;vertical-align:top">
         <div style="display:flex;flex-direction:column;gap:3px;align-items:center">
           <input type="text" class="pcNewColName" data-k="${esc(k)}" placeholder="새 시험명" style="width:88px;font-size:.72rem;border:1px solid var(--line);border-radius:5px;padding:3px 5px">
           <select class="pcNewColType" data-k="${esc(k)}" style="font-size:.7rem;border:1px solid var(--line);border-radius:5px">
@@ -4073,49 +4094,39 @@ function renderPaperCheck(list){
           </select>
           <button type="button" class="btn small pcAddCol" data-k="${esc(k)}" style="font-size:.7rem;padding:2px 8px">＋ 추가</button>
         </div>
-      </th>`:''}
+      </th>
     </tr></thead><tbody>`;
     c.students.forEach(s=>{
       h+=`<tr><td class="nm">${hl(studentDisplayName(c.academy,s,c.name))}</td>`;
       cols.forEach(col=>{
         const val=(data[s]||{})[col.id];
         if(col.type==='select'){
-          if(canEdit){
-            h+=`<td style="text-align:center"><select class="pcSelCell" data-k="${esc(k)}" data-s="${esc(s)}" data-col="${esc(col.id)}" style="font-size:.76rem;border:1px solid var(--line);border-radius:6px;padding:3px 5px;max-width:110px">
-              <option value=""></option>
-              ${(col.options||[]).map(o=>`<option value="${esc(o)}" ${val===o?'selected':''}>${esc(o)}</option>`).join('')}
-            </select></td>`;
-          } else {
-            h+=`<td style="text-align:center;font-size:.78rem">${esc(val||'')}</td>`;
-          }
+          h+=`<td style="text-align:center"><select class="pcSelCell" data-k="${esc(k)}" data-s="${esc(s)}" data-col="${esc(col.id)}" style="font-size:.76rem;border:1px solid var(--line);border-radius:6px;padding:3px 5px;max-width:110px">
+            <option value=""></option>
+            ${(col.options||[]).map(o=>`<option value="${esc(o)}" ${val===o?'selected':''}>${esc(o)}</option>`).join('')}
+          </select></td>`;
         } else {
           const arr=Array.isArray(val)?val:[];
-          if(canEdit){
-            const rows2=arr.length?arr:[''];
-            h+=`<td><div style="display:flex;flex-direction:column;gap:2px;align-items:center">
-              ${rows2.map((sc,i)=>`<div style="display:flex;align-items:center;gap:2px">
-                <input type="text" inputmode="decimal" class="pcScoreInp" data-k="${esc(k)}" data-s="${esc(s)}" data-col="${esc(col.id)}" data-idx="${i}" value="${esc(sc)}" placeholder="${i+1}차" style="width:50px;font-size:.74rem;border:1px solid var(--line);border-radius:5px;padding:2px 4px;text-align:center">
-                ${i===rows2.length-1 && rows2.length>1?`<button type="button" class="pcScoreRm" data-k="${esc(k)}" data-s="${esc(s)}" data-col="${esc(col.id)}" title="이 회차 지우기" style="border:none;background:none;color:#c0392b;font-size:.66rem;cursor:pointer">✕</button>`:''}
-              </div>`).join('')}
-              ${arr.length>0 && arr.length<3?`<button type="button" class="pcScoreAddRetest" data-k="${esc(k)}" data-s="${esc(s)}" data-col="${esc(col.id)}" style="border:none;background:none;color:#b45309;font-size:.66rem;cursor:pointer;font-weight:700">＋ 재시</button>`:''}
-              ${arr.length>1?`<span style="font-size:.62rem;color:#b45309;font-weight:700">재시</span>`:''}
-            </div></td>`;
-          } else {
-            h+=`<td style="text-align:center;font-size:.78rem">${esc(paperCheckScoreDisplay(arr))}</td>`;
-          }
+          const rows2=arr.length?arr:[''];
+          h+=`<td><div style="display:flex;flex-direction:column;gap:2px;align-items:center">
+            ${rows2.map((sc,i)=>`<div style="display:flex;align-items:center;gap:2px">
+              <input type="text" inputmode="decimal" class="pcScoreInp" data-k="${esc(k)}" data-s="${esc(s)}" data-col="${esc(col.id)}" data-idx="${i}" value="${esc(sc)}" placeholder="${i+1}차" style="width:50px;font-size:.74rem;border:1px solid var(--line);border-radius:5px;padding:2px 4px;text-align:center">
+              ${i===rows2.length-1 && rows2.length>1?`<button type="button" class="pcScoreRm" data-k="${esc(k)}" data-s="${esc(s)}" data-col="${esc(col.id)}" title="이 회차 지우기" style="border:none;background:none;color:#c0392b;font-size:.66rem;cursor:pointer">✕</button>`:''}
+            </div>`).join('')}
+            ${arr.length>0 && arr.length<3?`<button type="button" class="pcScoreAddRetest" data-k="${esc(k)}" data-s="${esc(s)}" data-col="${esc(col.id)}" style="border:none;background:none;color:#b45309;font-size:.66rem;cursor:pointer;font-weight:700">＋ 재시</button>`:''}
+            ${arr.length>1?`<span style="font-size:.62rem;color:#b45309;font-weight:700">재시</span>`:''}
+          </div></td>`;
         }
       });
-      if(canEdit) h+='<td></td>';
-      h+='</tr>';
+      h+='<td></td></tr>';
     });
     h+='</tbody></table></div></details>';
   });
-  if(!enabledClasses.length) h+='<div class="empty">사용 설정된 반이 없습니다. 위에서 반을 골라 추가해보세요.</div>';
+  if(!visible.length) h+='<div class="empty">사용 설정된 반이 없습니다. 위에서 반을 골라 추가해보세요.</div>';
   return h;
 }
 function bindPaperCheck(){
   const v=document.getElementById('view');
-  const mo=v.querySelector('#myOnly'); if(mo) mo.onchange=()=>{state.myOnly=mo.checked; render();};
   const addBtn=v.querySelector('#pcAddBtn');
   if(addBtn) addBtn.onclick=()=>{
     const sel=v.querySelector('#pcAddSel');
