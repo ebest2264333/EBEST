@@ -11918,6 +11918,67 @@ cleanupStaleJasup2608();
 cleanupWordTests();
 cleanupExpiredAlerts();
 if(!store.classRosterReconciled_v1){ reconcileClassRosters(); store.classRosterReconciled_v1=true; }
+// [일회성] "숙제없음/오늘의 과제" 태그 요구가 9/21부터 강화됐는데, 그 이전 모든 날짜는 선생님들이 일일이
+// 손으로 다 되짚어 체크하시기 어려워서, 자료가 있는 가장 첫 달부터 9/22까지 "아직 뭐라도 체크된 게 전혀 없는
+// (숙제 완료 체크도, 개별 숙제도, 숙제없음 표시도 없는)" 반·과목만 골라 자동으로 "숙제없음"으로 채워준다.
+// 이미 뭐라도(체크든 숙제없음 표시든) 돼 있으면 절대 덮어쓰지 않고 그대로 둔다. 9/23(오늘) 이후는 건드리지 않고,
+// 한 번만 실행되고 다시는 안 돈다. (관리자 편집용 store.uploads를 새로 만들지 않도록 읽기 전용으로만 조회한다.)
+function backfillNoHwAllPast(){
+  if(store.noHwBackfillAllPastV2) return;
+  const END_EXCLUSIVE='2026-09-23'; // 9/22까지 대상, 9/23(오늘)부터는 그대로 둔다
+  function readOnlyClassesForMonth(month){
+    const out=[];
+    academies().forEach(a=>{
+      const ms=monthsOf(a);
+      const use=ms.filter(x=>x<=month).pop()||ms[0];
+      if(!use) return;
+      const arr=dataFor(a,use)||[];
+      arr.forEach(c=>{ if(!c._deleted) out.push(c); });
+    });
+    return out;
+  }
+  const months=allDataMonths();
+  let changed=false;
+  if(months.length){
+    const start=new Date(months[0]+'-01T00:00:00');
+    const end=new Date(END_EXCLUSIVE+'T00:00:00');
+    for(let d=new Date(start); d<end; d.setDate(d.getDate()+1)){
+      const iso=ymd(d);
+      const wd=wdOf(iso);
+      const month=monthForDate(iso);
+      readOnlyClassesForMonth(month).forEach(c=>{
+        if(!(c.students&&c.students.length)) return;
+        if(!classMeets(c, wd)) return;
+        const k=ckey(c);
+        const subjNames=hwDaySubjectNames(c, iso);
+        const multi=subjNames.length>1;
+        const tags=subjNames.length?subjNames:[''];
+        const byClass=(store.homework[iso]||{})[k]||{};
+        const assignRec=byClass['_assign']||{};
+        const existingNoHw=assignRec.noHw||{};
+        tags.forEach(tag=>{
+          if(isSelfStudySubj(tag)) return; // IBT 등 자습 과목은 이미 기본 숙제없음으로 자동 처리되므로 건드릴 필요 없음
+          if(existingNoHw[tag]!==undefined) return; // 이미 명시적으로 표시돼 있음(무엇으로든) — 그대로 둔다
+          const touched=c.students.some(s=>{
+            const rec=byClass[s]; if(!rec) return false;
+            if(multi) return (rec.doneSubjects && rec.doneSubjects[tag]!==undefined) || !!(rec.indivHwBySubject && rec.indivHwBySubject[tag]);
+            return rec.done!==undefined || !!rec.indivHw;
+          });
+          if(touched) return; // 이미 누가 뭐라도 체크했으면 그대로 둔다
+          const hw=hwFor(iso);
+          hw[k]=hw[k]||{};
+          hw[k]['_assign']=hw[k]['_assign']||{};
+          hw[k]['_assign'].noHw=hw[k]['_assign'].noHw||{};
+          hw[k]['_assign'].noHw[tag]=true;
+          changed=true;
+        });
+      });
+    }
+  }
+  store.noHwBackfillAllPastV2=true;
+  if(changed) save(); else persistStoreLocal();
+}
+backfillNoHwAllPast();
 render();
 </script>
 </body>
