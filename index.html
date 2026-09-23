@@ -4024,6 +4024,10 @@ function paperCheckSubjectsOf(c){
   return [...new Set((c.subjects||[]).filter(s=>s.subject && !isWordTestSubject(s)).map(s=>s.subject))];
 }
 function paperCheckKey(k, subject){ return subject ? k+'::'+subject : k; }
+// 컬럼은 "테스트"(점수입력, 3차까지 재시+최종점수) 또는 "숙제"(드롭다운) 둘 중 하나의 종류를 가진다
+function paperCheckColCategory(col){ return col.category || (col.type==='score'?'test':'homework'); }
+const PAPERCHECK_MAX_SCORE_ATTEMPTS=4; // 1차/2차/3차 + 최종점수
+function paperCheckScoreLabel(i){ return i<3 ? (i+1)+'차' : '최종점수'; }
 // 과목이 지정된 표는 그 과목 담당 선생님만, 과목 구분이 없는 반은 반 전체 담당 기준으로 편집 가능
 function paperCheckEntryCanEdit(c, subject){
   if(isAdminRole()) return true;
@@ -4065,32 +4069,40 @@ function renderPaperCheck(list){
       <button type="button" class="btn small" id="pcAddBtn">추가</button>
     </div>`;
   }
+  state.pcCatView=state.pcCatView||{};
   visible.forEach(({c,subject,key:k})=>{
-    const cols=paperCheckCols(k);
+    const allCols=paperCheckCols(k);
     const data=paperCheckDataFor(k);
+    const curCat=['all','test','homework'].includes(state.pcCatView[k])?state.pcCatView[k]:'all';
+    const cols=curCat==='all'?allCols:allCols.filter(col=>paperCheckColCategory(col)===curCat);
+    const catTabs=`<span style="display:inline-flex;gap:4px;margin-left:6px;flex-wrap:wrap">
+        <button type="button" class="btn small pcCatTab" data-k="${esc(k)}" data-cat="all" style="padding:2px 9px;${curCat==='all'?'background:var(--ink);color:#fff':'background:#eef0f6;color:var(--sub)'}">전체</button>
+        <button type="button" class="btn small pcCatTab" data-k="${esc(k)}" data-cat="test" style="padding:2px 9px;${curCat==='test'?'background:var(--ink);color:#fff':'background:#eef0f6;color:var(--sub)'}">테스트</button>
+        <button type="button" class="btn small pcCatTab" data-k="${esc(k)}" data-cat="homework" style="padding:2px 9px;${curCat==='homework'?'background:var(--ink);color:#fff':'background:#eef0f6;color:var(--sub)'}">숙제</button>
+      </span>`;
     h+=`<details class="ysec" open><summary style="cursor:pointer;padding:10px 16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
       <b style="font-size:1.02rem">${hl(c.name)}</b>${subject?` <span style="font-size:.82rem;font-weight:800;color:var(--sub)">· ${esc(subject)}</span>`:''} ${bdg(c.academy)}
-      <span style="font-size:.75rem;font-weight:400;color:var(--sub)">${c.students.length}명</span>
+      <span style="font-size:.75rem;font-weight:400;color:var(--sub)">${c.students.length}명</span>${catTabs}
       <button type="button" class="btn small pcOff" data-k="${esc(k)}" title="이 표를 과제검사표 탭에서 뺍니다 (입력해둔 자료는 남아있어요)" style="margin-left:auto;border:1px solid #f5c6cb;color:#c0392b;background:#fff;border-radius:6px;padding:3px 9px;font-size:.72rem;cursor:pointer">사용 해제</button>
     </summary>
     <div class="attwrap"><table class="atable"><thead><tr><th>학생</th>
-      ${cols.map(col=>`<th style="min-width:100px;vertical-align:top">
+      ${cols.map(col=>{const cat=paperCheckColCategory(col);return `<th style="min-width:100px;vertical-align:top">
         <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
           <span>${esc(col.name)}</span>
-          <span style="font-size:.62rem;color:var(--sub);font-weight:400">${col.type==='score'?'점수입력':'드롭다운'}</span>
+          <span style="font-size:.62rem;color:var(--sub);font-weight:400">${cat==='test'?'테스트(점수)':'숙제(드롭다운)'}</span>
           <span style="display:flex;gap:5px;margin-top:2px">
             <button type="button" class="pcColRename" data-k="${esc(k)}" data-col="${esc(col.id)}" title="이름 변경" style="border:none;background:none;color:var(--sub);cursor:pointer;font-size:.72rem">✎</button>
-            ${col.type==='select'?`<button type="button" class="pcColOpts" data-k="${esc(k)}" data-col="${esc(col.id)}" title="옵션 편집" style="border:none;background:none;color:var(--sub);cursor:pointer;font-size:.72rem">⚙</button>`:''}
-            <button type="button" class="pcColDel" data-k="${esc(k)}" data-col="${esc(col.id)}" title="이 시험(컬럼) 삭제" style="border:none;background:none;color:#c0392b;cursor:pointer;font-size:.72rem">✕</button>
+            ${cat==='homework'?`<button type="button" class="pcColOpts" data-k="${esc(k)}" data-col="${esc(col.id)}" title="옵션 편집" style="border:none;background:none;color:var(--sub);cursor:pointer;font-size:.72rem">⚙</button>`:''}
+            <button type="button" class="pcColDel" data-k="${esc(k)}" data-col="${esc(col.id)}" title="이 항목(컬럼) 삭제" style="border:none;background:none;color:#c0392b;cursor:pointer;font-size:.72rem">✕</button>
           </span>
         </div>
-      </th>`).join('')}
+      </th>`;}).join('')}
       <th style="min-width:96px;vertical-align:top">
         <div style="display:flex;flex-direction:column;gap:3px;align-items:center">
-          <input type="text" class="pcNewColName" data-k="${esc(k)}" placeholder="새 시험명" style="width:88px;font-size:.72rem;border:1px solid var(--line);border-radius:5px;padding:3px 5px">
-          <select class="pcNewColType" data-k="${esc(k)}" style="font-size:.7rem;border:1px solid var(--line);border-radius:5px">
-            <option value="score">점수입력</option>
-            <option value="select">드롭다운</option>
+          <input type="text" class="pcNewColName" data-k="${esc(k)}" placeholder="새 이름" style="width:88px;font-size:.72rem;border:1px solid var(--line);border-radius:5px;padding:3px 5px">
+          <select class="pcNewColCat" data-k="${esc(k)}" style="font-size:.7rem;border:1px solid var(--line);border-radius:5px">
+            <option value="test">테스트(점수)</option>
+            <option value="homework">숙제(드롭다운)</option>
           </select>
           <button type="button" class="btn small pcAddCol" data-k="${esc(k)}" style="font-size:.7rem;padding:2px 8px">＋ 추가</button>
         </div>
@@ -4100,7 +4112,8 @@ function renderPaperCheck(list){
       h+=`<tr><td class="nm">${hl(studentDisplayName(c.academy,s,c.name))}</td>`;
       cols.forEach(col=>{
         const val=(data[s]||{})[col.id];
-        if(col.type==='select'){
+        const cat=paperCheckColCategory(col);
+        if(cat==='homework'){
           h+=`<td style="text-align:center"><select class="pcSelCell" data-k="${esc(k)}" data-s="${esc(s)}" data-col="${esc(col.id)}" style="font-size:.76rem;border:1px solid var(--line);border-radius:6px;padding:3px 5px;max-width:110px">
             <option value=""></option>
             ${(col.options||[]).map(o=>`<option value="${esc(o)}" ${val===o?'selected':''}>${esc(o)}</option>`).join('')}
@@ -4110,10 +4123,10 @@ function renderPaperCheck(list){
           const rows2=arr.length?arr:[''];
           h+=`<td><div style="display:flex;flex-direction:column;gap:2px;align-items:center">
             ${rows2.map((sc,i)=>`<div style="display:flex;align-items:center;gap:2px">
-              <input type="text" inputmode="decimal" class="pcScoreInp" data-k="${esc(k)}" data-s="${esc(s)}" data-col="${esc(col.id)}" data-idx="${i}" value="${esc(sc)}" placeholder="${i+1}차" style="width:50px;font-size:.74rem;border:1px solid var(--line);border-radius:5px;padding:2px 4px;text-align:center">
+              <input type="text" inputmode="decimal" class="pcScoreInp" data-k="${esc(k)}" data-s="${esc(s)}" data-col="${esc(col.id)}" data-idx="${i}" value="${esc(sc)}" placeholder="${paperCheckScoreLabel(i)}" title="${paperCheckScoreLabel(i)}" style="width:54px;font-size:.74rem;border:1px solid var(--line);border-radius:5px;padding:2px 4px;text-align:center">
               ${i===rows2.length-1 && rows2.length>1?`<button type="button" class="pcScoreRm" data-k="${esc(k)}" data-s="${esc(s)}" data-col="${esc(col.id)}" title="이 회차 지우기" style="border:none;background:none;color:#c0392b;font-size:.66rem;cursor:pointer">✕</button>`:''}
             </div>`).join('')}
-            ${arr.length>0 && arr.length<3?`<button type="button" class="pcScoreAddRetest" data-k="${esc(k)}" data-s="${esc(s)}" data-col="${esc(col.id)}" style="border:none;background:none;color:#b45309;font-size:.66rem;cursor:pointer;font-weight:700">＋ 재시</button>`:''}
+            ${arr.length>0 && arr.length<PAPERCHECK_MAX_SCORE_ATTEMPTS?`<button type="button" class="pcScoreAddRetest" data-k="${esc(k)}" data-s="${esc(s)}" data-col="${esc(col.id)}" style="border:none;background:none;color:#b45309;font-size:.66rem;cursor:pointer;font-weight:700">＋ ${arr.length<3?'재시':'최종점수'}</button>`:''}
             ${arr.length>1?`<span style="font-size:.62rem;color:#b45309;font-weight:700">재시</span>`:''}
           </div></td>`;
         }
@@ -4138,16 +4151,23 @@ function bindPaperCheck(){
     if(!confirm('이 반을 과제검사표 탭에서 뺄까요? (입력해둔 자료는 남아있고, 나중에 다시 추가하면 그대로 보여요)')) return;
     delete store.papercheckEnabled[btn.dataset.k]; save(); render(true);
   });
+  v.querySelectorAll('.pcCatTab').forEach(b=>b.onclick=(e)=>{
+    e.preventDefault(); e.stopPropagation(); // <summary> 안에 있어서 눌러도 반 카드가 접히지 않도록
+    state.pcCatView=state.pcCatView||{};
+    state.pcCatView[b.dataset.k]=b.dataset.cat;
+    render(true);
+  });
   v.querySelectorAll('.pcAddCol').forEach(btn=>btn.onclick=()=>{
     const k=btn.dataset.k;
     const th=btn.closest('th');
     const nameInp=th.querySelector('.pcNewColName');
-    const typeSel=th.querySelector('.pcNewColType');
+    const catSel=th.querySelector('.pcNewColCat');
     const name=(nameInp.value||'').trim();
-    if(!name){ alert('시험 이름을 입력해주세요.'); return; }
-    const type=typeSel.value==='select'?'select':'score';
-    const col={id:'pc_'+Date.now()+'_'+Math.random().toString(36).slice(2,7), name, type, createdAt:Date.now(), updatedAt:Date.now()};
-    if(type==='select') col.options=[...PAPERCHECK_DEFAULT_OPTIONS];
+    if(!name){ alert('이름을 입력해주세요.'); return; }
+    const category=catSel.value==='homework'?'homework':'test';
+    const type=category==='homework'?'select':'score';
+    const col={id:'pc_'+Date.now()+'_'+Math.random().toString(36).slice(2,7), name, type, category, createdAt:Date.now(), updatedAt:Date.now()};
+    if(category==='homework') col.options=[...PAPERCHECK_DEFAULT_OPTIONS];
     paperCheckCols(k).push(col);
     save(); render(true);
   });
@@ -4194,7 +4214,7 @@ function bindPaperCheck(){
     const data=paperCheckDataFor(k);
     data[s]=data[s]||{};
     const arr=(Array.isArray(data[s][colId])?data[s][colId]:[]).slice();
-    if(arr.length<3) arr.push('');
+    if(arr.length<PAPERCHECK_MAX_SCORE_ATTEMPTS) arr.push('');
     data[s][colId]=arr;
     save(); render(true);
   });
