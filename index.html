@@ -417,6 +417,12 @@ if(!store.meetings) store.meetings=[];
 const SUBJKEY_MAP=[['.','‹dot›'],['$','‹dollar›'],['#','‹hash›'],['[','‹lb›'],[']','‹rb›'],['/','‹slash›']];
 function subjKey(s){ let out=String(s||''); SUBJKEY_MAP.forEach(([ch,rep])=>{ out=out.split(ch).join(rep); }); return out; }
 function subjKeyDecode(s){ let out=String(s||''); SUBJKEY_MAP.forEach(([ch,rep])=>{ out=out.split(rep).join(ch); }); return out; }
+// "오늘의 과제"에 과목 태그가 없는 항목(전체 태그 없음)의 "숙제없음" 표시는 원래 빈 문자열('')을 키로 써왔는데,
+// Firebase 실시간DB는 빈 문자열 키를 절대 허용하지 않아 저장하는 순간 전송 자체가 통째로 실패한다(예: "Key value can't be
+// empty" 오류). 과목 태그가 있는 경우도 그 이름 자체에 금지 문자가 섞여 있을 수 있으니, "숙제없음" 맵의 키는 항상 이
+// 함수를 거쳐서만 쓰고 읽는다(태그 없으면 안전한 고정 문자열로, 있으면 subjKey로 이스케이프).
+const NOHW_TAG_NONE='‹없음›';
+function noHwStoreKey(tag){ return tag ? subjKey(tag) : NOHW_TAG_NONE; }
 // 위 규칙이 생기기 전에 이미 "L/C"처럼 금지된 글자가 그대로 키로 저장돼버린 기기가 있으면, 그 뒤로는 서버 전송(pushShared)
 // 자체가 통째로 계속 실패해서 다른 걸 고쳐도 똑같은 전송 오류가 반복된다 — 여기서 기존 자료를 한 번 안전한 키로 옮겨준다.
 (function migrateInvalidSubjKeys(){
@@ -435,12 +441,29 @@ function subjKeyDecode(s){ let out=String(s||''); SUBJKEY_MAP.forEach(([ch,rep])
       }
     });
   }
+  // "숙제없음" 맵은 과목 태그가 없는 항목을 빈 문자열('') 키로 저장해왔는데, Firebase는 빈 문자열 키를 아예
+  // 허용하지 않아서(전송 자체가 통째로 실패) 이미 기기에 그렇게 저장돼 있던 자료를 안전한 키로 옮겨준다.
+  function fixNoHwMap(obj){
+    if(!obj || typeof obj!=='object') return;
+    Object.keys(obj).forEach(k=>{
+      if(k===''||BAD.test(k)){
+        const nk=k===''?NOHW_TAG_NONE:subjKey(k);
+        if(nk!==k){
+          if(obj[nk]===undefined) obj[nk]=obj[k];
+          delete obj[k];
+          changed=true;
+        }
+      }
+    });
+  }
   for(const ck in store.bookGiven){ fixMap(store.bookGiven[ck]); }
   for(const d in store.homework){
     const byClass=store.homework[d]||{};
     for(const ck in byClass){
       const byStu=byClass[ck]||{};
       for(const sn in byStu){ const rec=byStu[sn]; if(rec && rec.bySubject) fixMap(rec.bySubject); }
+      const assignRec=byClass[ck]&&byClass[ck]['_assign'];
+      if(assignRec && assignRec.noHw) fixNoHwMap(assignRec.noHw);
     }
   }
   for(const d in store.stayback){
@@ -3944,7 +3967,7 @@ function renderHwRange(list){
         dates.forEach(d=>{
           // IBT·L/C는 기본 숙제없음 취급 — 지난 수업 때 이 학생에게 개별 숙제를 적어준 경우에만 체크 대상에 포함
           const selfStudyExcluded = isSelfStudySubj(subj) && !prevIndivHwText(c, k, s, subj, d, true);
-          if(!subjectMeetsOnDate(c, subj, d) || noHwMapFor(k, d)[subj] || selfStudyExcluded){ row+=`<td class="mk" style="cursor:default;color:#c8ccd6">-</td>`; return; }
+          if(!subjectMeetsOnDate(c, subj, d) || noHwMapFor(k, d)[noHwStoreKey(subj)] || selfStudyExcluded){ row+=`<td class="mk" style="cursor:default;color:#c8ccd6">-</td>`; return; }
           applicable++;
           const rec=(store.homework[d]&&store.homework[d][k])?store.homework[d][k][s]:null;
           const done=!!(rec&&rec.doneSubjects&&rec.doneSubjects[subj]);
@@ -4751,7 +4774,7 @@ function hwEffectiveSubjectNames(c, dateISO, k, s){
   const raw=hwDaySubjectNames(c, dateISO);
   const multi=raw.length>1; // 개별 숙제가 과목별로 저장되는지(여러 과목) 아니면 단일 값으로 저장되는지(과목 하나뿐) 구분
   return raw.filter(sn=>{
-    if(noHw[sn]) return false;
+    if(noHw[noHwStoreKey(sn)]) return false;
     if(isSelfStudySubj(sn)){
       if(!s) return false;
       return !!prevIndivHwText(c, k||ckey(c), s, sn, dateISO, multi);
@@ -5732,7 +5755,7 @@ function renderToday(list){
             const noHwKey=tag||'';
             const targetDate=nextHwTargetDate(c, noHwKey, state.date);
             const targetRec=(hwFor(targetDate)[k]||{})['_assign']||{};
-            const isNoHw=!!(targetRec.noHw&&targetRec.noHw[noHwKey]);
+            const isNoHw=!!(targetRec.noHw&&targetRec.noHw[noHwStoreKey(noHwKey)]);
             return `<label class="hwlab asgNoHwLab" style="flex:none;font-size:.72rem;color:${isNoHw?'#b45309':'var(--sub)'};white-space:nowrap" title="체크하면 ${esc(targetDate)}(다음 수업일)의 숙제 체크에서 이 과목이 빠집니다"><input type="checkbox" class="asgNoHw" data-k="${esc(k)}" data-tag="${esc(noHwKey)}" data-target="${esc(targetDate)}" ${isNoHw?'checked':''}>숙제없음</label>`;
           })():''}
           ${assignItems.length>1&&editable?`<button type="button" class="asgrmitem" data-k="${esc(k)}" data-idx="${i}" title="이 항목 삭제" style="flex:none;border:none;background:#f1f3f8;color:#8b93a7;border-radius:6px;padding:4px 8px;font-size:.72rem;cursor:pointer">✕</button>`:''}
@@ -5793,7 +5816,7 @@ function renderToday(list){
         const prevBadge = prevIndiv ? `<span class="indivhw-prev" title="지난 수업 때 적어둔 개별 숙제 (수정 불가)" style="font-size:.68rem;font-weight:700;color:#8b5a00;background:#fff6e0;border:1px solid #ffe4a3;border-radius:6px;padding:2px 7px;white-space:nowrap">📌 ${esc(prevIndiv)}</span>` : '';
         const curIndiv=(hrec.indivHwBySubject&&hrec.indivHwBySubject[subject])||'';
         const indivInput=`<input type="text" class="indivhw-sub" data-k="${esc(ownerK)}" data-s="${esc(s)}" data-subj="${esc(subject)}" placeholder="개별 숙제 (선택)" value="${esc(curIndiv)}" title="여기 적어두면 다음 ${esc(subject)} 수업 때 이 학생 칸에 수정 불가능한 텍스트로 표시됩니다" style="width:110px;border:1px solid var(--line);border-radius:6px;padding:3px 7px;font-family:inherit;font-size:.7rem;background:#fbfcfe">`;
-        if(dayNoHw[subject]) return `<span class="hwlab hwsub" style="color:#b45309;font-size:.68rem;font-weight:800">${esc(subject)} 숙제없음</span>${indivInput}${prevBadge}`;
+        if(dayNoHw[noHwStoreKey(subject)]) return `<span class="hwlab hwsub" style="color:#b45309;font-size:.68rem;font-weight:800">${esc(subject)} 숙제없음</span>${indivInput}${prevBadge}`;
         // IBT·L/C(자습식 수업)는 기본적으로 숙제가 없는 걸로 치고, 지난 수업 때 개별 숙제를 적어준 경우에만 체크 대상이 된다
         if(isSelfStudySubj(subject) && !prevIndiv) return `<span class="hwlab hwsub" style="color:var(--sub);font-size:.68rem;font-weight:700">${esc(subject)} (자습 · 기본 숙제없음)</span>${indivInput}${prevBadge}`;
         const d=!!(hrec.doneSubjects&&hrec.doneSubjects[subject]);
@@ -5822,7 +5845,7 @@ function renderToday(list){
     const solePrevIndiv=prevIndivHwText(c, ownerK, s, soleSubjTag, state.date, false);
     // IBT·L/C(자습식 수업)는 기본적으로 숙제가 없는 걸로 치고, 지난 수업 때 개별 숙제를 적어준 경우에만 체크 대상이 된다
     const soleSelfStudyNoHw = isSelfStudySubj(soleSubjTag) && !solePrevIndiv;
-    const soleNoHw = !!noHwMapFor(k, state.date)[soleSubjTag] || soleSelfStudyNoHw;
+    const soleNoHw = !!noHwMapFor(k, state.date)[noHwStoreKey(soleSubjTag)] || soleSelfStudyNoHw;
     const solePrevBadge = solePrevIndiv ? `<span class="indivhw-prev" title="지난 수업 때 적어둔 개별 숙제 (수정 불가)" style="font-size:.7rem;font-weight:700;color:#8b5a00;background:#fff6e0;border:1px solid #ffe4a3;border-radius:6px;padding:2px 7px;white-space:nowrap">📌 ${esc(solePrevIndiv)}</span>` : '';
     const soleCurIndiv=hrec.indivHw||'';
     return `<div class="trow2">
@@ -5940,7 +5963,7 @@ function bindToday(){
     const k=cb.dataset.k, tag=cb.dataset.tag, targetDate=cb.dataset.target, hw=hwFor(targetDate);
     hw[k]=hw[k]||{}; hw[k]['_assign']=hw[k]['_assign']||{};
     hw[k]['_assign'].noHw=hw[k]['_assign'].noHw||{};
-    hw[k]['_assign'].noHw[tag]=cb.checked;
+    hw[k]['_assign'].noHw[noHwStoreKey(tag)]=cb.checked;
     save(); render(true);
     scheduleTodayAssignPush(targetDate);
   });
@@ -11958,7 +11981,7 @@ function backfillNoHwAllPast(){
         const existingNoHw=assignRec.noHw||{};
         tags.forEach(tag=>{
           if(isSelfStudySubj(tag)) return; // IBT 등 자습 과목은 이미 기본 숙제없음으로 자동 처리되므로 건드릴 필요 없음
-          if(existingNoHw[tag]!==undefined) return; // 이미 명시적으로 표시돼 있음(무엇으로든) — 그대로 둔다
+          if(existingNoHw[noHwStoreKey(tag)]!==undefined) return; // 이미 명시적으로 표시돼 있음(무엇으로든) — 그대로 둔다
           const touched=c.students.some(s=>{
             const rec=byClass[s]; if(!rec) return false;
             if(multi) return (rec.doneSubjects && rec.doneSubjects[tag]!==undefined) || !!(rec.indivHwBySubject && rec.indivHwBySubject[tag]);
@@ -11969,7 +11992,7 @@ function backfillNoHwAllPast(){
           hw[k]=hw[k]||{};
           hw[k]['_assign']=hw[k]['_assign']||{};
           hw[k]['_assign'].noHw=hw[k]['_assign'].noHw||{};
-          hw[k]['_assign'].noHw[tag]=true;
+          hw[k]['_assign'].noHw[noHwStoreKey(tag)]=true;
           changed=true;
         });
       });
