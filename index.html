@@ -6511,9 +6511,14 @@ function wlGet(who, date){
     // 이전 일지에서 월간·주간 항목 및 '내일 계획'을 이어받기
     const prevDates=Object.keys(store.worklog[who]).filter(d=>d<date).sort();
     const prev=prevDates.length?store.worklog[who][prevDates[prevDates.length-1]]:null;
+    const isMonday=wdOf(date)==='월'; // 주간 업무는 보통 월요일마다 새로 시작 — 그 전 주 내용·체크를 이어받지 않고 빈 칸으로 초기화
     store.worklog[who][date]={
-      monthly: prev? prev.monthly.filter(x=>x.t).map(x=>({t:x.t,r:''})) : [],
-      weekly:  prev? prev.weekly.filter(x=>x.t).map(x=>({t:x.t,r:''}))  : [],
+      // [수정] 월간·주간 업무는 각각 그 달·그 주 내내 이어가며 체크하는 항목이라, 예전엔 다음 날로 넘어갈 때마다
+      // 체크(처리결과)가 매번 빈 칸으로 초기화돼서 "분명 체크했는데 다음 날 보면 다시 안 된 것처럼" 보이는 문제가
+      // 있었다 — 이제 내용(t)뿐 아니라 그날까지의 체크 상태(r)도 그대로 이어받는다. 다만 주간 업무는 월요일이 되면
+      // (새로운 주가 시작되므로) 지난 주 내용·체크를 이어받지 않고 빈 칸에서 새로 시작한다.
+      monthly: prev? prev.monthly.filter(x=>x.t).map(x=>({t:x.t,r:x.r||''})) : [],
+      weekly:  (prev && !isMonday)? prev.weekly.filter(x=>x.t).map(x=>({t:x.t,r:x.r||''})) : [],
       today:   prev? prev.tomorrow.filter(x=>x.t).map(x=>({t:x.t,d:x.d,r:''})) : [],
       tomorrow: [],
       lessons: autoLessonsFilled(who, date),
