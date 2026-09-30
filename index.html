@@ -3369,7 +3369,12 @@ function setTpOptions(a, arr){
 }
 const WORDLANG_OPTIONS=['한글','믹스','영어'];
 const MOCKEXAM_ROUND_OPTIONS=Array.from({length:10},(_,i)=>String(i+1));
-function wtStudentRow(s, date){
+// 단어시험 입력칸들(단어장·유형·범위·점수·미응시 등)만 따로 뽑아둔 함수 — "오늘 입력" 탭의 한 줄(wtStudentRow)뿐
+// 아니라, [단어 범위] 탭에서 권한이 있는 칸을 직접 수정할 때도 똑같은 입력칸을 그대로 재사용하기 위함.
+// date를 매번 각 입력칸의 data 속성에 그대로 박아두므로("s.id|date|field"), 저장 핸들러(bindWordTest)가
+// 화면 전체의 "지금 고른 날짜" 하나가 아니라 그 칸 자신의 날짜를 정확히 알고 저장할 수 있다 — 그래야 [단어 범위]
+// 탭처럼 한 화면에 날짜가 여러 개(열마다 다른 날짜) 섞여 있어도 문제없이 각자의 날짜에 저장된다.
+function wtFieldsFor(s, date){
   // 단어시험 "오늘 입력"은 실제 오늘 날짜(date)로 기록되지만, 반 배정 자체는 관리자가 [환경설정]에서
   // 강제 지정한 달(state.month, 9월 등)을 기준으로 봐야 한다 — 실제 달력이 아직 8월이어도 9월 반 구성으로
   // 넘어가 있어야 하기 때문. (date에서 달을 뽑으면 실제 오늘 날짜가 8월인 동안은 계속 8월 반으로 고정돼버림)
@@ -3383,63 +3388,54 @@ function wtStudentRow(s, date){
     r = prev ? {wordbook:prev.wordbook||'', lang:prev.lang||''} : {};
   }
   const dim = r.absent ? 'opacity:.5' : '';
-  const nameCol=`<span class="key">${esc(s.nameKo)}${s.nameEn?' <span style="font-weight:400;color:var(--sub)">('+esc(s.nameEn)+')</span>':''} ${MODE==='all'?bdg(s.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(classNameInMonth(s,state.month)||'')}</span></span>`;
-  const absentLabel=`<label style="font-size:.8rem;color:${r.absent?'#6b7280':'var(--sub)'};font-weight:${r.absent?'800':'400'}"><input type="checkbox" data-wtabsent="${s.id}" ${r.absent?'checked':''}> 미응시</label>`;
+  const absentLabel=`<label style="font-size:.8rem;color:${r.absent?'#6b7280':'var(--sub)'};font-weight:${r.absent?'800':'400'}"><input type="checkbox" data-wtabsent="${s.id}|${date}" ${r.absent?'checked':''}> 미응시</label>`;
   // 🎓 모의고사: 단어장·유형·범위·누적 없이, 회차(1~10) 선택 + 점수만 매일 기록한다.
   // 단어시험과 동시에 켜져 있을 때는(both) 점수 필드가 단어시험 점수와 겹치지 않도록 별도 필드(mockScore)를 쓴다 —
   // 모의고사만 켜진 기존 반은 그대로 'score' 필드를 계속 쓰므로 기존에 저장된 데이터는 전혀 영향받지 않는다.
   const mockScoreField=both?'mockScore':'score';
   const mockScoreVal=both?(r.mockScore||''):(r.score||'');
   const mockBlock=()=>{
-    const roundSel=`<select data-wtfield="${s.id}|round" ${r.absent?'disabled':''} style="width:110px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
+    const roundSel=`<select data-wtfield="${s.id}|${date}|round" ${r.absent?'disabled':''} style="width:110px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
       <option value="">회차 선택</option>
       ${MOCKEXAM_ROUND_OPTIONS.map(n=>`<option value="${n}" ${String(r.round||'')===n?'selected':''}>${n}회</option>`).join('')}
       <option value="내신단어" ${r.round==='내신단어'?'selected':''}>📖 내신 단어</option>
     </select>`;
-    const mockScoreInp=`<input type="text" placeholder="점수 (예: 85점, 2등급)" value="${esc(mockScoreVal)}" data-wtfield="${s.id}|${mockScoreField}" ${r.absent?'disabled':''} style="width:120px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">`;
+    const mockScoreInp=`<input type="text" placeholder="점수 (예: 85점, 2등급)" value="${esc(mockScoreVal)}" data-wtfield="${s.id}|${date}|${mockScoreField}" ${r.absent?'disabled':''} style="width:120px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">`;
     return `🎓 ${roundSel} ${mockScoreInp}`;
   };
   if(mOn && !wOn){
-    return `<div class="rowitem" style="align-items:center;flex-wrap:wrap">
-      ${nameCol}
-      <span class="val" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-        ${mockBlock()}
-        ${absentLabel}
-      </span></div>`;
+    return `${mockBlock()} ${absentLabel}`;
   }
   const wordBlock=()=>{
-    const wbSel=`<select data-wtfield="${s.id}|wordbook" ${r.absent?'disabled':''} style="width:120px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
+    const wbSel=`<select data-wtfield="${s.id}|${date}|wordbook" ${r.absent?'disabled':''} style="width:120px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
       <option value="">단어장 선택</option>
       ${wbOptionsFor(s.academy).map(o=>`<option value="${esc(o)}" ${r.wordbook===o?'selected':''}>${esc(o)}</option>`).join('')}
     </select>`;
-    const langSel=`<select data-wtfield="${s.id}|lang" ${r.absent?'disabled':''} style="width:76px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
+    const langSel=`<select data-wtfield="${s.id}|${date}|lang" ${r.absent?'disabled':''} style="width:76px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
       <option value="">유형</option>
       ${WORDLANG_OPTIONS.map(o=>`<option value="${esc(o)}" ${r.lang===o?'selected':''}>${esc(o)}</option>`).join('')}
     </select>`;
     return `${wbSel}
         ${langSel}
-        <input type="text" placeholder="범위" value="${esc(r.range||'')}" data-wtfield="${s.id}|range" ${r.absent?'disabled':''} style="width:110px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
-        <input type="text" placeholder="점수 (예: 18/20)" value="${esc(r.score||'')}" data-wtfield="${s.id}|score" ${r.absent?'disabled':''} style="width:90px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
-        ${studentIsHigh(s)?`<label style="font-size:.8rem;color:${r.accumulate?'#7c3aed':'var(--sub)'};${dim}" title="체크하면 이전 등원일 이틀치 시험 범위를 자동으로 이어서 채워줍니다"><input type="checkbox" data-wtaccum="${s.id}" ${r.accumulate?'checked':''} ${r.absent?'disabled':''}> 📚 누적</label>`:''}
-        <label style="font-size:.8rem;color:${r.retestNeeded?'#c0392b':'var(--sub)'};${dim}"><input type="checkbox" data-wtretest="${s.id}" ${r.retestNeeded?'checked':''} ${r.absent?'disabled':''}> 재시험(O)</label>`;
+        <input type="text" placeholder="범위" value="${esc(r.range||'')}" data-wtfield="${s.id}|${date}|range" ${r.absent?'disabled':''} style="width:110px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
+        <input type="text" placeholder="점수 (예: 18/20)" value="${esc(r.score||'')}" data-wtfield="${s.id}|${date}|score" ${r.absent?'disabled':''} style="width:90px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
+        ${studentIsHigh(s)?`<label style="font-size:.8rem;color:${r.accumulate?'#7c3aed':'var(--sub)'};${dim}" title="체크하면 이전 등원일 이틀치 시험 범위를 자동으로 이어서 채워줍니다"><input type="checkbox" data-wtaccum="${s.id}|${date}" ${r.accumulate?'checked':''} ${r.absent?'disabled':''}> 📚 누적</label>`:''}
+        <label style="font-size:.8rem;color:${r.retestNeeded?'#c0392b':'var(--sub)'};${dim}"><input type="checkbox" data-wtretest="${s.id}|${date}" ${r.retestNeeded?'checked':''} ${r.absent?'disabled':''}> 재시험(O)</label>`;
   };
   if(both){
     // 📖🎓 단어시험 + 모의고사 동시 사용: 두 입력 그룹을 나란히 보여주고, 미응시 체크는 하나만 공유한다(그 날 안 왔으면 둘 다 결석)
-    return `<div class="rowitem" style="align-items:center;flex-wrap:wrap">
-      ${nameCol}
-      <span class="val" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-        <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:4px 6px;background:#f5f3ff;border-radius:8px">${mockBlock()}</span>
-        <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:4px 6px;background:#eff6ff;border-radius:8px">${wordBlock()}</span>
-        ${absentLabel}
-      </span></div>`;
+    return `<span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:4px 6px;background:#f5f3ff;border-radius:8px">${mockBlock()}</span>
+      <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:4px 6px;background:#eff6ff;border-radius:8px">${wordBlock()}</span>
+      ${absentLabel}`;
   }
   // 단어시험만 켜진 경우(기본값, 기존 동작)
+  return `${wordBlock()} ${absentLabel}`;
+}
+function wtStudentRow(s, date){
+  const nameCol=`<span class="key">${esc(s.nameKo)}${s.nameEn?' <span style="font-weight:400;color:var(--sub)">('+esc(s.nameEn)+')</span>':''} ${MODE==='all'?bdg(s.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(classNameInMonth(s,state.month)||'')}</span></span>`;
   return `<div class="rowitem" style="align-items:center;flex-wrap:wrap">
       ${nameCol}
-      <span class="val" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-        ${wordBlock()}
-        ${absentLabel}
-      </span></div>`;
+      <span class="val" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${wtFieldsFor(s,date)}</span></div>`;
 }
 function renderWordTestToday(){
   const admin=isAdminRole(); const lt=loginTeacher();
@@ -3592,30 +3588,29 @@ function bindWordTest(){
   const wtClassSel=v.querySelector('[data-wtclasssel]');
   if(wtClassSel) wtClassSel.onchange=()=>{ state.wtClass=wtClassSel.value; render(true); };
   // "오늘 입력" 화면에서 고른 날짜(state.wtDate) — 안 골랐으면 오늘. 지난 날짜를 골라서 놓친 기록을 채워 넣을 수 있다.
-  const wtDate=()=>state.wtDate||todayISO();
   const wtDateInput=v.querySelector('#wtDateInput');
   if(wtDateInput) wtDateInput.onchange=()=>{ state.wtDate=wtDateInput.value||todayISO(); render(true); };
   v.querySelectorAll('[data-wttoday]').forEach(b=>b.onclick=()=>{ state.wtDate=todayISO(); render(true); });
   v.querySelectorAll('[data-wtfield]').forEach(el=>el.onchange=()=>{
-    const [sid,field]=el.dataset.wtfield.split('|');
+    const [sid,date,field]=el.dataset.wtfield.split('|');
     const s=store.students.find(x=>x.id===sid); if(!s) return;
     // 점수 칸은 "18/20", "2등급"처럼 숫자가 아닌 텍스트가 흔하므로 있는 그대로(문자열) 저장한다 — 형식을 강제하거나 숫자로 변환하지 않는다.
-    upsertWordTest(sid,s.academy,wtDate(),field,el.value);
+    upsertWordTest(sid,s.academy,date,field,el.value);
   });
   v.querySelectorAll('[data-wtretest]').forEach(cb=>cb.onchange=()=>{
-    const sid=cb.dataset.wtretest;
+    const [sid,date]=cb.dataset.wtretest.split('|');
     const s=store.students.find(x=>x.id===sid); if(!s) return;
-    upsertWordTest(sid,s.academy,wtDate(),'retestNeeded',cb.checked);
+    upsertWordTest(sid,s.academy,date,'retestNeeded',cb.checked);
   });
   v.querySelectorAll('[data-wtaccum]').forEach(cb=>cb.onchange=()=>{
-    const sid=cb.dataset.wtaccum;
+    const [sid,date]=cb.dataset.wtaccum.split('|');
     const s=store.students.find(x=>x.id===sid); if(!s) return;
-    upsertWordTest(sid,s.academy,wtDate(),'accumulate',cb.checked);
+    upsertWordTest(sid,s.academy,date,'accumulate',cb.checked);
   });
   v.querySelectorAll('[data-wtabsent]').forEach(cb=>cb.onchange=()=>{
-    const sid=cb.dataset.wtabsent;
+    const [sid,date]=cb.dataset.wtabsent.split('|');
     const s=store.students.find(x=>x.id===sid); if(!s) return;
-    upsertWordTest(sid,s.academy,wtDate(),'absent',cb.checked);
+    upsertWordTest(sid,s.academy,date,'absent',cb.checked);
   });
   v.querySelectorAll('[data-wtdone]').forEach(b=>b.onclick=()=>markRetestDone(b.dataset.wtdone));
 }
@@ -3949,8 +3944,16 @@ function renderWordRange(list){
     if(!dates.length) return;
     any=true;
     const wdName=(c.wordDuty!=null&&c.wordDuty!=='')?(teacherByDutyVal(c.academy,c.wordDuty)||{}).name||'':'';
+    const lt=loginTeacher(); const admin=isAdminRole();
+    const k=ckey(c);
+    // 관리자거나, 이 반이 열리는 날짜 중 하루라도 단어시험 담당으로 지정된 선생님이면 "반 전체 수정" 버튼을 보여준다.
+    // (담당 요일이 날짜별로 다를 수 있어서, 버튼을 누른 뒤에도 실제 편집 가능 여부는 각 칸에서 요일별로 다시 확인한다)
+    const canEditSomeDate = admin || (lt && dates.some(d=>wordDutyForDay(c, wdOf(d))===lt.t.id));
+    const classEditOpen = state.wrEditClass===k;
     h+=`<details class="ysec" open><summary style="cursor:pointer;padding:10px 16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:1.02rem">${hl(c.name)}</b> ${bdg(c.academy)}
-      <span style="font-size:.75rem;font-weight:400;color:var(--sub)">${esc(cdays(c))} · ${c.students.length}명${wdName?' · 📖 단어시험 담당: '+esc(wdName):''}</span></summary>
+      <span style="font-size:.75rem;font-weight:400;color:var(--sub)">${esc(cdays(c))} · ${c.students.length}명${wdName?' · 📖 단어시험 담당: '+esc(wdName):''}</span>
+      ${canEditSomeDate?(classEditOpen?`<button type="button" data-wrcloseclass="1" style="flex:none;border:1px solid var(--line);background:#fff;color:#5a6478;border-radius:6px;padding:3px 9px;font-size:.74rem;font-weight:700;cursor:pointer">✕ 수정 종료</button>`:`<button type="button" data-wreditclass="${esc(k)}" style="flex:none;border:1px solid #6366f1;background:#eef0ff;color:#4338ca;border-radius:6px;padding:3px 9px;font-size:.74rem;font-weight:700;cursor:pointer">✎ 반 전체 수정</button>`):''}
+      </summary>
       <div class="attwrap"><table class="atable"><thead><tr><th>학생</th>${dates.map(d=>`<th>${Number(d.slice(8))}일<br>${wdOf(d)}</th>`).join('')}</tr></thead><tbody>`;
     c.students.forEach(s=>{
       const stRec=matchStudentByRosterName(c.academy, s, c.name);
@@ -3970,7 +3973,11 @@ function renderWordRange(list){
             cell=`<span style="font-size:.7rem;color:var(--sub)">${esc(wbTxt)}</span>${rec.range?`<br><b style="font-size:.74rem">${esc(rec.range)}</b>`:''}${rec.score?`<br><span style="font-size:.72rem;color:#7c3aed;font-weight:800">📊 ${esc(rec.score)}</span>`:''}`;
           }
         }
-        row+=`<td style="min-width:56px">${cell}</td>`;
+        // 관리자거나, 그 날짜(요일 기준) 이 반의 단어시험 담당으로 지정된 선생님이면서 "반 전체 수정"이 켜져 있으면 그 칸을 편집칸으로 보여준다.
+        const canEdit = !!stRec && (admin || (lt && wordDutyForDay(c, wdOf(d))===lt.t.id));
+        const isOpen = classEditOpen && canEdit;
+        const cellHtml = isOpen ? `<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:flex-start">${wtFieldsFor(stRec, d)}</div>` : cell;
+        row+=`<td style="min-width:${isOpen?170:56}px">${cellHtml}</td>`;
       });
       row+='</tr>';
       h+=row;
@@ -3980,7 +3987,23 @@ function renderWordRange(list){
   if(!any) h+='<div class="empty">표시할 반이 없습니다. (요일 정보와 학생 명단이 있는 반만 표시됩니다)</div>';
   return h;
 }
-function bindWordRange(){}
+function bindWordRange(){
+  const v=document.getElementById('view');
+  // 두 버튼 다 <summary> 안에 있어서, 그냥 두면 클릭했을 때 반 카드가 접히기도 한다 — 그건 막고 수정 모드만 켜고/끈다.
+  v.querySelectorAll('[data-wreditclass]').forEach(b=>b.onclick=(e)=>{
+    e.preventDefault(); e.stopPropagation();
+    state.wrEditClass=b.dataset.wreditclass;
+    render(true);
+  });
+  v.querySelectorAll('[data-wrcloseclass]').forEach(b=>b.onclick=(e)=>{
+    e.preventDefault(); e.stopPropagation();
+    state.wrEditClass=null;
+    render(true);
+  });
+  // 수정 칸 자체(단어장·유형·범위·점수·미응시 등)는 [단어시험] 탭과 똑같은 입력칸을 그대로 재사용하므로,
+  // 저장 핸들러도 그대로 재사용한다(각 입력칸에 날짜가 이미 박혀 있어서 날짜가 여러 개 섞여 있어도 문제없다).
+  bindWordTest();
+}
 /* ---------- 숙제 체크표 (월별, 출결부/단어 범위와 같은 표 형식) ---------- */
 // 그 반의 이번 달 날짜들 중에서, 이 특정 과목이 실제로 있는 날인지
 function subjectMeetsOnDate(c, subj, dateISO){
@@ -10480,12 +10503,28 @@ function ttgLoadLib(){
   });
   return TTG_LIB_PROMISE;
 }
+// 엑셀 셀 값이 항상 순수 문자열은 아니다 — 셀 안에 글자마다 서식이 다르면(예: 한 글자만 굵게) ExcelJS가
+// {richText:[...]} 객체로 주고, 링크가 걸려 있으면 {text, hyperlink} 객체로, 수식 셀이면 {formula, result}
+// 객체로 준다. 이걸 모르고 그냥 String(value)로 바꾸면 "[object Object]"라는 글자 그대로 들어가버린다
+// (실제로 이 문제 때문에 반명·과목이 "[object Object]"로 잘못 인식되는 경우가 있었다) — 항상 이 함수로 실제
+// 텍스트만 뽑아 써야 한다.
+function ttgCellText(v){
+  if(v==null) return '';
+  if(typeof v==='object'){
+    if(Array.isArray(v.richText)) return v.richText.map(t=>(t&&t.text)||'').join('');
+    if(v.text!=null) return String(v.text); // 하이퍼링크 등 {text, hyperlink}
+    if(v.result!=null) return ttgCellText(v.result); // 수식 셀 {formula, result}
+    if(v instanceof Date) return v.toISOString();
+    return '';
+  }
+  return String(v);
+}
 function ttgTimeRange(text){
-  const m=String(text||'').match(/(\d{1,2}:\d{2})\s*~\s*(\d{1,2}:\d{2})/);
+  const m=ttgCellText(text).match(/(\d{1,2}:\d{2})\s*~\s*(\d{1,2}:\d{2})/);
   return m?{start:m[1],end:m[2]}:null;
 }
 function ttgParseCell(text){
-  text=String(text||'').trim();
+  text=ttgCellText(text).trim();
   if(!text||text==='RECESS'||text==='어학실') return null;
   const m=text.match(/^(.*)\(([^)]+)\)\s*$/);
   if(!m) return {subject:text, room:'', code:null};
@@ -10530,7 +10569,7 @@ function ttgResolveColorTeacher(ck, colorMap){
 function ttgTrimTrailingZone(ws, headerRow, classStart, maxCol){
   let end=classStart-1, blanks=0;
   for(let c=classStart;c<=maxCol;c++){
-    const v=String(ws.getCell(headerRow,c).value||'').trim();
+    const v=ttgCellText(ws.getCell(headerRow,c).value).trim();
     if(v){ end=c; blanks=0; }
     else{ blanks++; if(blanks>=2) break; }
   }
@@ -10541,12 +10580,12 @@ function ttgFindZones(ws, headerRow, maxCol){
   maxCol=Math.min(maxCol, TTG_LEGEND_COL-1);
   const markers=[];
   // 실제 학원 파일들은 두번째 이후 시간표 블록의 표시가 "반명"이 아니라 그냥 "반"으로 되어있는 경우가 많아 둘 다 인식
-  for(let c=1;c<=maxCol;c++){ const v=String(ws.getCell(headerRow,c).value||'').trim(); if(v==='반명'||v==='반') markers.push(c); }
+  for(let c=1;c<=maxCol;c++){ const v=ttgCellText(ws.getCell(headerRow,c).value).trim(); if(v==='반명'||v==='반') markers.push(c); }
   const starts=[1, ...markers];
   return starts.map((timeCol,i)=>{
     let cs=timeCol+(i===0?2:1);
     // 헤더 칸이 비어있으면(포맷에 따라 시간 칸 하나가 더 끼어있는 경우) 실제 반명이 나오는 칸까지 건너뛴다
-    while(cs<=maxCol && !String(ws.getCell(headerRow,cs).value||'').trim()) cs++;
+    while(cs<=maxCol && !ttgCellText(ws.getCell(headerRow,cs).value).trim()) cs++;
     const isLast=(i+1>=starts.length);
     return { timeCol, classStart: cs, classEnd: isLast ? ttgTrimTrailingZone(ws,headerRow,cs,maxCol) : (starts[i+1]-1) };
   });
@@ -10556,18 +10595,18 @@ function ttgParseWorkbook(ws, colorMap, codeMap){
   const results=[], unresolved=[];
   const isDayHeader=(row)=>{
     const cell=ws.getCell(row,1);
-    const v=String(cell.value||'').trim();
+    const v=ttgCellText(cell.value).trim();
     const echo=cell.isMerged && cell.master && cell.master.row!==row;
     return TTG_DAYS.includes(v) && !echo;
   };
   let r=1;
   while(r<=maxRow){
     if(isDayHeader(r)){
-      const day=String(ws.getCell(r,1).value||'').trim();
+      const day=ttgCellText(ws.getCell(r,1).value).trim();
       const headerRow=r;
       const zones=ttgFindZones(ws, headerRow, maxCol);
       const classNameOf={};
-      zones.forEach(z=>{ for(let c=z.classStart;c<=z.classEnd;c++){ const v=String(ws.getCell(headerRow,c).value||'').trim(); if(v) classNameOf[c]=v; } });
+      zones.forEach(z=>{ for(let c=z.classStart;c<=z.classEnd;c++){ const v=ttgCellText(ws.getCell(headerRow,c).value).trim(); if(v) classNameOf[c]=v; } });
       let r2=r+1; while(r2<=maxRow && !isDayHeader(r2)) r2++;
       const blockEnd=r2-1;
       // 시간표 격자에서 같은 과목·강의실·담당이 옆 시간 칸에도 이어져 있으면(예: 7:40~8:20, 8:20~9:00, 9:00~9:45가 전부 같은 수업),
@@ -10580,15 +10619,16 @@ function ttgParseWorkbook(ws, colorMap, codeMap){
           for(let c=z.classStart;c<=z.classEnd;c++){
             if(!classNameOf[c]) continue;
             const cell=ws.getCell(rr,c);
-            const parsed=ttgParseCell(cell.value);
+            const cellText=ttgCellText(cell.value);
+            const parsed=ttgParseCell(cellText);
             if(!parsed) continue;
             let teacher=null;
             if(parsed.code){
               teacher=codeMap[parsed.code.toUpperCase()]||null;
-              if(!teacher) unresolved.push({day,className:classNameOf[c],reason:'code',code:parsed.code,text:cell.value});
+              if(!teacher) unresolved.push({day,className:classNameOf[c],reason:'code',code:parsed.code,text:cellText});
             } else if(!parsed.isWordTest){
               const ck=ttgColorKey(cell.fill);
-              if(ck){ teacher=ttgResolveColorTeacher(ck,colorMap)||null; if(!teacher) unresolved.push({day,className:classNameOf[c],reason:'color',color:ck,text:cell.value}); }
+              if(ck){ teacher=ttgResolveColorTeacher(ck,colorMap)||null; if(!teacher) unresolved.push({day,className:classNameOf[c],reason:'color',color:ck,text:cellText}); }
             }
             results.push({day, className:classNameOf[c], subject:parsed.subject, room:parsed.room, teacher, time:tr.start+'-'+tr.end, isWordTest:!!parsed.isWordTest});
           }
