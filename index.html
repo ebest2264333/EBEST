@@ -2881,24 +2881,34 @@ function studentCard(s, admin){
   }
   const statusOpts=['재원','휴원','퇴원'];
   const clsOpts=classNameOptions(s.academy);
+  // 반 이동·재원/휴원/퇴원 상태는 다른 자료(반 명단·수강료 배정 등)에 바로 영향을 주기 때문에, 고치는 도중 실수로
+  // 잘못 선택했다가 바로 반영되는 일이 없도록 "편집 종료"를 누르기 전까지는 화면에만 보류해두고 실제로 적용하지
+  // 않는다(state.rsPending). 다른 항목(이름·학년·전화번호 등)은 예전처럼 바로바로 저장된다.
+  const pending=(state.rsPending && state.rsPending[s.id])||{};
+  const dispClassName='className' in pending ? pending.className : classNameInMonth(s,state.month);
+  const dispStatus='status' in pending ? pending.status : s.status;
+  const dispStatusReason='statusReason' in pending ? pending.statusReason : (s.statusReason||'');
+  const pendingNote=(k,label)=> (k in pending) ? ` <span style="color:#b45309;font-weight:700;font-size:.7rem;white-space:nowrap">→ ${esc(pending[k])||'(미배정)'} · 편집 종료 시 적용</span>` : '';
   return `<article class="card ${AC[s.academy].cls}" id="stu_${s.id}" style="border:2px solid ${AC[s.academy].cls==='eb'?'var(--ebest)':'var(--icon)'}">
     <datalist id="dl_cls_${s.academy}">${clsOpts.map(n=>`<option value="${esc(n)}">`).join('')}</datalist>
     <datalist id="dl_allstudents">${store.students.filter(x=>x.id!==s.id && !x._deleted).map(x=>`<option value="${esc(x.nameKo)}">`).join('')}</datalist>
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
       <input type="text" value="${esc(s.nameKo)}" placeholder="한글이름" data-rsfield="${s.id}|nameKo" style="width:110px;font-weight:800;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
       <input type="text" value="${esc(s.nameEn||'')}" placeholder="영어이름" data-rsfield="${s.id}|nameEn" style="width:110px;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
-      <input type="text" value="${esc(classNameInMonth(s,state.month))}" placeholder="반" list="dl_cls_${s.academy}" data-rsfield="${s.id}|className" style="width:110px;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
+      <span style="display:inline-flex;align-items:center;gap:4px">
+        <input type="text" value="${esc(dispClassName)}" placeholder="반" list="dl_cls_${s.academy}" data-rsfield-stage="${s.id}|className" style="width:110px;padding:7px 9px;border:1.5px solid ${('className' in pending)?'#f0c987':'var(--line)'};border-radius:8px;font-family:inherit">${pendingNote('className')}
+      </span>
       <input type="text" value="${esc(s.grade||'')}" placeholder="학년" data-rsfield="${s.id}|grade" style="width:80px;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
       <input type="text" value="${esc(s.school||'')}" placeholder="학교" data-rsfield="${s.id}|school" style="width:110px;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
       <input type="text" value="${esc(s.parentPhone||'')}" placeholder="부모님 번호" data-rsfield="${s.id}|parentPhone" style="width:130px;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
-      <button class="btn small" data-rstoggle="${s.id}">편집 종료</button>
+      <button class="btn small" data-rstoggle="${s.id}">✔ 편집 종료(적용)</button>
       <button class="btn small" style="color:#c0392b;border-color:#e7b3ab" data-rsdel="${s.id}">🗑 삭제</button>
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
-      <select data-rsfield="${s.id}|status" style="padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
-        ${statusOpts.map(o=>`<option ${s.status===o?'selected':''}>${o}</option>`).join('')}
-      </select>
-      ${s.status!=='재원'?`<input type="text" value="${esc(s.statusReason||'')}" placeholder="${esc(s.status)} 사유" data-rsfield="${s.id}|statusReason" style="flex:1;min-width:140px;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">`:''}
+      <select data-rsfield-stage="${s.id}|status" style="padding:7px 9px;border:1.5px solid ${('status' in pending)?'#f0c987':'var(--line)'};border-radius:8px;font-family:inherit">
+        ${statusOpts.map(o=>`<option ${dispStatus===o?'selected':''}>${o}</option>`).join('')}
+      </select>${pendingNote('status')}
+      ${dispStatus!=='재원'?`<input type="text" value="${esc(dispStatusReason)}" placeholder="${esc(dispStatus)} 사유" data-rsfield-stage="${s.id}|statusReason" style="flex:1;min-width:140px;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">`:''}
     </div>
     <input type="text" value="${esc(s.preCheck||'')}" placeholder="상담 전 확인해야 할 내용" data-rsfield="${s.id}|preCheck" style="width:100%;margin-bottom:8px;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.86rem">
     <div style="font-size:.78rem;font-weight:700;color:var(--sub);margin-bottom:4px">형제자매</div>
@@ -3147,13 +3157,38 @@ function bindRoster(){
   if(bgBtn) bgBtn.onclick=()=>bulkBumpGrade(bgBtn.dataset.rsbulkgrade);
   v.querySelectorAll('[data-rsadd]').forEach(b=>b.onclick=()=>addStudentRecord(b.dataset.rsadd));
   v.querySelectorAll('[data-rstoggle]').forEach(b=>b.onclick=()=>{
-    const id=b.dataset.rstoggle; state.rosterOpen[id]=!state.rosterOpen[id]; render(true);
+    const id=b.dataset.rstoggle;
+    const wasOpen=!!state.rosterOpen[id];
+    if(wasOpen){
+      // 편집을 마치는 시점(=이 버튼이 "편집 종료")에 그동안 보류해뒀던 반 이동·재원/휴원/퇴원 변경을 한꺼번에 적용한다.
+      // className을 먼저 적용하고 status를 나중에 적용해야 한다 — 휴원/퇴원으로 바꾸면 반 배정을 비우는 로직이 있어서,
+      // 순서가 바뀌면 방금 고른 반이 다시 지워질 수 있다.
+      const pending=state.rsPending && state.rsPending[id];
+      if(pending){
+        if('className' in pending) updateStudentField(id,'className',pending.className);
+        if('status' in pending) updateStudentField(id,'status',pending.status);
+        if('statusReason' in pending) updateStudentField(id,'statusReason',pending.statusReason);
+        delete state.rsPending[id];
+      }
+    } else {
+      state.rsPending=state.rsPending||{};
+      delete state.rsPending[id]; // 다시 열 때는 예전에 취소된 보류 값이 남아있지 않게 깨끗이 시작
+    }
+    state.rosterOpen[id]=!wasOpen; render(true);
   });
   v.querySelectorAll('[data-rsdel]').forEach(b=>b.onclick=()=>removeStudentRecord(b.dataset.rsdel));
   v.querySelectorAll('[data-rsgoto]').forEach(el=>el.onclick=(e)=>{ e.stopPropagation(); gotoStudent(el.dataset.rsgoto); });
   v.querySelectorAll('[data-rsfield]').forEach(el=>el.onchange=()=>{
     const [id,field]=el.dataset.rsfield.split('|');
     updateStudentField(id,field,el.value);
+  });
+  // 반 이동·재원/휴원/퇴원 상태는 즉시 적용하지 않고, 편집 종료를 누르기 전까지 화면에만 보류해둔다(위 설명 참고).
+  v.querySelectorAll('[data-rsfield-stage]').forEach(el=>el.onchange=()=>{
+    const [id,field]=el.dataset.rsfieldStage.split('|');
+    state.rsPending=state.rsPending||{};
+    state.rsPending[id]=state.rsPending[id]||{};
+    state.rsPending[id][field]=el.value;
+    render(true);
   });
   v.querySelectorAll('[data-rsfield-note]').forEach(t=>t.onchange=()=>updateStudentField(t.dataset.rsfieldNote,'note',t.value));
   v.querySelectorAll('[data-rsalertdone]').forEach(b=>b.onclick=()=>updateStudentField(b.dataset.rsalertdone,'alertNote',''));
@@ -7352,6 +7387,49 @@ function hgSaveColWidth(key, w){
 function hgClassOptions(a, targetMonth){
   return editArr(a, targetMonth).filter(c=>!c._deleted).map(c=>c.name).sort((x,y)=>x.localeCompare(y,'ko'));
 }
+const hgGradeNum=(name)=>{ const m=String(name||'').match(/\d+/); return m?parseInt(m[0],10):Infinity; };
+// 인수인계표의 반(그룹) 기본 정렬: 초등 → 중등 → 고등, 각 부서 안에서는 반 이름 속 숫자(학년/급수) 오름차순
+function hgDefaultGroups(a, prevMonth, targetMonth, rows){
+  const groups=[]; let curKey=null, curGroup=null;
+  rows.forEach(r=>{ if(r.prevClass!==curKey){ curKey=r.prevClass; curGroup={key:curKey, rows:[]}; groups.push(curGroup); } curGroup.rows.push(r); });
+  const hgDeptLookup={};
+  editArr(a, prevMonth).forEach(c=>{ if(!c._deleted && hgDeptLookup[norm(c.name)]==null) hgDeptLookup[norm(c.name)]=c.dept||''; });
+  editArr(a, targetMonth).forEach(c=>{ if(!c._deleted && hgDeptLookup[norm(c.name)]==null) hgDeptLookup[norm(c.name)]=c.dept||''; });
+  groups.sort((g1,g2)=>{
+    const d1=hgDeptLookup[norm(g1.key)]||'', d2=hgDeptLookup[norm(g2.key)]||'';
+    const r1=DEPT_SORT_ORDER[d1]!=null?DEPT_SORT_ORDER[d1]:99, r2=DEPT_SORT_ORDER[d2]!=null?DEPT_SORT_ORDER[d2]:99;
+    if(r1!==r2) return r1-r2;
+    const n1=hgGradeNum(g1.key), n2=hgGradeNum(g2.key);
+    if(n1!==n2) return n1-n2;
+    return String(g1.key||'').localeCompare(String(g2.key||''),'ko',{numeric:true});
+  });
+  return groups;
+}
+// 저장된 g.groupOrder(사용자가 위/아래로 직접 옮긴 순서)가 있으면 그 순서를 우선 적용하고,
+// 거기 없는(새로 생긴) 반은 기본 정렬 순서 그대로 뒤에 이어붙인다. 저장된 rows 순서 자체는 건드리지 않는다.
+function hgApplyGroupOrder(g, defaultGroups){
+  const order=(g && g.groupOrder)||null;
+  if(!order || !order.length) return defaultGroups;
+  const byKey={}; defaultGroups.forEach(gr=>{ byKey[gr.key]=gr; });
+  const used=new Set(); const ordered=[];
+  order.forEach(k=>{ if(byKey[k] && !used.has(k)){ ordered.push(byKey[k]); used.add(k); } });
+  defaultGroups.forEach(gr=>{ if(!used.has(gr.key)){ ordered.push(gr); used.add(gr.key); } });
+  return ordered;
+}
+// 반(그룹) 하나를 위/아래로 옮긴다 — dir: -1 위로, 1 아래로
+function hgMoveGroup(a, targetMonth, key, dir){
+  const prevMonth=shiftMonth(targetMonth,-1);
+  const g=handoverGridFor(a, targetMonth); if(!g) return;
+  const rows=g.rows||[];
+  const defaultGroups=hgDefaultGroups(a, prevMonth, targetMonth, rows);
+  const ordered=hgApplyGroupOrder(g, defaultGroups);
+  const keys=ordered.map(x=>x.key);
+  const idx=keys.indexOf(key); if(idx<0) return;
+  const newIdx=idx+dir; if(newIdx<0||newIdx>=keys.length) return;
+  [keys[idx],keys[newIdx]]=[keys[newIdx],keys[idx]];
+  g.groupOrder=keys; g.updatedAt=Date.now();
+  save();
+}
 function renderHandoverGrid(){
   state.hgMonth=state.hgMonth||shiftMonth(effectiveCurrentMonth(),1); // 기본값: 다음 달 인수인계표(이번 달에 다음 달 걸 작성하는 게 보통이므로) — 강제 지정된 달이 있으면 그 달 기준 다음 달
   const targetMonth=state.hgMonth, prevMonth=shiftMonth(targetMonth,-1);
@@ -7412,22 +7490,10 @@ function renderHandoverGrid(){
     return h;
   }
   // 같은 반(prevClass) 묶음끼리 반명 칸을 세로로 합쳐서 보여준다 (원본 인수인계표 양식처럼)
-  const groups=[]; let curKey=null, curGroup=null;
-  rows.forEach(r=>{ if(r.prevClass!==curKey){ curKey=r.prevClass; curGroup={key:curKey, rows:[]}; groups.push(curGroup); } curGroup.rows.push(r); });
-  // 반(그룹) 순서를 초등 → 중등 → 고등, 각 부서 안에서는 반 이름에 들어있는 숫자(학년/급수) 오름차순으로 정렬해서 보여준다
-  // (저장된 자료 순서 자체는 안 건드리고, 화면에 보여줄 때만 정렬 — 예전에 만들어둔 표도 다시 만들 필요 없이 바로 정돈되어 보임)
-  const hgDeptLookup={};
-  editArr(a, prevMonth).forEach(c=>{ if(!c._deleted && hgDeptLookup[norm(c.name)]==null) hgDeptLookup[norm(c.name)]=c.dept||''; });
-  editArr(a, targetMonth).forEach(c=>{ if(!c._deleted && hgDeptLookup[norm(c.name)]==null) hgDeptLookup[norm(c.name)]=c.dept||''; });
-  const hgGradeNum=(name)=>{ const m=String(name||'').match(/\d+/); return m?parseInt(m[0],10):Infinity; };
-  groups.sort((g1,g2)=>{
-    const d1=hgDeptLookup[norm(g1.key)]||'', d2=hgDeptLookup[norm(g2.key)]||'';
-    const r1=DEPT_SORT_ORDER[d1]!=null?DEPT_SORT_ORDER[d1]:99, r2=DEPT_SORT_ORDER[d2]!=null?DEPT_SORT_ORDER[d2]:99;
-    if(r1!==r2) return r1-r2;
-    const n1=hgGradeNum(g1.key), n2=hgGradeNum(g2.key);
-    if(n1!==n2) return n1-n2;
-    return String(g1.key||'').localeCompare(String(g2.key||''),'ko',{numeric:true});
-  });
+  // 반(그룹) 순서는 기본적으로 초등 → 중등 → 고등, 각 부서 안에서는 반 이름에 들어있는 숫자(학년/급수) 오름차순이지만,
+  // 선생님이 ▲▼ 버튼으로 직접 옮긴 순서(g.groupOrder)가 있으면 그 순서가 우선한다 (저장된 rows 순서 자체는 안 건드림)
+  const defaultGroups=hgDefaultGroups(a, prevMonth, targetMonth, rows);
+  const groups=hgApplyGroupOrder(g, defaultGroups);
   const teaCell=(name, field, rid, mergeGroup)=>{
     const color=teacherColorByName(a, name);
     const dataAttr=mergeGroup?`data-hgmergefield="${mergeGroup}|${field}"`:`data-hgfield="${rid}|${field}"`;
@@ -7443,8 +7509,10 @@ function renderHandoverGrid(){
   h+=`${teacherDatalist(a)}<datalist id="dl_hgclass_${a}">${hgOpts.map(nm=>`<option value="${esc(nm)}">`).join('')}</datalist><div style="overflow-x:auto"><table style="border-collapse:collapse;table-layout:fixed;width:max-content;min-width:100%">
   <colgroup>${HG_COLS.map(c=>`<col style="width:${colw[c.key]}px">`).join('')}</colgroup>
   <thead><tr>${HG_COLS.map((c,ci)=>`<th style="position:relative;background:var(--ink);color:#fff;padding:7px 14px 7px 8px;font-size:.76rem;text-align:center;border:1px solid #333;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${esc(colLabels[ci])}">${colLabels[ci]}<span class="hg-resizer" data-col="${c.key}" title="드래그해서 칸 너비 조절 (이 화면에서만 적용)" style="position:absolute;right:0;top:0;bottom:0;width:8px;cursor:col-resize;user-select:none"></span></th>`).join('')}</tr></thead><tbody>
-  ${groups.map(g2=>{
+  ${groups.map((g2,gi)=>{
     const curTarget=(g2.rows[0]||{}).targetClass||'';
+    const hgUpBtn=`<button type="button" data-hggroupup="${esc(g2.key)}" title="반 순서 위로 옮기기" ${gi===0?'disabled':''} style="border:none;background:#e6e9f0;color:#5a6478;border-radius:3px;padding:0 3px;font-size:.6rem;cursor:pointer;line-height:1.3;${gi===0?'opacity:.35;cursor:default':''}">▲</button>`;
+    const hgDownBtn=`<button type="button" data-hggroupdown="${esc(g2.key)}" title="반 순서 아래로 옮기기" ${gi===groups.length-1?'disabled':''} style="border:none;background:#e6e9f0;color:#5a6478;border-radius:3px;padding:0 3px;font-size:.6rem;cursor:pointer;line-height:1.3;${gi===groups.length-1?'opacity:.35;cursor:default':''}">▼</button>`;
     // 반이 합쳐졌다가 다음 달 다시 갈라지는 경우처럼, 같은 지난달 반 소속 과목들의 "이번달 반명"을 서로 다르게 적어야 할 때 켜는 모드
     const splitMode=!!(g.splitTargetGroups && g.splitTargetGroups[norm(g2.key)]);
     const displayRows=hgDisplayOrder(g2.rows); // 합쳐진 행들은 원래 떨어져 있어도 화면에선 나란히 모아서 보여준다
@@ -7508,7 +7576,12 @@ function renderHandoverGrid(){
     </td>`:'');
       return `<tr>
     <td style="border:1px solid var(--line);padding:6px;text-align:center"><input type="checkbox" data-hgmergesel="${r.id}"></td>
-    ${ri===0?`<td rowspan="${g2.rows.length}" style="border:1px solid var(--line);padding:6px;text-align:center;font-weight:800;background:#f6f8fc;vertical-align:middle">${esc(r.prevClass)}</td>`:''}
+    ${ri===0?`<td rowspan="${g2.rows.length}" style="border:1px solid var(--line);padding:6px;text-align:center;font-weight:800;background:#f6f8fc;vertical-align:middle">
+      <div style="display:flex;align-items:center;justify-content:center;gap:4px">
+        <div style="display:flex;flex-direction:column;gap:1px">${hgUpBtn}${hgDownBtn}</div>
+        <span>${esc(r.prevClass)}</span>
+      </div>
+    </td>`:''}
     ${targetClassCell}
     <td style="border:1px solid var(--line);padding:6px;text-align:center;font-weight:700;color:var(--sub)" title="지난달 과목명 — 참고용, 수정 안 됨">${esc(r.subject)}</td>
     ${targetCells}
@@ -7533,6 +7606,8 @@ function bindHandoverGrid(){
     if(!confirm(msg)) return;
     regenHandoverGrid(a, state.hgMonth, myName); render(true);
   };
+  v.querySelectorAll('[data-hggroupup]').forEach(btn=>btn.onclick=()=>{ if(btn.disabled) return; hgMoveGroup(a, state.hgMonth, btn.dataset.hggroupup, -1); render(true); });
+  v.querySelectorAll('[data-hggroupdown]').forEach(btn=>btn.onclick=()=>{ if(btn.disabled) return; hgMoveGroup(a, state.hgMonth, btn.dataset.hggroupdown, 1); render(true); });
   v.querySelectorAll('[data-hgfield]').forEach(inp=>inp.onchange=()=>{
     const [rid,field]=inp.dataset.hgfield.split('|');
     const g=handoverGridFor(a, state.hgMonth); if(!g) return;
