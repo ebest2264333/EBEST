@@ -7313,6 +7313,8 @@ function regenHandoverGrid(academy, targetMonth, onlyTeacherName){
   const old=prevGrid.rows||[];
   const overrides=prevGrid.classOverrides||{}; // 반명을 직접 입력(수정)해둔 것 — 어떤 규모로 다시 채우든 항상 유지
   const splitGroups=prevGrid.splitTargetGroups||{}; // 반이 나뉘어서 과목마다 반명을 따로 입력해둔 그룹(✂️ 모드)
+  const groupOrder=prevGrid.groupOrder||null; // 반(그룹) 순서를 직접 ▲▼로 옮겨둔 것 — 다시 채우기를 눌러도 유지
+  const classMergeGroups=prevGrid.classMergeGroups||null; // 없어진 반을 다른 반으로 흡수해 통째로 합쳐둔 묶음 — 다시 채우기를 눌러도 유지
   const freshRows=genHandoverRows(academy,targetMonth);
   let rows=onlyTeacherName ? freshRows.map(fr=>{
     if(norm(fr.prevTeacher)===norm(onlyTeacherName)) return fr; // 내가 담당했던 과목 → 최신 자료로 새로 채움
@@ -7330,7 +7332,7 @@ function regenHandoverGrid(academy, targetMonth, onlyTeacherName){
     const ov=overrides[norm(r.prevClass)];
     return (ov!=null && ov!=='') ? {...r, targetClass:ov} : r;
   });
-  store.handoverGrid[academy][targetMonth]={rows, classOverrides:overrides, splitTargetGroups:splitGroups, updatedAt:Date.now()};
+  store.handoverGrid[academy][targetMonth]={rows, classOverrides:overrides, splitTargetGroups:splitGroups, groupOrder, classMergeGroups, updatedAt:Date.now()};
   save();
 }
 // 인수인계표 칸 너비 — 보는 사람 화면(이 브라우저)에서만 적용, 저장/동기화 안 됨(다른 선생님에게 영향 없음)
@@ -7388,20 +7390,51 @@ function hgClassOptions(a, targetMonth){
   return editArr(a, targetMonth).filter(c=>!c._deleted).map(c=>c.name).sort((x,y)=>x.localeCompare(y,'ko'));
 }
 const hgGradeNum=(name)=>{ const m=String(name||'').match(/\d+/); return m?parseInt(m[0],10):Infinity; };
+// 더이상 없는 반이 다른 반으로 흡수되는 경우처럼, 서로 다른 전달 반(prevClass) 전체를 하나의 묶음으로 보여주고 싶을 때 쓰는
+// "반 통째로 합치기" 설정(g.classMergeGroups={ [mergeId]: [전달반명1, 전달반명2, ...] })을 참고해서, 그 행이 속할 "화면 그룹 키"를 돌려준다.
+// 합쳐지지 않은 보통의 경우엔 그냥 그 행의 전달 반명을 그대로 돌려준다.
+function hgRowGroupKey(g, prevClass){
+  if(g && g.classMergeGroups){
+    for(const mkid in g.classMergeGroups){
+      const names=g.classMergeGroups[mkid]||[];
+      if(names.includes(prevClass)) return names.join(' + ');
+    }
+  }
+  return prevClass;
+}
+function hgMergeIdForGroupKey(g, groupKey){
+  if(!g || !g.classMergeGroups) return null;
+  for(const mkid in g.classMergeGroups){
+    if((g.classMergeGroups[mkid]||[]).join(' + ')===groupKey) return mkid;
+  }
+  return null;
+}
 // 인수인계표의 반(그룹) 기본 정렬: 초등 → 중등 → 고등, 각 부서 안에서는 반 이름 속 숫자(학년/급수) 오름차순
-function hgDefaultGroups(a, prevMonth, targetMonth, rows){
-  const groups=[]; let curKey=null, curGroup=null;
-  rows.forEach(r=>{ if(r.prevClass!==curKey){ curKey=r.prevClass; curGroup={key:curKey, rows:[]}; groups.push(curGroup); } curGroup.rows.push(r); });
+// (반 통째로 합쳐진 그룹은, 합칠 때 가장 먼저 고른 반을 기준으로 부서·학년을 판단해서 비슷한 자리에 놓이게 한다)
+function hgDefaultGroups(a, prevMonth, targetMonth, rows, g){
+  const order=[]; const byKey={};
+  rows.forEach(r=>{
+    const gk=hgRowGroupKey(g, r.prevClass);
+    if(!byKey[gk]){ byKey[gk]={key:gk, rows:[]}; order.push(gk); }
+    byKey[gk].rows.push(r);
+  });
+  const groups=order.map(k=>byKey[k]);
   const hgDeptLookup={};
   editArr(a, prevMonth).forEach(c=>{ if(!c._deleted && hgDeptLookup[norm(c.name)]==null) hgDeptLookup[norm(c.name)]=c.dept||''; });
   editArr(a, targetMonth).forEach(c=>{ if(!c._deleted && hgDeptLookup[norm(c.name)]==null) hgDeptLookup[norm(c.name)]=c.dept||''; });
+  groups.forEach(gr=>{
+    const mkid=hgMergeIdForGroupKey(g, gr.key);
+    const sortName=mkid ? (g.classMergeGroups[mkid][0]||gr.key) : gr.key;
+    gr.mergeKeyId=mkid||null;
+    gr.__dept=hgDeptLookup[norm(sortName)]||'';
+    gr.__gradeNum=hgGradeNum(sortName);
+    gr.__sortName=sortName;
+  });
   groups.sort((g1,g2)=>{
-    const d1=hgDeptLookup[norm(g1.key)]||'', d2=hgDeptLookup[norm(g2.key)]||'';
-    const r1=DEPT_SORT_ORDER[d1]!=null?DEPT_SORT_ORDER[d1]:99, r2=DEPT_SORT_ORDER[d2]!=null?DEPT_SORT_ORDER[d2]:99;
+    const r1=DEPT_SORT_ORDER[g1.__dept]!=null?DEPT_SORT_ORDER[g1.__dept]:99, r2=DEPT_SORT_ORDER[g2.__dept]!=null?DEPT_SORT_ORDER[g2.__dept]:99;
     if(r1!==r2) return r1-r2;
-    const n1=hgGradeNum(g1.key), n2=hgGradeNum(g2.key);
-    if(n1!==n2) return n1-n2;
-    return String(g1.key||'').localeCompare(String(g2.key||''),'ko',{numeric:true});
+    if(g1.__gradeNum!==g2.__gradeNum) return g1.__gradeNum-g2.__gradeNum;
+    return String(g1.__sortName||'').localeCompare(String(g2.__sortName||''),'ko',{numeric:true});
   });
   return groups;
 }
@@ -7421,7 +7454,7 @@ function hgMoveGroup(a, targetMonth, key, dir){
   const prevMonth=shiftMonth(targetMonth,-1);
   const g=handoverGridFor(a, targetMonth); if(!g) return;
   const rows=g.rows||[];
-  const defaultGroups=hgDefaultGroups(a, prevMonth, targetMonth, rows);
+  const defaultGroups=hgDefaultGroups(a, prevMonth, targetMonth, rows, g);
   const ordered=hgApplyGroupOrder(g, defaultGroups);
   const keys=ordered.map(x=>x.key);
   const idx=keys.indexOf(key); if(idx<0) return;
@@ -7481,7 +7514,7 @@ function renderHandoverGrid(){
       <label style="display:flex;align-items:center;gap:2px;cursor:pointer;white-space:nowrap"><input type="checkbox" id="hgMergeFldBook" checked>교재</label>
       <label style="display:flex;align-items:center;gap:2px;cursor:pointer;white-space:nowrap"><input type="checkbox" id="hgMergeFldProgress" checked>진도</label>
     </span>
-    <button class="btn small" id="hgMergeBtn" title="체크된 항목만 골라서 합칠 수 있어요(예: 담당만 체크하면 담당 칸만 하나로 합쳐지고 과목명·교재·진도는 그대로 유지)">🔗 체크한 과목 행 합치기</button>
+    <button class="btn small" id="hgMergeBtn" title="같은 반 안에서 체크하면: 체크된 항목만 골라서 합칠 수 있어요(예: 담당만 체크하면 담당 칸만 하나로 합쳐지고 과목명·교재·진도는 그대로 유지) · 서로 다른 반에서 체크하면: 없어진 반을 다른 반으로 흡수하듯, 반 전체를 하나로 묶어서 보여줍니다">🔗 체크한 과목 행 합치기</button>
     <button class="btn small" id="hgAddClassBtn" title="지난달엔 없던 반을 새로 만들거나, 이미 추가한 반에 과목을 한 줄 더 추가할 때 사용">➕ 새 반(과목) 추가</button>
     <span style="font-size:.76rem;color:#8b93a7;margin-left:auto">모든 선생님이 같이 보고 같이 수정하는 표입니다 · 선생님별로 구분되지 않습니다 · 칸 경계를 드래그하면 너비를 조절할 수 있어요(내 화면에만 적용)</span>
   </div>`;
@@ -7492,7 +7525,7 @@ function renderHandoverGrid(){
   // 같은 반(prevClass) 묶음끼리 반명 칸을 세로로 합쳐서 보여준다 (원본 인수인계표 양식처럼)
   // 반(그룹) 순서는 기본적으로 초등 → 중등 → 고등, 각 부서 안에서는 반 이름에 들어있는 숫자(학년/급수) 오름차순이지만,
   // 선생님이 ▲▼ 버튼으로 직접 옮긴 순서(g.groupOrder)가 있으면 그 순서가 우선한다 (저장된 rows 순서 자체는 안 건드림)
-  const defaultGroups=hgDefaultGroups(a, prevMonth, targetMonth, rows);
+  const defaultGroups=hgDefaultGroups(a, prevMonth, targetMonth, rows, g);
   const groups=hgApplyGroupOrder(g, defaultGroups);
   const teaCell=(name, field, rid, mergeGroup)=>{
     const color=teacherColorByName(a, name);
@@ -7577,9 +7610,12 @@ function renderHandoverGrid(){
       return `<tr>
     <td style="border:1px solid var(--line);padding:6px;text-align:center"><input type="checkbox" data-hgmergesel="${r.id}"></td>
     ${ri===0?`<td rowspan="${g2.rows.length}" style="border:1px solid var(--line);padding:6px;text-align:center;font-weight:800;background:#f6f8fc;vertical-align:middle">
-      <div style="display:flex;align-items:center;justify-content:center;gap:4px">
-        <div style="display:flex;flex-direction:column;gap:1px">${hgUpBtn}${hgDownBtn}</div>
-        <span>${esc(r.prevClass)}</span>
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px">
+        <div style="display:flex;align-items:center;gap:4px">
+          <div style="display:flex;flex-direction:column;gap:1px">${hgUpBtn}${hgDownBtn}</div>
+          <span>${esc(g2.key)}</span>
+        </div>
+        ${g2.mergeKeyId?`<button type="button" data-hgclassunmerge="${esc(g2.mergeKeyId)}" title="반 통째로 합치기 해제 — 원래의 각 반으로 다시 나눕니다" style="border:none;background:#e6e9f0;color:#b45309;border-radius:4px;padding:1px 5px;font-size:.6rem;cursor:pointer;white-space:nowrap">✕ 합치기 해제</button>`:''}
       </div>
     </td>`:''}
     ${targetClassCell}
@@ -7652,16 +7688,31 @@ function bindHandoverGrid(){
   const mergeBtn=v.querySelector('#hgMergeBtn'); if(mergeBtn) mergeBtn.onclick=()=>{
     const checked=[...v.querySelectorAll('[data-hgmergesel]:checked')].map(cb=>cb.dataset.hgmergesel);
     if(checked.length<2){ alert('합칠 과목 행을 2개 이상 체크해주세요.'); return; }
+    const g=handoverGridFor(a, state.hgMonth); if(!g) return;
+    const idxs=checked.map(rid=>g.rows.findIndex(r=>r.id===rid)).filter(i=>i>=0).sort((x,y)=>x-y);
+    const prevClasses=[...new Set(idxs.map(i=>g.rows[i].prevClass))];
+    if(prevClasses.length>1){
+      // 체크한 과목 행들이 서로 다른 전달 반(prevClass) 소속이면 — 없어진 반을 다른 반으로 흡수하는 경우처럼,
+      // 그 반들 전체를 하나의 화면 그룹으로 통째로 합친다 (각 반의 과목·담당·교재·진도 내용은 각자 그대로 유지됨)
+      if(!confirm(`'${prevClasses.join("', '")}' 반을 하나로 합쳐서 보여줄까요?\n(각 반에 적힌 과목·담당·교재·진도 내용은 그대로 유지되고, 표에서만 한 덩어리로 묶여 보입니다)`)) return;
+      g.classMergeGroups=g.classMergeGroups||{};
+      // 이 반들 중 일부가 이미 다른 합치기 묶음에 속해 있었다면, 그 묶음은 통째로 풀고 새로 합친다(어중간하게 걸치는 것 방지)
+      Object.keys(g.classMergeGroups).forEach(mkid=>{
+        const names=g.classMergeGroups[mkid]||[];
+        if(names.some(n=>prevClasses.includes(n))) delete g.classMergeGroups[mkid];
+      });
+      const mkid='cmg_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
+      g.classMergeGroups[mkid]=prevClasses;
+      g.updatedAt=Date.now();
+      save(); render(true);
+      return;
+    }
     const fields=[];
     if(v.querySelector('#hgMergeFldSubject')?.checked) fields.push('targetSubject');
     if(v.querySelector('#hgMergeFldTeacher')?.checked) fields.push('targetTeacher');
     if(v.querySelector('#hgMergeFldBook')?.checked) fields.push('book');
     if(v.querySelector('#hgMergeFldProgress')?.checked) fields.push('targetProgress');
     if(!fields.length){ alert('상단에서 합칠 항목(과목명·담당·교재·진도)을 하나 이상 체크해주세요.'); return; }
-    const g=handoverGridFor(a, state.hgMonth); if(!g) return;
-    const idxs=checked.map(rid=>g.rows.findIndex(r=>r.id===rid)).filter(i=>i>=0).sort((x,y)=>x-y);
-    const prevClass=g.rows[idxs[0]].prevClass;
-    if(!idxs.every(i=>g.rows[i].prevClass===prevClass)){ alert('같은 반(전달 반) 소속 과목 행끼리만 합칠 수 있어요.'); return; }
     // 표에서 붙어있지 않고 떨어져 있는 과목 행끼리 골라도 합칠 수 있다 — 합쳐진 행들은 화면에 표시될 때 자동으로 나란히 모아서 보여준다
     // 선택한 행이 이미 다른 병합 그룹에 속해있었다면, 그 그룹은 통째로 해제하고 새로 합친다(어중간하게 걸치는 것 방지)
     const existingGroups=new Set(idxs.map(i=>g.rows[i].mergeGroup).filter(Boolean));
@@ -7702,7 +7753,7 @@ function bindHandoverGrid(){
     const val=inp.value;
     g.classOverrides=g.classOverrides||{};
     if(val.trim()) g.classOverrides[norm(key)]=val; else delete g.classOverrides[norm(key)];
-    g.rows.forEach(r=>{ if(r.prevClass===key) r.targetClass=val; });
+    g.rows.forEach(r=>{ if(hgRowGroupKey(g,r.prevClass)===key) r.targetClass=val; });
     g.updatedAt=Date.now();
     save(); render(true);
   });
@@ -7723,11 +7774,20 @@ function bindHandoverGrid(){
     const g=handoverGridFor(a, state.hgMonth); if(!g) return;
     if(!confirm('과목별로 다르게 입력해둔 반명을 다시 하나로 합칠까요? 첫 번째 과목에 적힌 반명으로 통일됩니다.')) return;
     if(g.splitTargetGroups) delete g.splitTargetGroups[norm(key)];
-    const groupRows=g.rows.filter(r=>r.prevClass===key);
+    const groupRows=g.rows.filter(r=>hgRowGroupKey(g,r.prevClass)===key);
     const val=(groupRows[0]||{}).targetClass||'';
     g.classOverrides=g.classOverrides||{};
     if(val.trim()) g.classOverrides[norm(key)]=val; else delete g.classOverrides[norm(key)];
     groupRows.forEach(r=>{ r.targetClass=val; });
+    g.updatedAt=Date.now();
+    save(); render(true);
+  });
+  // ✕ 합치기 해제 — 반 통째로 합쳐뒀던 묶음을 풀고 원래의 각 반으로 다시 나눈다 (각 반의 과목·내용은 그대로 유지)
+  v.querySelectorAll('[data-hgclassunmerge]').forEach(btn=>btn.onclick=(e)=>{
+    e.preventDefault(); e.stopPropagation();
+    const mkid=btn.dataset.hgclassunmerge;
+    const g=handoverGridFor(a, state.hgMonth); if(!g) return;
+    if(g.classMergeGroups) delete g.classMergeGroups[mkid];
     g.updatedAt=Date.now();
     save(); render(true);
   });
