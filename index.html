@@ -635,7 +635,8 @@ if(!store.boardPosts) store.boardPosts=[]; // 게시판(오류 제보·1:1 문�
 if(!store.syllabus) store.syllabus=[]; //  Syllabus(교재별 진도표) — {id, title, book, dept, academy, sheets:[{name,html}], uploadedBy, uploadedAt} · 모든 선생님 열람, 실장 이상만 업로드/삭제
 if(!store.syllabusSeeded && store.syllabus.length===0){ store.syllabus=[{"id": "seedsyl001", "title": "Spider Phonics Syllabus", "dept": "초등", "sheets": [{"name": "Phonic 1 Yellow", "html": "<table class=\"ytable\"><tr><td colspan=\"5\" style=\"font-weight:800;background:#f4f6fb\">Phonics 1-YELLOW (3 Days)</td></tr><tr><td>Day</td><td>Lesson</td><td>Test</td><td>Pages</td><td>HW</td></tr><tr><td>Day 1</td><td>달러파티 영상, OT: A~Z</td><td>&nbsp;</td><td>2-5</td><td>2025-02-05</td></tr><tr><td>Day 2</td><td>Unit 1. B,V</td><td>&nbsp;</td><td>6-7</td><td>2025-08-09</td></tr><tr><td>Day 3</td><td>Unit 1. B,V</td><td>&nbsp;</td><td>10-13</td><td>14-15, B/V 단어시험 공부</td></tr><tr><td>Day 4</td><td>Unit 2. P,F</td><td>B/V 시험</td><td>16-17</td><td>18-19</td></tr><tr><td>Day 5</td><td>Unit 2. P,F</td><td>&nbsp;</td><td>20-23</td><td>24-25, P/F 단어시험 공부</td></tr><tr><td>Day 6</td><td>Unit 3. L,R</td><td>P/F 시험</td><td>26-27</td><td>28-29</td></tr><tr><td>Day 7</td><td>Unit 3. L,R</td><td>&nbsp;</td><td>30-33</td><td>34-35, L/R 단어시험 공부</td></tr><tr><td>Day 8</td><td>Unit 4. J,Z</td><td>L/R 시험</td><td>36-37</td><td>38-39</td></tr><tr><td>Day 9</td><td>Unit 4. J,Z</td><td>&nbsp;</td><td>40-43</td><td>44-45, J/Z 단어시험 공부</td></tr><tr><td>Day 10</td><td>Unit 5. D,T</td><td>J/Z 시험</td><td>46-47</td><td>48-49</td></tr><tr><td>Day 11</td><td>Unit 5. D,T</td><td>&nbsp;</td><td>50-53</td><td>54-55, D/T 시험공부 <br>알파벳 시험공부</td></tr><tr><td>Day 12</td><td>Review</td><td>D/T 시험</td><td>Review</td><td>&nbsp;</td></tr></table>"}, {"name": "Phonic 1 Pink", "html": "<table class=\"ytable\"><tr><td colspan=\"5\" style=\"font-weight:800;background:#f4f6fb\">Phonics 1-PINK (2 Days)</td></tr><tr><td>Day</td><td>Lesson</td><td>Test</td><td>Pages</td><td>HW</td></tr><tr><td>Day 1</td><td>Unit 6. S,X</td><td>&nbsp;</td><td>56-57</td><td>58-59</td></tr><tr><td>Day 2</td><td>Unit 6. S,X</td><td>&nbsp;</td><td>60-63</td><td>64-65, S,X 시험준비</td></tr><tr><td>Day 3</td><td>Unit 7. M,N,G</td><td>S,X 시험</td><td>66-67</td><td>68-69</td></tr><tr><td>Day 4</td><td>Unit 7. M,N,G</td><td>&nbsp;</td><td>70-73</td><td>74-75, M,N,G 시험준비</td></tr><tr><td>Day 5</td><td>Unit 8. C,K,Q</td><td>M,N,G 시험</td><td>76-77</td><td>78-79</td></tr><tr><td>Day 6</td><td>Unit 8. C,K,Q</td><td>&nbsp;</td><td>80-83</td><td>84-85, C,K,Q 시험준비</td></tr><tr><td>Day 7</td><td>Unit 9. W,Y,H</td><td>C,K,Q 시험</td><td>86-87</td><td>88-89</td></tr><tr><td>Day 8</td><td>Unit 9. W,Y,H</td><td>&nbsp;</td><td>90-93</td><td>94-95</td></tr></table>"}, {"name": "Phonic 2 Green", "html": "<table class=\"ytable\"><tr><td colspan=\"5\" style=\"font-weight:800;background:#f4f6fb\">Phonics 2 - Green Book</td></tr><tr><td>Day</td><td>Lesson</td><td>Test</td><td>Pages</td><td>HW</td></tr><tr><td>Day 1</td><td>OT, Unit 1(short A)</td><td>&nbsp;</td><td>2-5</td><td>2025-06-07</td></tr><tr><td>Day 2</td><td>Unit 1(short A)</td><td>&nbsp;</td><td>8-11</td><td>12-13, Unit 1 시험공부</td></tr><tr><td>Day 3</td><td>Unit 2 (short I)</td><td>Unit 1 <br>short A 단어시험</td><td>14-15</td><td>16-17</td></tr><tr><td>Day 4</td><td>Unit 2 (short I)</td><td>&nbsp;</td><td>18-21</td><td>22-23, Unit 2 시험공부</td></tr><tr><td>Day 5</td><td>Unit 1-2 조합판</td><td>Unit 2 <br>Short I 시험</td><td>92, 94</td><td>93, 95</td></tr><tr><td>Day 6</td><td>Unit 3 (Short U)</td><td>&nbsp;</td><td>26-27</td><td>28-29</td></tr><tr><td>Day 7</td><td>Unit 3 (Short U)</td><td>&nbsp;</td><td>30-33</td><td>34-35, Unit 3 시험공부</td></tr><tr><td>Day 8</td><td>Unit 4 (Short O)</td><td>Unit 3<br>Short U 시험</td><td>36-37</td><td>38-39</td></tr><tr><td>Day 9</td><td>Unit 4 (Short O)</td><td>&nbsp;</td><td>40-43</td><td>44-45, Unit 4 시험공부</td></tr><tr><td>Day 10</td><td>Unit 3-4 조합판</td><td>Unit 4<br>Short O 시험</td><td>96,98</td><td>97,99</td></tr><tr><td>Day 11</td><td>Unit 5 (Short E)</td><td>&nbsp;</td><td>48-49</td><td>50-51</td></tr><tr><td>Day 12</td><td>Unit 5 (Short E)</td><td>&nbsp;</td><td>52-55</td><td>56-57, Unit 5 시험공부</td></tr><tr><td>Day 13</td><td>Unit 6 (ar, or)</td><td>Unit 5 <br>Short E 시험</td><td>58-59</td><td>60-61</td></tr><tr><td>Day 14</td><td>Unit 6 (ar, or)</td><td>&nbsp;</td><td>62-65</td><td>66-67, Unit 6 시험공부</td></tr><tr><td>Day 15</td><td>Unit 5-6 조합판</td><td>Unit 6  <br>ar, or 시험</td><td>100</td><td>101</td></tr><tr><td>Day 16</td><td>Unit 7 (aw, au)</td><td>&nbsp;</td><td>70-71</td><td>72-73</td></tr><tr><td>Day 17</td><td>Unit 7 (aw, au)</td><td>&nbsp;</td><td>74-77</td><td>78-79, Unit 7 시험공부</td></tr><tr><td>Day 18</td><td>Unit 8 (er, ir, ur)</td><td>Unit 7 <br>aw, au 시험</td><td>80-81</td><td>82-83</td></tr><tr><td>Day 19</td><td>Unit 8 (er, ir, ur)</td><td>&nbsp;</td><td>84-87</td><td>88-89, Unit 8 시험공부</td></tr><tr><td>Day 20</td><td>Unit 7-8 review</td><td>Unit 8 <br>er, ir, ur 시험</td><td>90-91</td><td>N/A</td></tr></table>"}, {"name": "Phonic 3 Blue", "html": "<table class=\"ytable\"><tr><td colspan=\"5\" style=\"font-weight:800;background:#f4f6fb\">Phonics 3 - Blue Book</td></tr><tr><td>Day</td><td>Lesson</td><td>Test</td><td>Pages</td><td>HW</td></tr><tr><td>Day 1</td><td>OT, Unit 1(Long A)</td><td>&nbsp;</td><td>2-5</td><td>2025-06-07</td></tr><tr><td>Day 2</td><td>Unit 1(Long A)</td><td>&nbsp;</td><td>8-11</td><td>12-13, Unit 1 시험공부</td></tr><tr><td>Day 3</td><td>Unit 2 (Long I)</td><td>Unit 1 <br>Long A 단어시험</td><td>14-15</td><td>16-17</td></tr><tr><td>Day 4</td><td>Unit 2 (Long I)</td><td>&nbsp;</td><td>18-21</td><td>22-23, Unit 2 시험공부</td></tr><tr><td>Day 5</td><td>Unit 1-2 Story, 발표 촬영</td><td>Unit 2 <br>Long I 시험</td><td>24-25</td><td>p93,95</td></tr><tr><td>Day 6</td><td>Unit 3 (Long U)</td><td>&nbsp;</td><td>26-27</td><td>28-29</td></tr><tr><td>Day 7</td><td>Unit 3 (Long U)</td><td>&nbsp;</td><td>30-33</td><td>34-35, Unit 3 시험공부</td></tr><tr><td>Day 8</td><td>Unit 4 (Long O)</td><td>Unit 3<br>Long U 시험</td><td>36-37</td><td>38-39</td></tr><tr><td>Day 9</td><td>Unit 4 (Long O)</td><td>&nbsp;</td><td>40-43</td><td>44-45, Unit 4 시험공부</td></tr><tr><td>Day 10</td><td>Unit 3-4 Story, 발표 촬영</td><td>Unit 4<br>Long O 시험</td><td>46-47</td><td>96,98</td></tr><tr><td>Day 11</td><td>Unit 5 (Long E)</td><td>&nbsp;</td><td>48-49</td><td>50-51</td></tr><tr><td>Day 12</td><td>Unit 5 (Long E)</td><td>&nbsp;</td><td>52-55</td><td>56-57, Unit 5 시험공부</td></tr><tr><td>Day 13</td><td>Unit 6 (oi, oy)</td><td>Unit 5 <br>Long E 시험</td><td>58-59</td><td>60-61</td></tr><tr><td>Day 14</td><td>Unit 6 (oi, oy)</td><td>&nbsp;</td><td>62-65</td><td>66-67, Unit 6 시험공부</td></tr><tr><td>Day 15</td><td>Unit 5-6 Story, 발표촬영</td><td>Unit 6  <br>oi, oy 시험</td><td>68-69</td><td>101</td></tr><tr><td>Day 16</td><td>Unit 7 (ou, ow)</td><td>&nbsp;</td><td>70-71</td><td>72-73</td></tr><tr><td>Day 17</td><td>Unit 7 (ou, ow)</td><td>&nbsp;</td><td>74-77</td><td>78-79, Unit 7 시험공부</td></tr><tr><td>Day 18</td><td>Unit 8 (oo, ew)</td><td>Unit 7 <br>ou, ow 시험</td><td>80-81</td><td>82-83</td></tr><tr><td>Day 19</td><td>Unit 8 (oo, ew)</td><td>&nbsp;</td><td>84-87</td><td>88-89, Unit 8 시험공부</td></tr><tr><td>Day 20</td><td>Unit 7-8 Story, 발표촬영</td><td>Unit 8 <br>oo, ew 시험</td><td>90-91</td><td>N/A</td></tr></table>"}, {"name": "Phonic 4 Purple", "html": "<table class=\"ytable\"><tr><td style=\"font-weight:800;background:#f4f6fb\">&nbsp;</td><td colspan=\"5\" style=\"font-weight:800;background:#f4f6fb\">Phonics 4 - Purple Book</td></tr><tr><td>Co-T</td><td>Day</td><td>Lesson</td><td>Test</td><td>Pages</td><td>HW</td></tr><tr><td rowspan=\"8\">2 days a week</td><td>Day 1</td><td>Unit 1(bl,pl,fl)</td><td>&nbsp;</td><td>2-3</td><td>2025-04-05</td></tr><tr><td>Day 2</td><td>Unit 1(bl,pl,fl)</td><td>&nbsp;</td><td>6-9</td><td>10-11, Unit 1 시험공부</td></tr><tr><td>Day 3</td><td>Unit 2 (cl, gl, sl)</td><td>Unit 1 <br>bl, pl, fl 단어시험</td><td>12-13</td><td>14-15</td></tr><tr><td>Day 4</td><td>Unit 2 (cl, gl, sl)</td><td>&nbsp;</td><td>16-19</td><td>20-21, Unit 2 시험공부</td></tr><tr><td>Day 5</td><td>Unit 3 (br, cr, dr)</td><td>Unit 2 <br>cl, gl, sl 시험</td><td>22-23</td><td>24-25</td></tr><tr><td>Day 6</td><td>Unit 3 (br, cr, dr)</td><td>&nbsp;</td><td>26-29</td><td>30-31, Unit 3 시험공부</td></tr><tr><td>Day 7</td><td>Unit 4 (sm, sn, sw)</td><td>Unit 3 <br>br, cr, dr 시험</td><td>32-33</td><td>34-35</td></tr><tr><td>Day 8</td><td>Unit 4 (sm, sn, sw)</td><td>&nbsp;</td><td>36-39</td><td>40-41, Unit 4 시험공부</td></tr><tr><td rowspan=\"12\">3 days a week</td><td>Day 1</td><td>Unit 5 (nk, ng, nt)</td><td>&nbsp;</td><td>42-43</td><td>44-45</td></tr><tr><td>Day 2</td><td>Unit 5 (nk, ng, nt)</td><td>&nbsp;</td><td>46-49</td><td>50-51, Unit 5 시험공부</td></tr><tr><td>Day 3</td><td>Unit 6 (gh, ph, wh)</td><td>Unit 5 <br>nk, ng, nt 시험</td><td>52-53</td><td>54-55</td></tr><tr><td>Day 4</td><td>Unit 6 (gh, ph, wh)</td><td>&nbsp;</td><td>56-59</td><td>60-61, Unit 6 시험공부</td></tr><tr><td>Day 5</td><td>Unit 7 (ch, sh, th)</td><td>Unit 6 <br>gh, ph, wh 시험</td><td>62-63</td><td>64-65</td></tr><tr><td>Day 6</td><td>Unit 7 (ch, sh, th)</td><td>&nbsp;</td><td>66-69</td><td>70-71, Unit 7 시험공부</td></tr><tr><td>Day 7</td><td>Unit 8 (st, ft, lt)</td><td>Unit 7 <br>ch, sh, th 시험</td><td>72-73</td><td>74-75</td></tr><tr><td>Day 8</td><td>Unit 8 (st, ft, lt)</td><td>&nbsp;</td><td>76-79</td><td>80-81, Unit 8 시험공부</td></tr><tr><td>Day 9</td><td>Unit 9 <br>(Classroom English-TPR)</td><td>Unit 8 <br>st, ft, lt 시험</td><td>82-83 </td><td>82-83 복습</td></tr><tr><td>Day 10</td><td>Unit 9 <br>(Classroom English<br>-Script 작성)</td><td>&nbsp;</td><td>84-85</td><td>Script 암기</td></tr><tr><td>Day 11</td><td>Classroom English Script 발표</td><td>&nbsp;</td><td>84-87</td><td>88-89, Unit 8 시험공부</td></tr><tr><td>Day 12</td><td>Review Game</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr></table>"}], "uploadedBy": "관리자", "uploadedAt": 1787055159409, "course": "파닉스"}, {"id": "seedsyl002", "title": "English Chest 2 (2 months)", "dept": "초등", "sheets": [{"name": "Sheet1", "html": "<table class=\"ytable\"><tr><td colspan=\"5\" style=\"font-weight:800;background:#f4f6fb\">English Chest 2 (2 months)</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>8 weeks</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>〮 2 days a week</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>〮 16 days total</td></tr><tr><td>Week</td><td>Day</td><td>Unit / Lesson</td><td>Pages</td><td>HW</td></tr><tr><td rowspan=\"2\">1st</td><td>Day 1</td><td>Unit 1 / Lesson 1</td><td>2025-12-15</td><td>WB: 6-9</td></tr><tr><td>Day 2</td><td>Unit 1 / Lesson 2</td><td>18-21</td><td>WB: 10-13</td></tr><tr><td rowspan=\"2\">2nd</td><td>Day 3</td><td>Unit 1 / Lesson 3</td><td>24-27</td><td>WB: 14-17</td></tr><tr><td>Day 4</td><td>Unit 1 / Lesson 4</td><td>30-33</td><td>WB: 18-21</td></tr><tr><td rowspan=\"2\">3rd</td><td>Day 5</td><td>Unit 2 / Lesson 1</td><td>38-42</td><td>WB: 24-27</td></tr><tr><td>Day 6</td><td>Unit 2 / Lesson 2</td><td>44-46</td><td>WB: 28-29</td></tr><tr><td rowspan=\"2\">4th</td><td>Day 7</td><td>Unit 2 / Lesson 2</td><td>47-48</td><td>WB: 30-31</td></tr><tr><td>Day 8</td><td>Unit 2 / Lesson 3</td><td>50-53</td><td>WB: 32-35</td></tr><tr><td rowspan=\"2\">5th</td><td>Day 9</td><td>Unit 2 / Lesson 4</td><td>56-57</td><td>WB: 36-37</td></tr><tr><td>Day 10</td><td>Unit 2 / Lesson 4</td><td>58-60</td><td>WB: 38-39</td></tr><tr><td rowspan=\"2\">6th</td><td>Day 11</td><td>Unit 3 / Lesson 1</td><td>64-67</td><td>WB: 42-45</td></tr><tr><td>Day 12</td><td>Unit 3 / Lesson 2</td><td>70-74</td><td>WB: 46-49</td></tr><tr><td rowspan=\"2\">7th</td><td>Day 13</td><td>Unit 3 / Lesson 3</td><td>76-78</td><td>WB: 50-51</td></tr><tr><td>Day 14</td><td>Unit 3 / Lesson 3</td><td>79-80</td><td>WB: 52-53</td></tr><tr><td rowspan=\"2\">8th</td><td>Day 15</td><td>Unit 3 / Lesson 4</td><td>82-84</td><td>WB: 54-55</td></tr><tr><td>Day 16</td><td>Unit 3 / Lesson 4</td><td>85-86</td><td>WB: 56-57</td></tr></table>"}], "uploadedBy": "관리자", "uploadedAt": 1787055160409, "course": "리딩"}, {"id": "seedsyl003", "title": "English Chest 1 (2 months)", "dept": "초등", "sheets": [{"name": "Sheet1", "html": "<table class=\"ytable\"><tr><td colspan=\"5\" style=\"font-weight:800;background:#f4f6fb\">English Chest 1 (2 months)</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>8 weeks</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>〮 2 days a week</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>〮 16 days total</td></tr><tr><td>Week</td><td>Day</td><td>Unit / Lesson</td><td>Pages</td><td>HW</td></tr><tr><td rowspan=\"2\">1st</td><td>Day 1</td><td>Unit 1 / Lesson 1</td><td>2025-12-15</td><td>WB: 6-9</td></tr><tr><td>Day 2</td><td>Unit 1 / Lesson 2</td><td>18-21</td><td>WB: 10-13</td></tr><tr><td rowspan=\"2\">2nd</td><td>Day 3</td><td>Unit 1 / Lesson 3</td><td>24-27</td><td>WB: 14-17</td></tr><tr><td>Day 4</td><td>Unit 1 / Lesson 4</td><td>30-33</td><td>WB: 18-21</td></tr><tr><td rowspan=\"2\">3rd</td><td>Day 5</td><td>Unit 2 / Lesson 1</td><td>38-41</td><td>WB: 24-27</td></tr><tr><td>Day 6</td><td>Unit 2 / Lesson 2</td><td>44-47</td><td>WB: 28-31</td></tr><tr><td rowspan=\"2\">4th</td><td>Day 7</td><td>Unit 2 / Lesson 3</td><td>50-53</td><td>WB: 32-35</td></tr><tr><td>Day 8</td><td>Unit 2 / Lesson 4</td><td>56-59</td><td>WB: 36-39</td></tr><tr><td rowspan=\"2\">5th</td><td>Day 9</td><td>Unit 3 / Lesson 1</td><td>64-66</td><td>WB: 42-43</td></tr><tr><td>Day 10</td><td>Unit 3 / Lesson 1</td><td>67-68</td><td>WB: 44-45</td></tr><tr><td rowspan=\"2\">6th</td><td>Day 11</td><td>Unit 3 / Lesson 2</td><td>70-72</td><td>WB: 46-47</td></tr><tr><td>Day 12</td><td>Unit 3 / Lesson 2</td><td>73-74</td><td>WB: 48-49</td></tr><tr><td rowspan=\"2\">7th</td><td>Day 13</td><td>Unit 3 / Lesson 3</td><td>76-78</td><td>WB: 50-51</td></tr><tr><td>Day 14</td><td>Unit 3 / Lesson 3</td><td>79-80</td><td>WB: 52-53</td></tr><tr><td rowspan=\"2\">8th</td><td>Day 15</td><td>Unit 3 / Lesson 4</td><td>82-84</td><td>WB: 54-55</td></tr><tr><td>Day 16</td><td>Unit 3 / Lesson 4</td><td>85-86</td><td>WB: 56-57</td></tr></table>"}], "uploadedBy": "관리자", "uploadedAt": 1787055161409, "course": "리딩"}, {"id": "seedsyl004", "title": "English Time 4", "dept": "중등", "sheets": [{"name": "Sheet1", "html": "<table class=\"ytable\"><tr><td colspan=\"6\" style=\"font-weight:800;background:#f4f6fb\">English Time 4</td></tr><tr><td rowspan=\"3\" colspan=\"5\">&nbsp;</td><td>16 weeks</td></tr><tr><td>2 days a week</td></tr><tr><td>32 days total</td></tr><tr><td>Week</td><td>Day</td><td>Lesson / Title</td><td>Pages</td><td>Activity</td><td>HW</td></tr><tr><td rowspan=\"2\">1st - OT</td><td>Day 1</td><td>Welcome Chapter <br>&lt;Classroom English&gt;</td><td>vi~vii</td><td>Classroom English 익히고 상황별 classroom English script 작성</td><td>Script 암기, wb welcome pages</td></tr><tr><td>Day 2</td><td>Classroom English 복습, script 발표 / Classroom Rule 정하기</td><td>vi~vii</td><td>Speaking Class Rule 정하기</td><td>wb welcome pages</td></tr><tr><td rowspan=\"2\">2nd</td><td>Day 3</td><td>Chapter 1 <br>&lt;At the Campsite&gt;</td><td>p 1~3</td><td>책진도</td><td>wb p1-2</td></tr><tr><td>Day 4</td><td>Chapter 1 <br>&lt;At the Campsite&gt;</td><td>p.3~4</td><td>규칙/불규칙 과거형 매칭 게임, p.3 Q&amp;A 연습</td><td>wb p3-4</td></tr><tr><td rowspan=\"2\">3rd</td><td>Day 5</td><td>Chapter 2 <br>&lt;At the Amusement Park&gt;</td><td>p. 5~7</td><td>책진도</td><td>wb p5-6</td></tr><tr><td>Day 6</td><td>Chapter 2 <br>&lt;At the Amusement Park&gt;</td><td>p. 7</td><td>p.7 긍정문 부정문 익힌 뒤 해당문장 사용해서 <br>Lotte World / Everland Map - Amusement park project</td><td>wb p7-8</td></tr><tr><td rowspan=\"2\">4th</td><td>Day 7</td><td>Chapter 2 <br>&lt;At the Amusement Park&gt;</td><td>p. 8</td><td>Amusement Park Project Presentation <br>/ p.8 -ed sound 구분</td><td>N/A</td></tr><tr><td>Day 8</td><td>Chapter 3 <br>&lt;Around the House&gt;</td><td>p. 9~11</td><td>책진도 (House chores 익히고 p.11 문답 패턴 연습)</td><td>wb p9-10</td></tr><tr><td rowspan=\"2\">5th</td><td>Day 9</td><td>Chapter 3 <br>&lt;Around the House&gt;</td><td>p. 11~12</td><td>p.11 문답패턴 연습 activity </td><td>wb p11-12</td></tr><tr><td>Day 10</td><td>Review 1</td><td>p.13~15</td><td>책진도</td><td>wb p13-15</td></tr><tr><td rowspan=\"2\">6th</td><td>Day 11</td><td>Review 1</td><td>&nbsp;</td><td>Ch1~3 문장패턴 복습 후 롤플레잉 스크립트 작성</td><td>script 암기</td></tr><tr><td>Day 12</td><td>Chapter 4 <br>&lt;In town&gt;</td><td>p. 17~18</td><td>길찾기 activity</td><td>wb p16-17</td></tr><tr><td rowspan=\"2\">7th</td><td>Day 13</td><td>Chapter 4 <br>&lt;In town&gt;</td><td>p. 19~20</td><td>p. 19 문장패턴 활용 activity</td><td>wb p18-19</td></tr><tr><td>Day 14</td><td>Chapter 5 <br>&lt;At the Food Festival&gt;</td><td>p. 21~24</td><td>Food around the world 활동/책진도</td><td>wb p20-23</td></tr><tr><td rowspan=\"2\">8th</td><td>Day 15</td><td>Chapter 6 <br>&lt;During the Year&gt;</td><td>p. 25~26</td><td>책진도, “will” 활용해서 사계절 계획 작성</td><td>wb p24-25</td></tr><tr><td>Day 16</td><td>Chapter 6 <br>&lt;During the Year&gt;</td><td>p. 27~28</td><td>사계절 계획 발표</td><td>wb p26-27</td></tr><tr><td rowspan=\"2\">9th</td><td>Day 17</td><td>Review 2</td><td>p. 29~31</td><td>책진도, 다음시간 p31 예습 <br>(영어로 사칙연산 - worksheet 활용)</td><td>wb p28-30</td></tr><tr><td>Day 18</td><td>Chapter 7 <br>&lt;At the Aquarium&gt;</td><td>p.33~35</td><td>Sea animals / 책진도</td><td>wb p31-32</td></tr><tr><td rowspan=\"2\">10th</td><td>Day 19</td><td>Chapter 7 <br>&lt;At the Aquarium&gt;</td><td>p. 35~36</td><td>비교급 활동</td><td>wb p33-34</td></tr><tr><td>Day 20</td><td>Chapter 8 <br>&lt;At the Safari Park&gt;</td><td>p. 37~39</td><td>Animal-adjective matching / 최상급 패턴 익히기</td><td>wb p35-36</td></tr><tr><td rowspan=\"2\">11th</td><td>Day 21</td><td>Chapter 8 <br>&lt;At the Safari Park&gt;</td><td>p. 39~40</td><td>최상급 활동</td><td>wb p37-38</td></tr><tr><td>Day 22</td><td>ch 7~8 review</td><td>&nbsp;</td><td>비교급/최상급 복습 <br>비교급, 최상급 활용해서 script 작성 <br>&lt;Who should be the king of the zoo?&gt;</td><td>script 암기</td></tr><tr><td rowspan=\"2\">12th</td><td>Day 23</td><td>Chapter 9 <br>&lt;By the Seashore&gt;</td><td>p.41~42</td><td>Script 발표, 책진도</td><td>wb p39-40</td></tr><tr><td>Day 24</td><td>Chapter 9 <br>&lt;By the Seashore&gt;</td><td>p. 43~44</td><td>스포츠 &lt;What do you like to do?&gt; 활동</td><td>wb p41-42</td></tr><tr><td rowspan=\"2\">13th</td><td>Day 25</td><td>Review 3</td><td>p. 45~47</td><td>책진도</td><td>wb p43-45</td></tr><tr><td>Day 26</td><td>Chapter 10 <br>&lt;Collecting and Making&gt;</td><td>p. 49~51</td><td>책진도</td><td>wb p46-47</td></tr><tr><td rowspan=\"2\">14th</td><td>Day 27</td><td>Chapter 10 <br>&lt;Collecting and Making&gt;</td><td>p. 51~52</td><td>p.51 패턴활용해서 like/dislike bingo 게임 후 activity</td><td>wb p48-49</td></tr><tr><td>Day 28</td><td>Chapter 11<br>&lt;At the Planetarium&gt;</td><td>p. 53~54</td><td>Solar system worksheet(각 행성 배우기)</td><td>wb p50-51</td></tr><tr><td rowspan=\"2\">15th</td><td>Day 29</td><td>Chapter 11<br>&lt;At the Planetarium&gt;</td><td>p. 55~56</td><td>Solar system 발표, 책진도</td><td>wb p52-53</td></tr><tr><td>Day 30</td><td>Chapter 12<br>&lt;At School&gt;</td><td>p. 56~59</td><td>책진도</td><td>wb p54-55</td></tr><tr><td rowspan=\"2\">16th</td><td>Day 31</td><td>Chapter 12<br>&lt;At School&gt;</td><td>p. 59~60</td><td>p.59 패턴으로 &lt;롤모델과의 인터뷰&gt; script 작성</td><td>wb p56-57</td></tr><tr><td>Day 32</td><td>Review 4</td><td>p.61~63</td><td>role-playing, 책진도 <br>/ p.63 어려워서 선생님이 같이 풀어주세요.</td><td>wb p58-60 / <br>wb p61-64 (extra hw)</td></tr></table>"}], "uploadedBy": "관리자", "uploadedAt": 1787055162409, "course": "리딩"}]; store.syllabusSeeded=true; }
 if(!store.examAnalysis) store.examAnalysis=[]; // 내신 분석 — {id, academy, school, grade, examTitle, examRange, examDate, prepStart, prepEnd, teacherLecture, teacherIBT, note, categories:[{name,count,questions:[{id,no,question,points,difficulty}]}], updatedAt, updatedBy} · 월 상관없이 항상 보임, 모든 선생님 열람·수정 가능(Syllabus처럼 보관용)
-const SHARE_FIELDS=['uploads','bookedit','bookdone','daysedit','timeedit','calendar','calendarTombstones','calCatColors','meetings','teachers','adminEmail','enrollment','newStudents','students','admissionConsults','wordTests','attend','homework','stayback','bookGiven','uploadTombstones','uploadStamps','wordbookOptions','testPaperOptions','giveSel','consultRequests','records','assign','cmemo','worklog','weekplan','submits','handover','boardPosts','handoverGrid','monthOverride','examAnalysis','bookCatalog','tuitionCatalog','papercheckEnabled','papercheckCols','papercheckData','worklogMonthly','worklogWeekly'];
+if(!store.examTrends) store.examTrends=[]; // 동향 분석 리포트 — {id, academy, school, grade, title, memo, source:'ai'|'upload', entryIds, snaps, files, report:{headline,strategy,metrics,changes,teaching}, aiModel, createdAt, updatedAt, createdBy, _deleted} · 내신 분석 탭 안의 두 번째 탭, AI로 만든 리포트는 자동 저장
+const SHARE_FIELDS=['uploads','bookedit','bookdone','daysedit','timeedit','calendar','calendarTombstones','calCatColors','meetings','teachers','adminEmail','enrollment','newStudents','students','admissionConsults','wordTests','attend','homework','stayback','bookGiven','uploadTombstones','uploadStamps','wordbookOptions','testPaperOptions','giveSel','consultRequests','records','assign','cmemo','worklog','weekplan','submits','handover','boardPosts','handoverGrid','monthOverride','examAnalysis','examTrends','bookCatalog','tuitionCatalog','papercheckEnabled','papercheckCols','papercheckData','worklogMonthly','worklogWeekly'];
 // syllabus(실러버스)는 PDF/한글/워드 첨부가 커서 별도 경로(/syllabus)로, 낮은 빈도로만 동기화합니다 — 그래야 매 5초/매 입력마다 전체를 전송하지 않습니다.
 // 반 자료·학생 명단처럼 "삭제"가 중요한 항목은 병합하지 않고 통째로 교체한다(마지막 저장이 우선).
 // 병합 방식(mergeById)에는 삭제라는 개념이 없어서, 지운 반·학생이 다른 기기 자료와 합쳐지며 계속 되살아나기 때문.
@@ -8754,30 +8755,102 @@ function sylFmtBytes(n){ return n>1024*1024 ? (n/1024/1024).toFixed(1)+'MB' : (n
 // 그래서 base64 데이터를 여러 조각(6MB 단위)으로 쪼개 /syllabusFiles/{id}/p0, p1... 로 나눠 저장하고,
 // 내려받을 때 그 조각들을 순서대로 다시 이어붙인다. 미리보기는 필요 없고 업로드·다운로드만 되면 되는 "문제 파일" 첨부용.
 const SYL_CHUNK_CHARS=6*1024*1024;
-async function sylChunkPut(attId, fileName, fileDataUrl, onProgress){
-  const commaIdx=fileDataUrl.indexOf(',');
-  const prefix=fileDataUrl.slice(0,commaIdx+1); // "data:<mime>;base64,"
-  const payload=fileDataUrl.slice(commaIdx+1);
-  if(payload.length<=SYL_CHUNK_CHARS){
-    await fbPut('/syllabusFiles/'+attId, {fileName, fileData:fileDataUrl}, 60000);
-    return;
-  }
-  const total=Math.ceil(payload.length/SYL_CHUNK_CHARS);
-  for(let i=0;i<total;i++){
-    if(onProgress) onProgress(i+1, total);
-    await fbPut('/syllabusFiles/'+attId+'/p'+i, {d:payload.slice(i*SYL_CHUNK_CHARS,(i+1)*SYL_CHUNK_CHARS)}, 60000);
-  }
-  await fbPut('/syllabusFiles/'+attId+'/meta', {fileName, prefix, parts:total}, 30000);
+/* ---------- Firebase Storage (REST) — syllabus 첨부·내신 시험지 등 "파일"은 전부 여기에 저장한다 ----------
+   Realtime DB에는 파일 위치(경로·토큰)만 아주 작게 남기고, 실제 파일은 Storage에 올린다.
+   * Firebase 콘솔 → Storage 시작하기 → 규칙(Rules)에서 쓰기/읽기를 허용해야 업로드된다(안내 문구는 오류 메시지에 표시). */
+function stoProjectId(){
+  const m=String((store.sync&&store.sync.url)||'').match(/^https?:\/\/([a-z0-9-]+?)(?:-default-rtdb)?\./i);
+  return m?m[1]:'';
 }
-// 같은 첨부파일을 열 때마다 서버에서 통째로 다시 받아오면(수십 MB) 여러 번 열어볼수록 다운로드 용량이 급격히 늘어나므로,
-// 한 번 받아온 파일은 이 화면(탭)을 새로고침하기 전까지는 메모리에 갖고 있다가 재사용한다.
+// 버킷 이름은 프로젝트에 따라 xxx.firebasestorage.app 또는 xxx.appspot.com — 한 번 성공하면 store.sync.bucket에 기억해둔다
+function stoBucketCandidates(){
+  const out=[];
+  const saved=(store.sync&&store.sync.bucket)||'';
+  if(saved) out.push(saved);
+  const p=stoProjectId();
+  if(p){ [p+'.firebasestorage.app', p+'.appspot.com'].forEach(b=>{ if(!out.includes(b)) out.push(b); }); }
+  return out;
+}
+function stoEnc(p){ return encodeURIComponent(p); }
+function stoUrl(ref){ return 'https://firebasestorage.googleapis.com/v0/b/'+ref.bucket+'/o/'+stoEnc(ref.path)+'?alt=media'+(ref.token?'&token='+ref.token:''); }
+function stoSafeName(n){ return String(n||'file').replace(/[\\\/#?\[\]*]/g,'_').slice(0,120); }
+function stoXhrUpload(bucket, path, blob, mime, onProgress){
+  return new Promise((resolve,reject)=>{
+    const xhr=new XMLHttpRequest();
+    xhr.open('POST','https://firebasestorage.googleapis.com/v0/b/'+bucket+'/o?name='+stoEnc(path));
+    xhr.setRequestHeader('Content-Type', mime||'application/octet-stream');
+    xhr.timeout=10*60*1000;
+    if(xhr.upload && onProgress) xhr.upload.onprogress=e=>{ if(e.lengthComputable) onProgress(e.loaded, e.total); };
+    xhr.onload=()=>{
+      if(xhr.status>=200 && xhr.status<300){
+        let j={}; try{ j=JSON.parse(xhr.responseText); }catch(e){}
+        resolve({bucket, path, token:String(j.downloadTokens||'').split(',')[0]||''});
+      } else {
+        const err=new Error('HTTP '+xhr.status+' '+String(xhr.responseText||'').slice(0,160)); err.status=xhr.status; reject(err);
+      }
+    };
+    xhr.onerror=()=>{ const err=new Error('네트워크 오류'); err.status=0; reject(err); };
+    xhr.ontimeout=()=>{ const err=new Error('업로드 시간초과'); err.status=0; reject(err); };
+    xhr.send(blob);
+  });
+}
+async function stoUpload(path, blob, mime, onProgress){
+  const cands=stoBucketCandidates();
+  if(!cands.length) throw new Error('Firebase 주소(동기화 설정)를 먼저 확인해주세요');
+  let lastErr=null;
+  for(const bucket of cands){
+    try{
+      const ref=await stoXhrUpload(bucket, path, blob, mime, onProgress);
+      if(store.sync && store.sync.bucket!==bucket) store.sync.bucket=bucket;
+      return ref;
+    }catch(e){
+      lastErr=e;
+      if(e.status===404) continue; // 이 이름의 버킷이 아님 → 다음 후보로
+      break;
+    }
+  }
+  const st=lastErr&&lastErr.status;
+  if(st===401||st===403) throw new Error('Firebase Storage에 올릴 권한이 없습니다. Firebase 콘솔 → Storage → 규칙(Rules)에서 읽기/쓰기를 허용해주세요.');
+  if(st===404) throw new Error('Storage 버킷을 찾지 못했습니다. Firebase 콘솔에서 Storage를 시작(활성화)했는지 확인해주세요.');
+  throw new Error((lastErr&&lastErr.message)||'업로드 실패');
+}
+async function stoFetchBlob(ref){
+  const r=await fetch(stoUrl(ref));
+  if(!r.ok) throw new Error('파일을 불러오지 못했습니다 (HTTP '+r.status+')');
+  return r.blob();
+}
+async function stoDelete(ref){
+  try{ if(ref&&ref.bucket&&ref.path) await fetch('https://firebasestorage.googleapis.com/v0/b/'+ref.bucket+'/o/'+stoEnc(ref.path),{method:'DELETE'}); }catch(e){}
+}
+function stoBlobToDataURL(blob){
+  return new Promise((resolve,reject)=>{ const r=new FileReader(); r.onload=()=>resolve(r.result); r.onerror=()=>reject(r.error||new Error('파일을 읽지 못했습니다')); r.readAsDataURL(blob); });
+}
+// Syllabus 첨부 저장 — 이제 항상 Firebase Storage에 올린다. DB(/syllabusFiles/{id})에는 {fileName, storage:{위치}} 만 남긴다.
+// (rawFile: 선택한 File 객체를 그대로 넘기면 base64 변환 없이 바로 올림. 엑셀 표 내용은 'sylxlsx:,'+JSON 문자열로 넘김)
+async function sylChunkPut(attId, fileName, fileDataUrl, onProgress, rawFile){
+  let blob, mime, kind='data';
+  if(rawFile){ blob=rawFile; mime=rawFile.type||'application/octet-stream'; }
+  else if(String(fileDataUrl).startsWith('sylxlsx:,')){
+    blob=new Blob([String(fileDataUrl).slice('sylxlsx:,'.length)],{type:'application/json'}); mime='application/json'; kind='sylxlsx';
+  } else { blob=await (await fetch(fileDataUrl)).blob(); mime=blob.type||'application/octet-stream'; }
+  const path='syllabusFiles/'+attId+'/'+stoSafeName(fileName);
+  const ref=await stoUpload(path, blob, mime, onProgress);
+  await fbPut('/syllabusFiles/'+attId, {fileName, storage:{bucket:ref.bucket, path:ref.path, token:ref.token, mime, kind}}, 30000);
+}
+// 같은 첨부파일을 열 때마다 다시 받아오지 않도록, 한 번 받은 파일은 이 화면(탭)을 새로고침하기 전까지 메모리에 둔다.
 const sylAttCache={};
 async function sylChunkGet(attId){
   if(sylAttCache[attId]) return sylAttCache[attId];
-  const data=await fbGet('/syllabusFiles/'+attId, 90000); // 조각까지 전부 한 번에 받아온다(읽기는 값 크기 제한이 없음)
+  const data=await fbGet('/syllabusFiles/'+attId, 90000);
   if(!data) throw new Error('파일을 찾을 수 없습니다');
   let result=null;
-  if(data.meta){
+  if(data.storage){
+    // 새 방식: Firebase Storage에서 내려받기
+    const blob=await stoFetchBlob(data.storage);
+    if(data.storage.kind==='sylxlsx') result={fileName:data.fileName, fileData:'sylxlsx:,'+await blob.text()};
+    else result={fileName:data.fileName, fileData:await stoBlobToDataURL(new Blob([blob],{type:data.storage.mime||blob.type}))};
+  } else if(data.meta){
+    // 예전 방식(DB에 조각내어 저장해둔 기존 파일)도 그대로 열린다
     let payload='';
     for(let i=0;i<data.meta.parts;i++){
       const part=data['p'+i];
@@ -8791,6 +8864,11 @@ async function sylChunkGet(attId){
   if(!result) throw new Error('파일을 찾을 수 없습니다');
   sylAttCache[attId]=result;
   return result;
+}
+// 삭제할 때는 Storage의 실제 파일도 함께 지운다(예전 방식 기록이면 DB 기록만 지움)
+async function sylRemoteDelete(attId){
+  try{ const st=await fbGet('/syllabusFiles/'+attId+'/storage', 15000); if(st) await stoDelete(st); }catch(e){}
+  await fbDel('/syllabusFiles/'+attId);
 }
 // ---- 회의록(주간회의) 첨부파일도 같은 방식으로 처리 ----
 // Syllabus와 똑같이 "값 하나 크기 제한"·"용량 큰 첨부가 로컬 저장 공간을 갉아먹는 문제"를 겪기 때문에,
@@ -9053,24 +9131,24 @@ function bindSyllabus(){
             // 이미지·PDF·기타 파일과 마찬가지로, 엑셀 표 내용(sheets)도 이 기기에 쌓아두지 않고 서버에 조각내어 저장한다
             if(upBtn) upBtn.textContent='⏳ 업로드 중...';
             const json='sylxlsx:,'+JSON.stringify(sheets);
-            await sylChunkPut(id, f.name, json, (i,total)=>{ if(upBtn && total>1) upBtn.textContent=`⏳ 업로드 중... (${i}/${total})`; });
+            await sylChunkPut(id, f.name, json, (l,t)=>{ if(upBtn) upBtn.textContent='⏳ 업로드 중... '+Math.round(l/t*100)+'%'; });
             store.syllabus.push({id, title, dept, course, kind:'xlsx', remote:true, fileName:f.name, size:json.length, uploadedBy:myName, uploadedAt:Date.now()});
           } else {
             store.syllabus.push({id, title, dept, course, kind:'xlsx', sheets, uploadedBy:myName, uploadedAt:Date.now()});
           }
         } else {
           const kind = ext==='pdf' ? 'pdf' : 'file'; // pdf는 화면 미리보기, 그 외(한글·워드 등)는 다운로드로만 제공
-          const fileData=await readAsDataURL(f);
+          const fileData=syncOn()?null:await readAsDataURL(f); // 동기화 켜짐: Storage로 바로 올리므로 base64 변환 불필요
           if(syncOn()){
             // 동기화 켜짐: 크기와 상관없이 로컬에 안 쌓아두고 서버에 조각내어 저장 — 이 기기 저장 공간을 거의 안 씀
             if(upBtn) upBtn.textContent='⏳ 업로드 중...';
-            await sylChunkPut(id, f.name, fileData, (i,total)=>{ if(upBtn && total>1) upBtn.textContent=`⏳ 업로드 중... (${i}/${total})`; });
+            await sylChunkPut(id, f.name, null, (l,t)=>{ if(upBtn) upBtn.textContent='⏳ 업로드 중... '+Math.round(l/t*100)+'%'; }, f);
             store.syllabus.push({id, title, dept, course, kind, remote:true, fileName:f.name, size:f.size, uploadedBy:myName, uploadedAt:Date.now()});
           } else {
             store.syllabus.push({id, title, dept, course, kind, fileData, fileName:f.name, uploadedBy:myName, uploadedAt:Date.now()});
           }
         }
-      }catch(e){ failed.push(f.name); }
+      }catch(e){ failed.push(f.name+' — '+((e&&e.message)||e)); }
     }
     let saveErr=null;
     try{ save(); schedulePushSyllabus(); }catch(e){ saveErr=e; }
@@ -9100,7 +9178,7 @@ function bindSyllabus(){
     const en=store.syllabus.find(x=>x.id===b.dataset.id);
     if(en){
       en._deleted=true; en.updatedAt=Date.now();
-      if(en.remote) fbDel('/syllabusFiles/'+en.id);
+      if(en.remote) sylRemoteDelete(en.id);
       delete sylAttCache[en.id];
     }
     save(); schedulePushSyllabus(); render(true);
@@ -9139,16 +9217,16 @@ function bindSyllabus(){
       if(f.size>SYL_ATT_MAX_BYTES){ tooBig.push(f.name); continue; }
       const attId='att'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
       try{
-        const fileData=await readAsDataURL(f);
+        const fileData=syncOn()?null:await readAsDataURL(f);
         if(syncOn()){
           // 이 기기 저장소엔 안 쌓아두고 서버에만 저장 — 볼 때 그때 불러온다. 큰 파일은 여러 조각으로 나눠 올림.
           if(attBtn) attBtn.textContent='⏳ 업로드 중...';
-          await sylChunkPut(attId, f.name, fileData, (i,total)=>{ if(attBtn && total>1) attBtn.textContent=`⏳ 업로드 중... (${i}/${total})`; });
+          await sylChunkPut(attId, f.name, null, (l,t)=>{ if(attBtn) attBtn.textContent='⏳ 업로드 중... '+Math.round(l/t*100)+'%'; }, f);
           en.attachments.push({id:attId, fileName:f.name, remote:true, size:f.size});
         } else {
           en.attachments.push({id:attId, fileName:f.name, fileData});
         }
-      }catch(e){ failed.push(f.name); }
+      }catch(e){ failed.push(f.name+' — '+((e&&e.message)||e)); }
     }
     en.updatedAt=Date.now();
     let saveErr=null;
@@ -9216,7 +9294,7 @@ function bindSyllabus(){
     const removed=(en.attachments||[]).find(a=>a.id===b.dataset.attid);
     en.attachments=(en.attachments||[]).filter(a=>a.id!==b.dataset.attid);
     en.updatedAt=Date.now();
-    if(removed && removed.remote) fbDel('/syllabusFiles/'+removed.id);
+    if(removed && removed.remote) sylRemoteDelete(removed.id);
     if(removed) delete sylAttCache[removed.id];
     save(); schedulePushSyllabus(); render(true);
   });
@@ -9357,6 +9435,142 @@ function eaSanitizeNoteHTML(html){
 // 문제 내용(q.question)도 선생님 코멘트와 마찬가지로 밑줄·굵게 등 서식을 유지한 채 붙여넣을 수 있어서
 // 리포트에 보여줄 때 escape된 텍스트가 아니라 안전하게 정리된 HTML 그대로 렌더링해야 한다(레거시 순수 텍스트도 자동 변환됨).
 function eaQuestionHTML(q){ return eaSanitizeNoteHTML(eaNoteInitialHTML(q||'')); }
+/* ---------- 내신 분석: 시험지 업로드(Firebase Storage) + AI 분석 ---------- */
+const EA_PAPER_MAX_BYTES=30*1024*1024; // Claude 분석 용량 한도(약 32MB)에 맞춤
+function eaAiKey(){ try{ return localStorage.getItem('ebest_ai_key')||''; }catch(e){ return ''; } }
+function eaAiModel(){ try{ return localStorage.getItem('ebest_ai_model')||'claude-sonnet-4-5'; }catch(e){ return 'claude-sonnet-4-5'; } }
+// API 키는 이 기기 브라우저에만 저장한다(DB·다른 선생님 기기와 공유되지 않음)
+function eaAiAskKey(force){
+  const cur=eaAiKey();
+  if(cur && !force) return cur;
+  const nv=prompt('AI 분석에 쓸 Anthropic API 키를 입력하세요.\n이 기기 브라우저에만 저장되고, 다른 선생님 기기나 서버로는 공유되지 않습니다.', cur);
+  if(nv==null) return '';
+  const k=nv.trim();
+  try{ localStorage.setItem('ebest_ai_key', k); }catch(e){}
+  return k;
+}
+async function eaUploadPaper(d, file, onProgress){
+  const id=eaNewId('eap');
+  const ref=await stoUpload('examPapers/'+d.id+'/'+id+'_'+stoSafeName(file.name), file, file.type||'application/pdf', onProgress);
+  const lt=loginTeacher();
+  const paper={id, fileName:file.name, size:file.size, mime:file.type||'application/pdf', bucket:ref.bucket, path:ref.path, token:ref.token,
+    uploadedAt:Date.now(), uploadedBy: lt?lt.t.name:(store.login==='admin'?'관리자':'')};
+  d.papers=d.papers||[]; d.papers.push(paper);
+  return paper;
+}
+function eaAiPrompt(d){
+  const catList=(eaDept(d)==='고등'?EA_DEFAULT_CATEGORIES_HS:EA_DEFAULT_CATEGORIES).join(', ');
+  return `당신은 한국 영어학원의 내신 분석 전문가입니다. 첨부된 학교 영어 시험지를 읽고, 아래 JSON 형식으로만 답하세요 (설명·마크다운·코드펜스 금지).
+{
+  "school": "학교명(알 수 없으면 빈 문자열)",
+  "grade": "학년(예: 1학년)",
+  "examTitle": "시험명(예: 2학기 중간고사)",
+  "examRange": "시험범위(알 수 있는 경우)",
+  "summary": "이 시험의 전체 출제 경향을 3~5문장으로 요약",
+  "keyPoints": ["수업·보강에 활용할 핵심 포인트 3~6개 (각 한 문장)"],
+  "categories": [
+    {"name": "유형 카테고리명", "questions": [
+      {"no": "문항번호(예: 1, 서술형1)", "points": 배점(숫자), "difficulty": "하|중하|중|중상|상 중 하나", "summary": "문항이 묻는 내용·유형 한 줄(단원/출처 포함)", "source": "교과서|부교재|외부지문|기타 등 출처, 모르면 빈 문자열"}
+    ]}
+  ]
+}
+규칙: 카테고리 이름은 가능하면 다음 중에서 고르세요: ${catList} (맞지 않으면 새 이름을 쓰세요). 시험지의 모든 문항을 빠짐없이 포함하세요. 배점이 보이지 않으면 0으로 두세요. 난이도는 추정이므로 보수적으로 판단하세요.`;
+}
+async function eaAiAnalyze(d, paper){
+  const key=eaAiKey(); if(!key) throw new Error('AI 키가 없습니다(🔑 AI 키 버튼으로 입력해주세요)');
+  const blob=await stoFetchBlob(paper);
+  if(blob.size>EA_PAPER_MAX_BYTES) throw new Error('파일이 너무 큽니다(30MB 이하만 분석 가능)');
+  const b64=(await stoBlobToDataURL(blob)).split(',')[1];
+  const isPdf=/pdf/i.test(paper.mime||'') || /\.pdf$/i.test(paper.fileName||'');
+  const block=isPdf
+    ? {type:'document', source:{type:'base64', media_type:'application/pdf', data:b64}}
+    : {type:'image', source:{type:'base64', media_type:(/png|webp/i.test(paper.mime||'')?paper.mime:'image/jpeg'), data:b64}};
+  const res=await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:eaAiModel(), max_tokens:8000, messages:[{role:'user', content:[block,{type:'text', text:eaAiPrompt(d)}]}]})
+  });
+  if(!res.ok){
+    let msg=''; try{ const j=await res.json(); msg=(j.error&&j.error.message)||''; }catch(e){}
+    if(res.status===401) throw new Error('AI 키가 올바르지 않습니다(🔑 AI 키 버튼으로 다시 입력해주세요). '+msg);
+    throw new Error('HTTP '+res.status+(msg?' — '+msg:''));
+  }
+  const j=await res.json();
+  let text=(j.content||[]).filter(c=>c.type==='text').map(c=>c.text).join('').trim();
+  const i0=text.indexOf('{'), i1=text.lastIndexOf('}');
+  if(i0<0||i1<=i0) throw new Error('AI 응답을 해석하지 못했습니다. 다시 시도해주세요.');
+  try{ return JSON.parse(text.slice(i0,i1+1)); }catch(e){ throw new Error('AI 응답 형식이 올바르지 않습니다. 다시 시도해주세요.'); }
+}
+// AI가 읽어낸 문항들을 폼의 카테고리·문항 입력(번호·배점·난이도·문제 요약)으로 옮긴다
+function eaApplyAiResult(d, r){
+  const isHS=eaDept(d)==='고등';
+  const cats=(r.categories||[]).filter(c=>c && Array.isArray(c.questions) && c.questions.length).map(c=>{
+    const qs=c.questions.map(q=>({
+      id:eaNewId('eaq'), no:String(q.no==null?'':q.no), question:esc(String(q.summary||'')),
+      points:(Number(q.points)>0?String(Number(q.points)):''), difficulty:(EA_DIFF_OPTIONS.includes(q.difficulty)?q.difficulty:'')
+    }));
+    const cat={name:String(c.name||'기타'), count:qs.length, questions:qs};
+    if(isHS){
+      const by={}; c.questions.forEach(q=>{ const l=String(q.source||'').trim(); if(l) by[l]=(by[l]||0)+1; });
+      cat.sources=Object.keys(by).map(l=>({id:eaNewSrcId(), label:l, count:by[l]}));
+    }
+    return cat;
+  });
+  if(!cats.length) throw new Error('AI가 문항을 찾지 못했습니다');
+  d.categories=cats;
+  ['school','grade','examTitle','examRange'].forEach(f=>{ if(!(d[f]||'').trim() && r[f]) d[f]=String(r[f]); });
+}
+function eaFmtSize(n){ return n>1024*1024 ? (n/1024/1024).toFixed(1)+'MB' : Math.max(1,Math.round(n/1024))+'KB'; }
+// 폼 안의 "시험지" 영역
+function eaPapersFormHTML(d){
+  const papers=d.papers||[], a=d.aiAnalysis;
+  let h=`<div style="border:1.5px solid var(--line);border-radius:10px;padding:12px 14px;margin:6px 0 18px;background:#fafbfd">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+      <span style="font-size:.82rem;font-weight:800;color:var(--sub)">📎 시험지 (PDF·사진)</span>
+      <button type="button" class="btn small" id="eaPaperBtn">⬆ 시험지 올리기</button>
+      <input type="file" id="eaPaperFile" accept=".pdf,image/png,image/jpeg,image/webp" multiple style="display:none">
+      <button type="button" class="btn small" id="eaAiKeyBtn" style="margin-left:auto" title="AI 분석에 쓰는 키(이 기기에만 저장)">🔑 AI 키</button>
+    </div>
+    <div style="font-size:.74rem;color:var(--sub);margin-bottom:8px">올린 시험지는 Firebase Storage에 저장돼요. "🤖 AI 분석"을 누르면 문항 구성·배점·난이도를 자동으로 정리해줍니다.</div>`;
+  if(!papers.length) h+='<div style="font-size:.78rem;color:#8b93a7">아직 올린 시험지가 없습니다.</div>';
+  papers.forEach(p=>{
+    h+=`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0;border-top:1px dashed var(--line)">
+      <a href="${esc(stoUrl(p))}" target="_blank" rel="noopener" style="font-weight:700;font-size:.84rem;color:#2e5fb7;text-decoration:none;word-break:break-all">📄 ${esc(p.fileName)}</a>
+      <span style="font-size:.72rem;color:var(--sub)">${eaFmtSize(p.size||0)}${p.uploadedBy?' · '+esc(p.uploadedBy):''}</span>
+      <span style="margin-left:auto;display:flex;gap:6px">
+        <button type="button" class="btn small eaPaperAiBtn" data-pid="${esc(p.id)}">🤖 AI 분석</button>
+        <button type="button" class="del eaPaperDelBtn" data-pid="${esc(p.id)}" style="font-size:.72rem">삭제</button>
+      </span></div>`;
+  });
+  if(a){
+    h+=`<div style="margin-top:10px;border-top:1.5px solid var(--line);padding-top:10px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+        <span style="font-size:.82rem;font-weight:800">🤖 AI 분석 결과</span>
+        <span style="font-size:.7rem;color:var(--sub)">${new Date(a.at||Date.now()).toLocaleString('ko-KR')} · ${esc(a.model||'')}</span>
+        <button type="button" class="btn primary small" id="eaAiApplyBtn" style="margin-left:auto">📥 문항 입력에 반영</button>
+      </div>
+      <div style="font-size:.84rem;line-height:1.55;white-space:pre-wrap">${esc(a.summary||'')}</div>
+      ${(a.keyPoints||[]).length?`<ul style="margin:8px 0 0;padding-left:20px;font-size:.82rem;line-height:1.6">${a.keyPoints.map(k=>`<li>${esc(k)}</li>`).join('')}</ul>`:''}
+      <div style="font-size:.72rem;color:var(--sub);margin-top:8px">※ AI가 읽어낸 추정 결과예요. "문항 입력에 반영"을 누르면 아래 카테고리·문항이 이 결과로 채워지니 확인 후 수정해서 저장하세요.</div>
+    </div>`;
+  }
+  return h+'</div>';
+}
+// 리포트(보기) 화면의 시험지·AI 분석 영역
+function eaAiReportHTML(entry){
+  const papers=entry.papers||[], a=entry.aiAnalysis;
+  if(!papers.length && !a) return '';
+  let h=`<div style="border:1.5px solid var(--line);border-radius:10px;margin-bottom:18px;overflow:hidden;page-break-inside:avoid;break-inside:avoid">
+    <div style="background:#2b3648;color:#fff;padding:8px 14px;font-weight:800;font-size:.84rem">🤖 시험지 · AI 분석</div>
+    <div style="padding:12px 14px">`;
+  if(papers.length) h+=`<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:${a?'10':'0'}px">${papers.map(p=>`<a href="${esc(stoUrl(p))}" target="_blank" rel="noopener" style="font-size:.84rem;font-weight:700;color:#2e5fb7;text-decoration:none;word-break:break-all">📄 ${esc(p.fileName)} <span style="font-weight:400;color:var(--sub);font-size:.72rem">${eaFmtSize(p.size||0)}</span></a>`).join('')}</div>`;
+  if(a){
+    h+=`<div style="font-size:.86rem;line-height:1.6;white-space:pre-wrap">${esc(a.summary||'')}</div>
+      ${(a.keyPoints||[]).length?`<ul style="margin:8px 0 0;padding-left:20px;font-size:.84rem;line-height:1.65">${a.keyPoints.map(k=>`<li>${esc(k)}</li>`).join('')}</ul>`:''}
+      <div style="font-size:.7rem;color:var(--sub);margin-top:8px">AI 추정 분석 · ${esc(a.model||'')} · ${new Date(a.at||Date.now()).toLocaleDateString('ko-KR')}</div>`;
+  }
+  return h+'</div></div>';
+}
 function eaBlankEntry(){
   return {
     id:eaNewId('ea'), _isNew:true, academy:academies()[0], dept:'중등', school:'', grade:'', examTitle:'', examRange:'', examDate:'', prepStart:'', prepEnd:'',
@@ -9474,11 +9688,378 @@ function applyEaSearch(q){
   const noMatch=v.querySelector('#eaNoMatch');
   if(noMatch) noMatch.style.display = anyShown ? 'none' : '';
 }
+/* ---------- 동향 분석 리포트 (내신 분석 탭 안의 두 번째 탭) ----------
+   · 여러 시험(내신 분석 자료)·시험지 파일을 AI가 비교해서 "무엇이 달라졌나"를 정리한 리포트를 모아두는 곳
+   · AI로 새로 만든 리포트는 자동으로 여기에 저장되고, 모든 선생님이 함께 본다(내신 분석처럼 DB 공유). 첨부 파일은 Firebase Storage. */
+function eaTrendActive(){ return (store.examTrends||[]).filter(t=>!t._deleted); }
+function eaTrendFind(id){ return eaTrendActive().find(t=>t.id===id); }
+function eaWho(){ const lt=loginTeacher(); return lt?lt.t.name:(store.login==='admin'?'관리자':''); }
+// 시험 하나를 "카테고리별 문항수·배점 + 난이도별 배점"으로 요약 — 리포트 안에 저장해두므로 나중에 원본이 바뀌어도 그때 기준으로 남는다
+function eaSnapOfEntry(en){
+  const cats=(en.categories||[]).filter(c=>(c.questions||[]).length).map(c=>({name:c.name, count:c.questions.length,
+    points:eaRoundPts(c.questions.reduce((m,q)=>m+(Number(q.points)||0),0))}));
+  const diff={};
+  (en.categories||[]).forEach(c=>(c.questions||[]).forEach(q=>{ if(q.difficulty) diff[q.difficulty]=eaRoundPts((diff[q.difficulty]||0)+(Number(q.points)||0)); }));
+  return {id:en.id, label:[en.examTitle||'',en.examDate||''].filter(Boolean).join(' · ')||'(시험명 미입력)', school:en.school||'', grade:en.grade||'',
+    examTitle:en.examTitle||'', examDate:en.examDate||'', total:eaTotalQuestions(en), points:eaTotalPoints(en), cats, diff};
+}
+function eaSnapFromAi(d, r){
+  const cats=[], diff={};
+  (r.categories||[]).forEach(c=>{
+    const qs=(c&&c.questions)||[]; if(!qs.length) return;
+    cats.push({name:String(c.name||'기타'), count:qs.length, points:eaRoundPts(qs.reduce((m,q)=>m+(Number(q.points)||0),0))});
+    qs.forEach(q=>{ if(EA_DIFF_OPTIONS.includes(q.difficulty)) diff[q.difficulty]=eaRoundPts((diff[q.difficulty]||0)+(Number(q.points)||0)); });
+  });
+  return {id:d.id, label:[d.examTitle||r.examTitle||'',d.examDate||''].filter(Boolean).join(' · ')||'(시험명 미입력)', school:d.school||r.school||'', grade:d.grade||r.grade||'',
+    examTitle:d.examTitle||r.examTitle||'', examDate:d.examDate||'', total:cats.reduce((m,c)=>m+c.count,0), points:eaRoundPts(cats.reduce((m,c)=>m+c.points,0)), cats, diff};
+}
+function eaTrendEntryText(en){
+  const s=eaSnapOfEntry(en);
+  const qs=(en.categories||[]).filter(c=>(c.questions||[]).length).map(c=>'['+c.name+'] '+c.questions.map(q=>(q.no||'?')+'번 '+(q.points||0)+'점 '+(q.difficulty||'-')+' '+String(q.question||'').replace(/\s+/g,' ').slice(0,80)).join(' / ')).join('\n');
+  return '■ '+s.school+' '+s.grade+' '+s.examTitle+' ('+(s.examDate||'날짜 미상')+') — 총 '+s.total+'문항 '+s.points+'점\n'+qs;
+}
+function eaTrendPrompt(d, entries, docCount){
+  const entText=entries.map(eaTrendEntryText).join('\n\n');
+  return `당신은 한국 영어학원의 내신 분석 전문가입니다. 아래 자료(첨부 파일 ${docCount}개 + 학원이 입력해둔 시험 분석 ${entries.length}건)를 읽고, 시험 간 "출제 동향이 어떻게 달라졌는지"를 학원 선생님이 한눈에 볼 수 있게 정리하세요. 아래 JSON 형식으로만 답하세요 (설명·마크다운·코드펜스 금지).
+{
+  "headline": "이번 시험의 핵심 변화를 한 줄로",
+  "strategy": "출제 전략·변화 요약 3~5문장",
+  "metrics": [{"label": "지표명(예: 상·중상 배점, 서술형 배점, 영어 읽기량)", "before": "이전 시험 값(없으면 빈 문자열)", "after": "이번 시험 값", "note": "한 줄 설명"}],
+  "changes": [{"title": "무엇이 달라졌나(한 줄)", "detail": "근거·세부 설명 1~2문장"}],
+  "teaching": ["수업·내신 대비에 활용할 시사점 한 문장씩"]
+}
+규칙: metrics 4~6개, changes 4~6개, teaching 3~6개. 자료에서 확인되는 사실만 쓰고 수치를 지어내지 마세요(확실하지 않으면 '추정'이라고 표시). 비교할 이전 시험 자료가 없으면 before는 빈 문자열로 두고 이번 시험의 특징 중심으로 쓰세요. 한국어로 쓰세요.${d.instr?'\n추가 요청: '+d.instr:''}
+${entText?'\n[학원이 입력한 시험 분석]\n'+entText.slice(0,40000):''}`;
+}
+// 공통 AI 호출 — 문서·이미지 블록과 지시문을 보내고 JSON 한 덩어리를 돌려받는다
+async function eaAiJson(content, maxTokens){
+  const key=eaAiKey(); if(!key) throw new Error('AI 키가 없습니다(🔑 AI 키 버튼으로 입력해주세요)');
+  const res=await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:eaAiModel(), max_tokens:maxTokens||6000, messages:[{role:'user', content}]})
+  });
+  if(!res.ok){
+    let msg=''; try{ const j=await res.json(); msg=(j.error&&j.error.message)||''; }catch(e){}
+    if(res.status===401) throw new Error('AI 키가 올바르지 않습니다(🔑 AI 키 버튼으로 다시 입력해주세요). '+msg);
+    throw new Error('HTTP '+res.status+(msg?' — '+msg:''));
+  }
+  const j=await res.json();
+  const text=(j.content||[]).filter(c=>c.type==='text').map(c=>c.text).join('').trim();
+  const i0=text.indexOf('{'), i1=text.lastIndexOf('}');
+  if(i0<0||i1<=i0) throw new Error('AI 응답을 해석하지 못했습니다. 다시 시도해주세요.');
+  try{ return JSON.parse(text.slice(i0,i1+1)); }catch(e){ throw new Error('AI 응답 형식이 올바르지 않습니다. 다시 시도해주세요.'); }
+}
+async function eaTrendDocBlocks(d, entries){
+  const refs=[];
+  if(d.usePapers!==false) entries.forEach(en=>(en.papers||[]).forEach(p=>refs.push({p, label:[en.school,en.grade,en.examTitle].filter(Boolean).join(' ')+' 시험지'})));
+  (d.files||[]).forEach(p=>refs.push({p, label:'추가 자료'}));
+  if(refs.length>8) throw new Error('첨부 자료가 너무 많아요(최대 8개). 시험 선택을 줄이거나 "시험지도 함께 읽기"를 꺼주세요.');
+  if(refs.reduce((m,r)=>m+(r.p.size||0),0)>EA_PAPER_MAX_BYTES) throw new Error('첨부 자료 합계가 30MB를 넘어요. 시험 선택을 줄이거나 "시험지도 함께 읽기"를 꺼주세요.');
+  const blocks=[];
+  for(const r of refs){
+    const blob=await stoFetchBlob(r.p);
+    const b64=(await stoBlobToDataURL(blob)).split(',')[1];
+    const isPdf=/pdf/i.test(r.p.mime||'') || /\.pdf$/i.test(r.p.fileName||'');
+    blocks.push({type:'text', text:'[자료: '+r.label+' — '+r.p.fileName+']'});
+    blocks.push(isPdf
+      ? {type:'document', source:{type:'base64', media_type:'application/pdf', data:b64}}
+      : {type:'image', source:{type:'base64', media_type:(/png|webp/i.test(r.p.mime||'')?r.p.mime:'image/jpeg'), data:b64}});
+  }
+  return {blocks, count:refs.length};
+}
+async function eaTrendGenerate(d){
+  const entries=(d.entryIds||[]).map(id=>eaFindActive(id)).filter(Boolean);
+  const {blocks,count}=await eaTrendDocBlocks(d, entries);
+  if(!entries.length && !count) throw new Error('비교할 시험이나 파일을 하나 이상 골라주세요');
+  const r=await eaAiJson([...blocks, {type:'text', text:eaTrendPrompt(d, entries, count)}], 6000);
+  return {r, entries};
+}
+function eaTrendCleanReport(r){
+  const str=v=>String(v==null?'':v).trim();
+  return {
+    headline:str(r.headline), strategy:str(r.strategy),
+    metrics:(Array.isArray(r.metrics)?r.metrics:[]).slice(0,8).map(m=>({label:str(m&&m.label), before:str(m&&m.before), after:str(m&&m.after), note:str(m&&m.note)})).filter(m=>m.label),
+    changes:(Array.isArray(r.changes)?r.changes:[]).slice(0,8).map(c=>({title:str(c&&c.title), detail:str(c&&c.detail)})).filter(c=>c.title),
+    teaching:(Array.isArray(r.teaching)?r.teaching:[]).slice(0,8).map(str).filter(Boolean)
+  };
+}
+function eaTrendBuildRecord(d, r, entries){
+  const snaps=entries.map(eaSnapOfEntry);
+  const school=(d.school||'').trim()||(entries[0]&&entries[0].school)||'';
+  const grade=(d.grade||'').trim()||(entries[0]&&entries[0].grade)||'';
+  const title=(d.title||'').trim()||([school,grade].filter(Boolean).join(' ')+' '+(entries.length?entries.map(e=>e.examTitle||'').filter(Boolean).join(' → '):'')+' 동향 분석').replace(/\s+/g,' ').trim();
+  return {id:d.id, academy:d.academy, school, grade, title, memo:d.memo||'', source:'ai', kind:'compare', entryIds:entries.map(e=>e.id), snaps,
+    files:d.files||[], report:eaTrendCleanReport(r), aiModel:eaAiModel(), createdAt:Date.now(), updatedAt:Date.now(), createdBy:eaWho()};
+}
+// 내신 분석 폼에서 "🤖 AI 분석"을 돌릴 때도, 그 결과를 동향 분석 리포트 탭에 자동으로 남긴다(같은 시험지를 다시 분석하면 그 리포트를 갱신)
+function eaTrendUpsertFromPaper(d, p, r){
+  const snap=eaSnapFromAi(d, r||{});
+  const school=snap.school, grade=snap.grade;
+  const id='etp_'+p.id;
+  const rec={id, academy:d.academy, school, grade,
+    title:([school,grade,snap.examTitle].filter(Boolean).join(' ')+' 시험지 AI 분석').replace(/\s+/g,' ').trim(), memo:'', source:'ai', kind:'paper',
+    entryIds:[d.id], snaps:[snap], files:[], paperName:p.fileName,
+    report:eaTrendCleanReport({headline:'', strategy:r.summary, metrics:[], changes:[], teaching:r.keyPoints}),
+    aiModel:eaAiModel(), createdAt:Date.now(), updatedAt:Date.now(), createdBy:eaWho()};
+  store.examTrends=store.examTrends||[];
+  const i=store.examTrends.findIndex(t=>t.id===id);
+  if(i>=0){ rec.createdAt=store.examTrends[i].createdAt||rec.createdAt; store.examTrends[i]=rec; } else store.examTrends.push(rec);
+  save();
+}
+function eaTrendBlank(){ return {id:eaNewId('et'), academy:academies()[0], school:'', grade:'', title:'', memo:'', instr:'', entryIds:[], usePapers:true, files:[]}; }
+
+/* --- 화면 --- */
+function eaSubTabsHTML(){
+  const sub=state.eaSub==='trend'?'trend':'analysis';
+  const btn=(k,l)=>`<button type="button" class="btn small eaSubBtn" data-sub="${k}" style="${sub===k?'background:#2b3648;color:#fff;border-color:#2b3648':''}">${l}</button>`;
+  return `<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">${btn('analysis','📊 내신 분석')}${btn('trend','📈 동향 분석 리포트')}</div>`;
+}
+function renderEaTrend(){
+  state.etMode=state.etMode||'list';
+  if(state.etMode==='form') return renderEaTrendForm();
+  if(state.etMode==='view') return renderEaTrendView();
+  return renderEaTrendList();
+}
+function renderEaTrendList(){
+  const list=eaTrendActive().slice().sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  let h=`<div class="ysec"><h3 style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;width:100%">📈 동향 분석 리포트 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">시험이 지난번과 어떻게 달라졌는지 AI가 정리한 리포트 · 새로 만들면 자동 저장돼요</span>
+    <button class="btn primary small" id="etNewBtn" style="margin-left:auto">➕ 새 동향 리포트 만들기</button></h3>
+    <div style="padding:0 16px 14px">
+    <input type="text" id="etSearch" value="${esc(state.etQ||'')}" placeholder="🔍 학교명 · 학년 · 제목으로 검색" style="width:100%;margin-bottom:12px;padding:8px 12px;border:1.5px solid var(--line);border-radius:9px;font-family:inherit;font-size:.86rem">`;
+  if(!list.length) h+='<div class="empty" style="text-align:left">아직 동향 분석 리포트가 없습니다. "➕ 새 동향 리포트 만들기"에서 시험을 고르고 AI로 만들어보세요. (내신 분석에서 시험지를 AI로 분석해도 여기에 자동으로 저장돼요)</div>';
+  h+='<div id="etNoMatch" class="empty" style="display:none;font-size:.83rem;color:#8b93a7;padding:10px 0">검색 결과가 없습니다.</div>';
+  list.forEach(t=>{
+    const ac=AC[t.academy]||{color:'#2e5fb7'};
+    const key=norm([t.school,t.grade,t.title].filter(Boolean).join(' '));
+    const badge=t.source==='ai'?'<span style="font-size:.68rem;font-weight:800;border-radius:6px;padding:1px 7px;background:#7c3aed;color:#fff">🤖 AI</span>':'<span style="font-size:.68rem;font-weight:800;border-radius:6px;padding:1px 7px;background:#64748b;color:#fff">📎 업로드</span>';
+    h+=`<div class="ccard" data-etsearch="${esc(key)}" style="border-left-color:${ac.color};margin-bottom:10px;padding:12px 14px;display:flex;flex-wrap:wrap;align-items:center;gap:10px">
+      <div style="flex:1;min-width:220px">
+        <div style="font-weight:800;font-size:.94rem">${esc(t.title||'(제목 없음)')} ${badge}</div>
+        <div style="font-size:.82rem;color:var(--sub);margin-top:2px">${esc([t.school,t.grade].filter(Boolean).join(' '))}${(t.snaps||[]).length?' · 시험 '+t.snaps.length+'건 비교':''}</div>
+        <div style="font-size:.76rem;color:#8b93a7;margin-top:4px">${new Date(t.createdAt||Date.now()).toLocaleDateString('ko-KR')}${t.createdBy?' · '+esc(t.createdBy):''}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn small etViewBtn" data-id="${esc(t.id)}">👁 리포트 보기</button>
+        <button class="del etDelBtn" data-id="${esc(t.id)}">삭제</button>
+      </div></div>`;
+  });
+  return h+'</div></div>';
+}
+function eaTrendCompareHTML(snaps){
+  snaps=(snaps||[]).filter(s=>s&&(s.cats||[]).length);
+  if(!snaps.length) return '';
+  const names=[]; snaps.forEach(s=>s.cats.forEach(c=>{ if(!names.includes(c.name)) names.push(c.name); }));
+  const th='padding:7px 8px;font-size:.74rem;color:var(--sub);background:#f7f9fc;border-bottom:1.5px solid var(--line);text-align:center';
+  const td='padding:7px 8px;font-size:.82rem;border-bottom:1px solid var(--line);text-align:center';
+  let h=`<div style="border:1.5px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:18px;overflow-x:auto">
+    <div style="background:#2b3648;color:#fff;padding:8px 14px;font-weight:800;font-size:.84rem">📊 시험별 구성 비교 <span style="font-weight:400;font-size:.74rem">(문항수 · 배점)</span></div>
+    <table style="border-collapse:collapse;width:100%"><thead><tr><th style="${th};text-align:left">유형</th>${snaps.map(s=>`<th style="${th}">${esc(s.label)}</th>`).join('')}</tr></thead><tbody>`;
+  names.forEach(n=>{
+    h+=`<tr><td style="${td};text-align:left;font-weight:700">${esc(n)}</td>${snaps.map(s=>{ const c=s.cats.find(x=>x.name===n); return `<td style="${td}">${c?c.count+'문항 · '+c.points+'점':'<span style="color:#b5bbc8">—</span>'}</td>`; }).join('')}</tr>`;
+  });
+  h+=`<tr style="background:#fafbfd"><td style="${td};text-align:left;font-weight:800">합계</td>${snaps.map(s=>`<td style="${td};font-weight:800">${s.total}문항 · ${s.points}점</td>`).join('')}</tr>`;
+  if(snaps.some(s=>Object.keys(s.diff||{}).length)){
+    h+=`<tr><td style="${td};text-align:left;font-weight:700">난이도별 배점</td>${snaps.map(s=>`<td style="${td};font-size:.76rem;line-height:1.7">${EA_DIFF_OPTIONS.slice().reverse().filter(k=>(s.diff||{})[k]).map(k=>`<span style="white-space:nowrap"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${EA_DIFF_COLOR[k]};margin-right:3px"></span>${k} ${s.diff[k]}점</span>`).join(' ')||'<span style="color:#b5bbc8">—</span>'}</td>`).join('')}</tr>`;
+  }
+  return h+'</tbody></table></div>';
+}
+function eaTrendReportBody(t){
+  if(!t) return '<div class="empty">삭제되었거나 찾을 수 없는 리포트입니다.</div>';
+  const ac=AC[t.academy]||{label:'', color:'#2e5fb7', tint:'#f4f6fb'};
+  const r=t.report||null;
+  const sec=(title,color)=>`<div style="background:${color||'#2b3648'};color:#fff;padding:8px 14px;font-weight:800;font-size:.84rem">${title}</div>`;
+  let h=`<div style="background:${ac.color};color:#fff;border-radius:14px 14px 0 0;padding:20px 22px">
+    <div style="font-size:.78rem;opacity:.85;font-weight:700;letter-spacing:.02em">${esc(ac.label||'')} 동향 분석 리포트 <span style="background:rgba(255,255,255,.22);border-radius:999px;padding:1px 9px;margin-left:4px">${t.source==='ai'?'🤖 AI 작성':'📎 업로드'}</span></div>
+    <div style="font-size:1.3rem;font-weight:800;margin-top:4px">${esc(t.title||'')}</div>
+    <div style="font-size:.9rem;font-weight:600;margin-top:2px;opacity:.95">${esc([t.school,t.grade].filter(Boolean).join(' '))}</div>
+  </div>
+  <div style="border:1.5px solid var(--line);border-top:none;border-radius:0 0 14px 14px;padding:18px 22px;background:#fff">`;
+  if(r && (r.headline||r.strategy)){
+    h+=`<div style="background:${ac.tint||'#f4f6fb'};border-radius:10px;padding:14px 16px;margin-bottom:18px">
+      ${r.headline?`<div style="font-weight:800;font-size:1rem;margin-bottom:6px">${esc(r.headline)}</div>`:''}
+      ${r.strategy?`<div style="font-size:.88rem;line-height:1.7;white-space:pre-wrap">${esc(r.strategy)}</div>`:''}
+    </div>`;
+  }
+  if(r && (r.metrics||[]).length){
+    h+=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:18px">${r.metrics.map(m=>`<div style="border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;page-break-inside:avoid;break-inside:avoid">
+      <div style="font-size:.74rem;color:var(--sub);font-weight:700">${esc(m.label)}</div>
+      <div style="font-size:1.2rem;font-weight:800;margin:4px 0;color:${ac.color}">${m.before?esc(m.before)+' <span style="color:#8b93a7">→</span> ':''}${esc(m.after)}</div>
+      ${m.note?`<div style="font-size:.74rem;color:var(--sub);line-height:1.5">${esc(m.note)}</div>`:''}</div>`).join('')}</div>`;
+  }
+  h+=eaTrendCompareHTML(t.snaps);
+  if(r && (r.changes||[]).length){
+    h+=`<div style="border:1.5px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:18px;page-break-inside:avoid;break-inside:avoid">${sec('🔍 무엇이 달라졌나')}
+      <ol style="margin:0;padding:12px 14px 12px 34px;font-size:.86rem;line-height:1.7">${r.changes.map(c=>`<li style="margin-bottom:6px"><b>${esc(c.title)}</b>${c.detail?`<div style="font-size:.82rem;color:var(--sub)">${esc(c.detail)}</div>`:''}</li>`).join('')}</ol></div>`;
+  }
+  if(r && (r.teaching||[]).length){
+    h+=`<div style="border:1.5px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:18px;page-break-inside:avoid;break-inside:avoid">${sec('🎯 수업·내신 대비 시사점','#7c3aed')}
+      <ul style="margin:0;padding:12px 14px 12px 34px;font-size:.86rem;line-height:1.7">${r.teaching.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>`;
+  }
+  if(t.memo) h+=`<div style="font-size:.84rem;line-height:1.6;white-space:pre-wrap;border:1.5px dashed var(--line);border-radius:10px;padding:10px 14px;margin-bottom:18px"><b>📝 메모</b>\n${esc(t.memo)}</div>`;
+  const files=t.files||[];
+  if(files.length || t.paperName){
+    h+=`<div style="font-size:.82rem;margin-bottom:14px"><b>📎 자료</b><div style="display:flex;flex-direction:column;gap:4px;margin-top:6px">${files.map(p=>`<a href="${esc(stoUrl(p))}" target="_blank" rel="noopener" style="color:#2e5fb7;font-weight:700;text-decoration:none;word-break:break-all">📄 ${esc(p.fileName)}</a>`).join('')}${t.paperName?`<span style="color:var(--sub)">📄 ${esc(t.paperName)} (내신 분석에서 AI 분석)</span>`:''}</div></div>`;
+  }
+  if(t.source==='ai') h+=`<div style="font-size:.7rem;color:var(--sub)">AI 추정 분석 · ${esc(t.aiModel||'')} · ${new Date(t.createdAt||Date.now()).toLocaleDateString('ko-KR')} — 수치·판단은 시험지 원본과 함께 확인해주세요.</div>`;
+  return h+'</div>';
+}
+function renderEaTrendView(){
+  const t=eaTrendFind(state.etViewId);
+  return `<div class="todaybar" style="margin-bottom:10px"><button class="btn small" id="etBackBtn">◀ 목록으로</button></div>
+    <div style="max-width:820px;margin:0 auto">${eaTrendReportBody(t)}</div>`;
+}
+function renderEaTrendForm(){
+  const d=state.etDraft; if(!d){ state.etMode='list'; return renderEaTrendList(); }
+  const acOpts=academies().map(a=>`<option value="${a}" ${d.academy===a?'selected':''}>${esc(AC[a].label)}</option>`).join('');
+  const inp=(label,id,val)=>`<label style="font-size:.78rem;color:var(--sub)">${esc(label)}<input type="text" id="${id}" value="${esc(val||'')}" style="width:100%;margin-top:4px;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit"></label>`;
+  const ns=norm(d.school||'');
+  const ents=eaActiveList().slice().sort((a,b)=>{
+    const ma=ns&&norm(a.school||'').includes(ns)?0:1, mb=ns&&norm(b.school||'').includes(ns)?0:1;
+    return ma-mb || (b.examDate||'').localeCompare(a.examDate||'') || (b.updatedAt||0)-(a.updatedAt||0);
+  });
+  let h=`<div class="ysec"><h3>📈 새 동향 분석 리포트</h3><div style="padding:14px 16px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin-bottom:16px">
+      <label style="font-size:.78rem;color:var(--sub)">학원<select id="etAcademy" style="width:100%;margin-top:4px;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acOpts}</select></label>
+      ${inp('학교명(비워두면 선택한 시험에서 가져와요)','etSchool',d.school)}
+      ${inp('학년','etGrade',d.grade)}
+      ${inp('리포트 제목(비워두면 자동)','etTitle',d.title)}
+    </div>
+    <div style="font-size:.82rem;font-weight:800;color:var(--sub);margin:4px 0 8px">비교할 시험 고르기 <span style="font-weight:400;font-size:.74rem">(내신 분석에 등록된 시험 중 · 같은 학교가 위로 올라와요)</span></div>
+    <div style="border:1.5px solid var(--line);border-radius:10px;max-height:240px;overflow:auto;margin-bottom:8px">`;
+  if(!ents.length) h+='<div style="padding:10px 14px;font-size:.8rem;color:#8b93a7">등록된 내신 분석이 없어요. 아래 "추가 자료"로 파일만 올려도 만들 수 있어요.</div>';
+  ents.forEach(en=>{
+    h+=`<label style="display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid var(--line);font-size:.84rem;cursor:pointer">
+      <input type="checkbox" class="etEntryCb" data-id="${esc(en.id)}" ${(d.entryIds||[]).includes(en.id)?'checked':''}>
+      <span style="flex:1"><b>${esc([en.school,en.grade].filter(Boolean).join(' ')||'(학교 미입력)')}</b> · ${esc(en.examTitle||'(시험명 미입력)')}${en.examDate?' · '+esc(en.examDate):''}</span>
+      <span style="font-size:.72rem;color:var(--sub)">문항 ${eaTotalQuestions(en)}개${(en.papers||[]).length?' · 📎'+en.papers.length:''}</span></label>`;
+  });
+  h+=`</div>
+    <label style="display:flex;align-items:center;gap:6px;font-size:.8rem;margin-bottom:16px"><input type="checkbox" id="etUsePapers" ${d.usePapers!==false?'checked':''}> 선택한 시험에 올려둔 시험지(PDF·사진)도 함께 읽기</label>
+    <div style="border:1.5px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:16px;background:#fafbfd">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+        <span style="font-size:.82rem;font-weight:800;color:var(--sub)">📎 추가 자료 (선택)</span>
+        <button type="button" class="btn small" id="etFileBtn">⬆ 파일 올리기</button>
+        <input type="file" id="etFile" accept=".pdf,image/png,image/jpeg,image/webp" multiple style="display:none">
+        <button type="button" class="btn small" id="etAiKeyBtn" style="margin-left:auto" title="AI 분석에 쓰는 키(이 기기에만 저장)">🔑 AI 키</button>
+      </div>
+      <div style="font-size:.74rem;color:var(--sub);margin-bottom:6px">다른 학교 시험지나 기존 분석 자료를 올리면 같이 읽어요. 파일은 Firebase Storage에 저장돼요.</div>`;
+  if(!(d.files||[]).length) h+='<div style="font-size:.78rem;color:#8b93a7">올린 파일이 없습니다.</div>';
+  (d.files||[]).forEach(p=>{
+    h+=`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px dashed var(--line)">
+      <a href="${esc(stoUrl(p))}" target="_blank" rel="noopener" style="font-weight:700;font-size:.84rem;color:#2e5fb7;text-decoration:none;word-break:break-all">📄 ${esc(p.fileName)}</a>
+      <span style="font-size:.72rem;color:var(--sub)">${eaFmtSize(p.size||0)}</span>
+      <button type="button" class="del etFileDel" data-fid="${esc(p.id)}" style="margin-left:auto">삭제</button></div>`;
+  });
+  h+=`</div>
+    <label style="font-size:.78rem;color:var(--sub);display:block;margin-bottom:12px">AI에게 추가로 요청할 내용 (선택)<textarea id="etInstr" rows="2" placeholder="예: 서술형 변화와 읽기량 증가를 중심으로 정리해줘" style="width:100%;margin-top:4px;padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;resize:vertical">${esc(d.instr||'')}</textarea></label>
+    <label style="font-size:.78rem;color:var(--sub);display:block;margin-bottom:14px">메모 (선택)<textarea id="etMemo" rows="2" style="width:100%;margin-top:4px;padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;resize:vertical">${esc(d.memo||'')}</textarea></label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button type="button" class="btn primary" id="etAiBtn">🤖 AI로 리포트 만들기</button>
+      <button type="button" class="btn" id="etFileOnlyBtn" title="AI 없이 올린 파일만 이 탭에 보관해요">📎 파일만 저장 (AI 없이)</button>
+      <button type="button" class="btn" id="etCancelBtn">취소</button>
+    </div></div></div>`;
+  return h;
+}
+function bindEaTrend(){
+  const v=document.getElementById('view');
+  if(state.etMode==='form'){ bindEaTrendForm(); return; }
+  if(state.etMode==='view'){
+    const back=v.querySelector('#etBackBtn'); if(back) back.onclick=()=>{ state.etMode='list'; render(true); };
+    return;
+  }
+  const search=v.querySelector('#etSearch');
+  const applySearch=q=>{
+    const nq=norm(q||''); let any=false;
+    v.querySelectorAll('[data-etsearch]').forEach(c=>{ const show=!nq||c.dataset.etsearch.includes(nq); c.style.display=show?'':'none'; if(show) any=true; });
+    const nm=v.querySelector('#etNoMatch'); if(nm) nm.style.display=any?'none':'';
+  };
+  if(search){ applySearch(search.value); search.addEventListener('input',e=>{ state.etQ=e.target.value; applySearch(e.target.value); }); }
+  const nb=v.querySelector('#etNewBtn'); if(nb) nb.onclick=()=>{ state.etDraft=eaTrendBlank(); state.etMode='form'; render(true); };
+  v.querySelectorAll('.etViewBtn').forEach(b=>b.onclick=()=>{ state.etViewId=b.dataset.id; state.etMode='view'; render(true); });
+  v.querySelectorAll('.etDelBtn').forEach(b=>b.onclick=()=>{
+    const t=(store.examTrends||[]).find(x=>x.id===b.dataset.id); if(!t) return;
+    if(!confirm('이 동향 분석 리포트를 삭제할까요? (올려둔 추가 자료 파일도 함께 지워져요)')) return;
+    t._deleted=true; t.updatedAt=Date.now();
+    (t.files||[]).forEach(p=>stoDelete(p));
+    save(); render(true);
+  });
+}
+function bindEaTrendForm(){
+  const v=document.getElementById('view');
+  const d=state.etDraft; if(!d) return;
+  const byId=id=>v.querySelector('#'+id);
+  [['etAcademy','academy'],['etSchool','school'],['etGrade','grade'],['etTitle','title'],['etMemo','memo'],['etInstr','instr']].forEach(([id,f])=>{
+    const el=byId(id); if(el) el.onchange=()=>{ d[f]=el.value; if(f==='school'||f==='academy') render(true); };
+  });
+  v.querySelectorAll('.etEntryCb').forEach(cb=>cb.onchange=()=>{
+    d.entryIds=d.entryIds||[];
+    if(cb.checked){ if(!d.entryIds.includes(cb.dataset.id)) d.entryIds.push(cb.dataset.id); }
+    else d.entryIds=d.entryIds.filter(x=>x!==cb.dataset.id);
+  });
+  const up=byId('etUsePapers'); if(up) up.onchange=()=>{ d.usePapers=up.checked; };
+  const fileBtn=byId('etFileBtn'), fileInp=byId('etFile');
+  if(fileBtn && fileInp){
+    fileBtn.onclick=()=>fileInp.click();
+    fileInp.onchange=async()=>{
+      const files=[...fileInp.files]; if(!files.length) return;
+      const fails=[];
+      for(const f of files){
+        if(f.size>EA_PAPER_MAX_BYTES){ fails.push(f.name+' (30MB 초과)'); continue; }
+        try{
+          fileBtn.disabled=true; fileBtn.textContent='⏳ 업로드 중... 0%';
+          const id=eaNewId('etf');
+          const ref=await stoUpload('examTrends/'+d.id+'/'+id+'_'+stoSafeName(f.name), f, f.type||'application/pdf', (l,t)=>{ const b=document.getElementById('etFileBtn'); if(b) b.textContent='⏳ 업로드 중... '+Math.round(l/t*100)+'%'; });
+          d.files=d.files||[]; d.files.push({id, fileName:f.name, size:f.size, mime:f.type||'application/pdf', bucket:ref.bucket, path:ref.path, token:ref.token, uploadedAt:Date.now(), uploadedBy:eaWho()});
+        }catch(e){ fails.push(f.name+' — '+((e&&e.message)||e)); }
+      }
+      fileInp.value='';
+      if(state.etDraft===d) render(true);
+      if(fails.length) alert('다음 파일은 올리지 못했습니다:\n'+fails.join('\n'));
+    };
+  }
+  v.querySelectorAll('.etFileDel').forEach(b=>b.onclick=()=>{
+    const p=(d.files||[]).find(x=>x.id===b.dataset.fid); if(!p) return;
+    if(!confirm('이 파일을 삭제할까요?')) return;
+    stoDelete(p); d.files=d.files.filter(x=>x.id!==p.id); render(true);
+  });
+  const keyBtn=byId('etAiKeyBtn'); if(keyBtn) keyBtn.onclick=()=>{ eaAiAskKey(true); };
+  const aiBtn=byId('etAiBtn');
+  if(aiBtn) aiBtn.onclick=async()=>{
+    if(!(d.entryIds||[]).length && !(d.files||[]).length){ alert('비교할 시험을 하나 이상 고르거나, 추가 자료 파일을 올려주세요.'); return; }
+    if(!eaAiAskKey(false)) return;
+    const orig=aiBtn.textContent; aiBtn.disabled=true; aiBtn.textContent='⏳ AI가 리포트를 만드는 중... (1~3분)';
+    try{
+      const {r,entries}=await eaTrendGenerate(d);
+      const rec=eaTrendBuildRecord(d, r, entries);
+      store.examTrends=store.examTrends||[]; store.examTrends.push(rec); save();
+      state.etViewId=rec.id; state.etMode='view'; state.etDraft=null; render(true);
+      toast('📈 동향 분석 리포트가 저장됐어요');
+    }catch(e){ alert('AI 리포트 생성에 실패했습니다: '+((e&&e.message)||e)); aiBtn.disabled=false; aiBtn.textContent=orig; }
+  };
+  const fileOnly=byId('etFileOnlyBtn');
+  if(fileOnly) fileOnly.onclick=()=>{
+    if(!(d.files||[]).length){ alert('저장할 파일을 먼저 올려주세요.'); return; }
+    const title=(d.title||'').trim()||([d.school,d.grade].filter(Boolean).join(' ')+' 동향 분석 자료').trim();
+    const rec={id:d.id, academy:d.academy, school:d.school||'', grade:d.grade||'', title, memo:d.memo||'', source:'upload', kind:'upload', entryIds:[], snaps:[], files:d.files,
+      report:null, createdAt:Date.now(), updatedAt:Date.now(), createdBy:eaWho()};
+    store.examTrends=store.examTrends||[]; store.examTrends.push(rec); save();
+    state.etViewId=rec.id; state.etMode='view'; state.etDraft=null; render(true);
+    toast('📎 동향 분석 자료 저장됨');
+  };
+  const cancel=byId('etCancelBtn');
+  if(cancel) cancel.onclick=()=>{
+    if((d.files||[]).length && !confirm('취소하면 방금 올린 파일도 삭제돼요. 계속할까요?')) return;
+    (d.files||[]).forEach(p=>stoDelete(p));
+    state.etMode='list'; state.etDraft=null; render(true);
+  };
+}
 function renderExamAnalysis(){
+  if(state.eaSub==='trend') return (state.etMode&&state.etMode!=='list'?'':eaSubTabsHTML())+renderEaTrend();
   state.eaMode=state.eaMode||'list';
   if(state.eaMode==='form') return renderEaForm();
   if(state.eaMode==='view') return renderEaView();
-  return renderEaList();
+  return eaSubTabsHTML()+renderEaList();
 }
 function renderEaList(){
   let list=eaActiveList().slice().sort((a,b)=>(b.examDate||'').localeCompare(a.examDate||'') || (b.updatedAt||0)-(a.updatedAt||0));
@@ -9497,7 +10078,7 @@ function renderEaList(){
       <div style="flex:1;min-width:220px">
         <div style="font-weight:800;font-size:.94rem">${esc(en.school||'(학교명 미입력)')} ${esc(en.grade||'')} <span style="font-size:.68rem;font-weight:800;border-radius:6px;padding:1px 7px;background:${dept==='고등'?'#7c3aed':'#2e5fb7'};color:#fff">${dept==='고등'?'고등부':'중등부'}</span></div>
         <div style="font-size:.82rem;color:var(--sub);margin-top:2px">${esc(en.examTitle||'(시험명 미입력)')}</div>
-        <div style="font-size:.76rem;color:#8b93a7;margin-top:4px">${en.examDate?esc(en.examDate)+' · ':''}문항 ${total}개${en.teacherLecture?' · Lecture '+esc(en.teacherLecture):''}${en.teacherIBT?' · IBT '+esc(en.teacherIBT):''}</div>
+        <div style="font-size:.76rem;color:#8b93a7;margin-top:4px">${en.examDate?esc(en.examDate)+' · ':''}문항 ${total}개${(en.papers&&en.papers.length)?' · 📎 시험지 '+en.papers.length:''}${en.teacherLecture?' · Lecture '+esc(en.teacherLecture):''}${en.teacherIBT?' · IBT '+esc(en.teacherIBT):''}</div>
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn small eaViewBtn" data-id="${esc(en.id)}">👁 리포트 보기</button>
@@ -9536,6 +10117,7 @@ function renderEaForm(){
       <label style="font-size:.78rem;color:var(--sub)">목표점수<input type="number" id="eaTargetScore" value="${esc(d.targetScore!=null?d.targetScore:100)}" style="width:100%;margin-top:4px;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit"></label>
     </div>
     ${teacherDatalist(d.academy)}
+    ${eaPapersFormHTML(d)}
     <div style="font-size:.82rem;font-weight:800;color:var(--sub);margin:16px 0 8px">문항수 (카테고리별로 숫자를 먼저 다 입력해두세요 — 아래 "문항별 세부 입력"에 그 개수만큼 칸이 자동으로 생겨요. 언제든 숫자를 바꿔서 추가·삭제할 수 있어요)</div>
     <div style="border:1.5px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:18px">
       <table style="border-collapse:collapse;width:100%">
@@ -9722,6 +10304,7 @@ function eaReportBody(entry, opts){
         <div style="font-size:1.4rem;font-weight:800;color:${ac.color}">${esc(entry.targetScore!=null?entry.targetScore:100)}점</div>
       </div>
     </div>`;
+  h+=eaAiReportHTML(entry);
   if(cats.length && dept==='고등'){
     // 고등부는 엑셀 내신 분석표처럼, 카테고리별 요약표와 원형 그래프를 하나의 격식있는 패널로 묶어 보여준다
     const countData=cats.map(c=>({name:c.name, value:(c.questions||[]).length, color:eaCatColor(catNames,c.name,dept), suffix:'개'}));
@@ -10320,6 +10903,58 @@ function bindEaForm(){
     else d.scores[inp.dataset.sid][inp.dataset.qid]=inp.value;
     renderKeepGridScroll();
   });
+  // ---- 시험지 업로드 · AI 분석 ----
+  const paperBtn=byId('eaPaperBtn'), paperFile=byId('eaPaperFile');
+  if(paperBtn && paperFile){
+    paperBtn.onclick=()=>paperFile.click();
+    paperFile.onchange=async()=>{
+      const files=[...paperFile.files]; if(!files.length) return;
+      const fails=[];
+      for(const f of files){
+        if(f.size>EA_PAPER_MAX_BYTES){ fails.push(f.name+' (30MB 초과)'); continue; }
+        try{
+          paperBtn.disabled=true; paperBtn.textContent='⏳ 업로드 중... 0%';
+          const p=await eaUploadPaper(d, f, (l,t)=>{ const b=document.getElementById('eaPaperBtn'); if(b) b.textContent='⏳ 업로드 중... '+Math.round(l/t*100)+'%'; });
+          (d._newPaperIds=d._newPaperIds||[]).push(p.id);
+        }catch(e){ fails.push(f.name+' — '+((e&&e.message)||e)); }
+      }
+      paperFile.value='';
+      if(state.eaDraft===d) render(true);
+      if(fails.length) alert('다음 파일은 올리지 못했습니다:\n'+fails.join('\n'));
+    };
+  }
+  const aiKeyBtn=byId('eaAiKeyBtn'); if(aiKeyBtn) aiKeyBtn.onclick=()=>{ eaAiAskKey(true); };
+  v.querySelectorAll('.eaPaperDelBtn').forEach(btn=>btn.onclick=()=>{
+    const p=(d.papers||[]).find(x=>x.id===btn.dataset.pid); if(!p) return;
+    if(!confirm('이 시험지를 삭제할까요? (저장하면 Storage의 파일도 함께 삭제됩니다)')) return;
+    d.papers=d.papers.filter(x=>x.id!==p.id);
+    if((d._newPaperIds||[]).includes(p.id)){ d._newPaperIds=d._newPaperIds.filter(x=>x!==p.id); stoDelete(p); } // 이번에 새로 올린 것은 바로 지움
+    else (d._delPapers=d._delPapers||[]).push(p); // 기존 시험지는 "저장"할 때 지움(취소하면 그대로 유지)
+    if(d.aiAnalysis && d.aiAnalysis.paperId===p.id) delete d.aiAnalysis;
+    render(true);
+  });
+  v.querySelectorAll('.eaPaperAiBtn').forEach(btn=>btn.onclick=async()=>{
+    const p=(d.papers||[]).find(x=>x.id===btn.dataset.pid); if(!p) return;
+    if(!eaAiAskKey(false)) return;
+    const orig=btn.textContent; btn.disabled=true; btn.textContent='⏳ AI 분석 중... (1~2분)';
+    try{
+      const r=await eaAiAnalyze(d, p);
+      d.aiAnalysis={paperId:p.id, at:Date.now(), model:eaAiModel(), summary:String(r.summary||''), keyPoints:(r.keyPoints||[]).map(String), categories:r.categories||[],
+        meta:{school:r.school||'', grade:r.grade||'', examTitle:r.examTitle||'', examRange:r.examRange||''}};
+      try{ eaTrendUpsertFromPaper(d, p, r); }catch(e2){} // 동향 분석 리포트 탭에도 자동 저장
+    }catch(e){ alert('AI 분석에 실패했습니다: '+((e&&e.message)||e)); btn.disabled=false; btn.textContent=orig; return; }
+    if(state.eaDraft===d){ render(true); toast('🤖 AI 분석 완료'); }
+  });
+  const aiApplyBtn=byId('eaAiApplyBtn');
+  if(aiApplyBtn) aiApplyBtn.onclick=()=>{
+    const a=d.aiAnalysis; if(!a) return;
+    if(!eaCategoriesUntouched(d.categories) && !confirm('지금 입력된 카테고리·문항이 AI 분석 결과로 바뀝니다. (이미 입력한 채점 기록은 새 문항과 연결되지 않아 초기화될 수 있어요) 계속할까요?')) return;
+    try{
+      eaApplyAiResult(d, {...(a.meta||{}), categories:a.categories});
+      d.scores={}; // 문항이 새로 만들어지므로 이전 채점 기록은 연결이 끊김
+      render(true); toast('📥 AI 분석 결과를 문항에 반영했어요');
+    }catch(e){ alert(e.message||e); }
+  };
   const saveBtn=byId('eaSaveBtn');
   if(saveBtn) saveBtn.onclick=()=>{
     if(!(d.school||'').trim() && !(d.examTitle||'').trim()){ alert('학교명이나 시험명 중 하나는 입력해주세요.'); return; }
@@ -10329,6 +10964,7 @@ function bindEaForm(){
     store.examAnalysis=store.examAnalysis||[];
     const idx=store.examAnalysis.findIndex(e=>e.id===d.id);
     delete d._isNew;
+    (d._delPapers||[]).forEach(p=>stoDelete(p)); delete d._delPapers; delete d._newPaperIds;
     if(idx>=0) store.examAnalysis[idx]=d; else store.examAnalysis.push(d);
     save();
     state.eaViewId=d.id; state.eaMode='list'; state.eaDraft=null;
@@ -10338,11 +10974,14 @@ function bindEaForm(){
   const cancelBtn=byId('eaCancelBtn');
   if(cancelBtn) cancelBtn.onclick=()=>{
     if(!confirm('수정 중인 내용을 취소할까요?')) return;
+    (d._newPaperIds||[]).forEach(id=>{ const p=(d.papers||[]).find(x=>x.id===id); if(p) stoDelete(p); });
     state.eaMode='list'; state.eaDraft=null; render(true);
   };
 }
 function bindExamAnalysis(){
   const v=document.getElementById('view');
+  v.querySelectorAll('.eaSubBtn').forEach(b=>b.onclick=()=>{ state.eaSub=b.dataset.sub; render(true); });
+  if(state.eaSub==='trend'){ bindEaTrend(); return; }
   if(state.eaMode==='form'){ bindEaForm(); return; }
   if(state.eaMode==='view'){
     const back=v.querySelector('#eaBackBtn'); if(back) back.onclick=()=>{ state.eaMode='list'; render(true); };
