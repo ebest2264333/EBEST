@@ -6023,7 +6023,7 @@ function renderToday(list){
     // 합반(같이 수업하는 다른 반) 상대가 있으면, 그 반 학생들도 이 카드 안에 같이 보여줘서 한 번에 출석 체크할 수 있게 한다
     const mergedPartner=mergedPartnerClass(c);
     const partnerStudents=mergedPartner?activeStudentsForDate(mergedPartner, state.date):[];
-    if(mergedPartner && classMeets(mergedPartner, wd) && partnerStudents.length){
+    if(mergedPartner && (classMeets(mergedPartner, wd) || !(mergedPartner.subjects||[]).some(x=>subjOnDay(x,wd))) && partnerStudents.length){ // 합반 상대 반에 과목·요일이 따로 없어도(메인 반에서 수업) 같이 보여준다
       const pk=ckey(mergedPartner);
       // 파트너 반 자체에 오늘 등록된 과목이 없으면(합반 후 메인 반에만 과목을 추가한 경우), 메인 반(c)의 과목 구성을 그대로 빌려와 출결칸을 맞춘다
       const partnerHasOwnSubjects=daySubjectNames(mergedPartner, wd).length>0;
