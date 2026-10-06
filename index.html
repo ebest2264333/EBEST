@@ -1833,7 +1833,113 @@ function classToken(name){ // 'JM1,2' -> jm1,2 / '초등(E1)' -> e1 / '고1A' ->
 function aiClasses(lt){
   return classesFor(state.month).filter(c=>c.academy===lt.a);
 }
+// 📝 내신 분석 리포트를 열어둔 상태에서 "김민준 2,3,4번 틀렸어" 처럼 말하면 그 학생 채점을 자동으로 입력한다
+function aiExamEntry(){ return (state.tab==='examrpt' && state.eaMode==='view' && state.eaViewId) ? eaFindActive(state.eaViewId) : null; }
+function eaGradeNum(g){ const m=String(g||'').match(/\d+/); return m?m[0]:''; }
+function eaNameParts(n){ const str=String(n||'').trim(); const m=str.match(/^(.*?)\(([^)]*)\)\s*$/); if(!m) return {ko:/[가-힣]/.test(str)?str:'', en:/[가-힣]/.test(str)?'':str}; const a=m[1].trim(), b=m[2].trim(); return /[가-힣]/.test(a)||!/[가-힣]/.test(b)?{ko:a,en:b}:{ko:b,en:a}; }
+// 이 리포트의 학생 목록(entry.students) 중 후보(ko/en)와 같은 사람 찾기 — 영어 이름까지 맞는 쪽을 우선
+function eaEntryStudentFor(entry, cand){
+  const list=entry.students||[]; const ko=norm(cand.ko), en=norm(cand.en);
+  let hit=list.find(s=>{ const p=eaNameParts(s.name); return ko&&norm(p.ko)===ko && en&&norm(p.en)===en; });
+  if(!hit && en) hit=list.find(s=>{ const p=eaNameParts(s.name); return !p.ko&&norm(p.en)===en; });
+  if(!hit && ko){ const same=list.filter(s=>{ const p=eaNameParts(s.name); return norm(p.ko)===ko && (!p.en || !en || norm(p.en)===en); }); const noEn=same.filter(s=>!eaNameParts(s.name).en); hit=noEn[0]||same[0]||null; } // 영어이름이 다르면 다른 학생
+  return hit||null;
+}
+function parseExamScore(text){
+  const entry=aiExamEntry(); if(!entry) return null;
+  const t=String(text||''); const nt=t.toLowerCase();
+  const cands=[]; const usedEntry=new Set();
+  const addStrs=(c)=>{ c.strs=[]; if(c.ko && c.ko.length>=2 && t.includes(c.ko)) c.strs.push(c.ko); if(c.en && c.en.length>=3 && nt.includes(c.en.toLowerCase())) c.strs.push(c.en); };
+  (store.students||[]).filter(x=>!x._deleted).forEach(r=>{
+    const c={key:'r:'+r.id, ko:String(r.nameKo||'').trim(), en:String(r.nameEn||'').trim(), grade:r.grade||'', school:r.school||'', className:r.className||'', academy:r.academy||'', rosterId:r.id};
+    addStrs(c); if(!c.strs.length) return;
+    const es=eaEntryStudentFor(entry, c); c.entryId=es?es.id:''; if(es) usedEntry.add(es.id);
+    cands.push(c);
+  });
+  (entry.students||[]).forEach(s=>{
+    if(usedEntry.has(s.id)) return;
+    const p=eaNameParts(s.name); const c={key:'e:'+s.id, ko:p.ko, en:p.en, grade:'', school:'', className:'', academy:'', entryId:s.id};
+    addStrs(c); if(c.strs.length) cands.push(c);
+  });
+  const eg=eaGradeNum(entry.grade), esch=norm(entry.school||'');
+  cands.forEach(c=>{ c.gradeMatch=!!(eg && eaGradeNum(c.grade)===eg); c.schoolMatch=!!(esch && norm(c.school) && (norm(c.school).includes(esch)||esch.includes(norm(c.school)))); c.acaMatch=!!(entry.academy && c.academy===entry.academy); });
+  cands.sort((a,b)=>(b.gradeMatch-a.gradeMatch)||(b.schoolMatch-a.schoolMatch)||(b.acaMatch-a.acaMatch));
+  // 문장 속 이름 언급 위치 — 가까이 붙어있는 이름/영어이름("김민준(Jasper)")은 한 사람으로 묶는다
+  const strSet=[...new Set(cands.flatMap(c=>c.strs))]; const ments=[];
+  strSet.forEach(st=>{ let from=0; const low=st.toLowerCase(); while(true){ const ix=nt.indexOf(low,from); if(ix<0) break; ments.push({s:ix, e:ix+st.length, strs:[st]}); from=ix+st.length; } });
+  ments.sort((a,b)=>a.s-b.s);
+  const groups=[]; ments.forEach(m=>{ const g=groups[groups.length-1]; const sameP=g && cands.some(c=>c.strs.includes(m.strs[0]) && g.strs.some(x=>c.strs.includes(x))); if(g && m.s<g.e){ g.e=Math.max(g.e,m.e); g.strs.push(...m.strs); } else if(g && sameP && m.s-g.e<=2 && /^[\s()\[\]·,\/]*$/.test(t.slice(g.e,m.s))){ g.e=Math.max(g.e,m.e); g.strs.push(...m.strs); } else groups.push({s:m.s,e:m.e,strs:[...m.strs]}); });
+  const parseWrong=(chunk, strs)=>{
+    const cut=chunk.search(/틀|오답|X\b|못\s*맞|오류|감점/i);
+    let body=cut>=0?chunk.slice(0,cut):chunk;
+    strs.forEach(x=>{ body=body.split(x).join(' '); });
+    const nums=new Set();
+    body=body.replace(/(\d+)\s*[~\-–]\s*(\d+)/g,(m,a,b)=>{ for(let k=+a;k<=+b&&k-a<60;k++) nums.add(String(k)); return ' '; });
+    (body.match(/서술형\s*\d+|논술형\s*\d+|\d+/g)||[]).forEach(x=>nums.add(x.replace(/\s+/g,'')));
+    return [...nums];
+  };
+  const items=[];
+  if(!groups.length){
+    const m=t.match(/([가-힣]{2,4})\s*(?:학생|이)?\s*(?:[,:은는이가]\s*)?(?=[\d서])/);
+    if(!m) return {entry, needStudent:true, items:[], text:t};
+    items.push({cands:[], candKey:'', newName:m[1], wrongText:parseWrong(t,[m[1]]).join(', '), ambiguous:false, chunk:t});
+  } else {
+    const raw=groups.map((g,gi)=>{ const end=gi+1<groups.length?groups[gi+1].s:t.length; const chunk=t.slice(g.s,end); return {g, chunk, strs:g.strs, nums:parseWrong(chunk,g.strs), done:/맞|만점|전부\s*정답|다\s*정답/.test(chunk)}; });
+    // 이름만 나열하고 번호는 마지막에 한 번 적은 경우("김민준 박서연 3번 틀렸어") — 번호 없는 앞 사람들은 뒤의 번호를 같이 쓴다
+    for(let k=raw.length-2;k>=0;k--){ if(!raw[k].nums.length && !raw[k].done && raw[k+1].nums.length) raw[k].nums=raw[k+1].nums.slice(); }
+    raw.forEach(r=>{
+      let cs=cands.filter(c=>c.strs.some(x=>r.strs.includes(x)));
+      const both=cs.filter(c=>r.strs.every(x=>c.strs.includes(x))); if(cs.length>1 && both.length) cs=both; // "김민준(Noah)"처럼 영어이름까지 적었으면 그 학생으로 좁힌다
+      items.push({cands:cs, candKey:(cs.length===1?cs[0].key:''), newName:'', wrongText:r.nums.join(', '), ambiguous:cs.length>1, chunk:r.chunk.trim()});
+    });
+  }
+  return {entry, needStudent:false, items, text:t};
+}
+function applyExamScore(p){
+  const entry=p.entry; if(!entry) return {ok:false, msg:'리포트를 찾지 못했어요.'};
+  entry.students=entry.students||[];
+  // 1) 대상 확인 (아직 아무것도 바꾸지 않음)
+  const plan=[]; const overwrite=[]; const newOnes=[];
+  for(const it of (p.items||[])){
+    if(it.candKey){
+      const c=(it.cands||[]).find(x=>x.key===it.candKey); if(!c) return {ok:false, msg:'학생을 선택해주세요.'};
+      plan.push({it, c, sid:c.entryId||''});
+      if(c.entryId && Object.keys((entry.scores||{})[c.entryId]||{}).length) overwrite.push(c.ko+(c.en?'('+c.en+')':''));
+      if(!c.entryId) newOnes.push(c.ko+(c.en?'('+c.en+')':''));
+    } else {
+      const nm=String(it.newName||'').trim(); if(!nm) return {ok:false, msg:'학생을 선택하거나 새 학생 이름을 입력해주세요.'};
+      plan.push({it, c:null, sid:'', nm}); newOnes.push(nm);
+    }
+  }
+  const msgs=[];
+  if(newOnes.length) msgs.push('새로 추가될 학생: '+newOnes.join(', '));
+  if(overwrite.length) msgs.push('이미 채점 기록이 있어 덮어쓰게 될 학생: '+overwrite.join(', '));
+  if(msgs.length && !confirm(msgs.join('\n')+'\n\n계속할까요?')) return {ok:false, msg:'취소했어요.', silent:true};
+  // 2) 실제 입력
+  const done=[];
+  entry.scores=entry.scores||{};
+  plan.forEach(({it,c,sid,nm})=>{
+    if(!sid){ sid=eaNewId('eas'); entry.students.push({id:sid, name:c?(c.en?`${c.ko}(${c.en})`:c.ko):nm}); }
+    const wrongSet=new Set(String(it.wrongText||'').split(/[,\s]+/).map(x=>x.replace(/번$/,'').replace(/\s+/g,'')).filter(Boolean));
+    const sc=entry.scores[sid]={}; let wrongCnt=0;
+    (entry.categories||[]).forEach(cat=>{
+      const st=eaScoreTypeFor(cat);
+      (cat.questions||[]).forEach(q=>{
+        const no=String(q.no||'').replace(/\s+/g,'');
+        const isWrong=!!no && wrongSet.has(no);
+        if(isWrong) wrongCnt++;
+        if(st==='partial') sc[q.id]=isWrong?'0':String(Number(q.points)||0);
+        else sc[q.id]=!isWrong;
+      });
+    });
+    done.push(((entry.students.find(x=>x.id===sid)||{}).name||'')+' (오답 '+wrongCnt+'개)');
+  });
+  entry.updatedAt=Date.now();
+  save(); render(true);
+  return {ok:true, msg:'채점 입력 완료 — '+done.join(', ')};
+}
 function parseWork(text, lt){
+  const ex=parseExamScore(text); if(ex && !ex.needStudent) return Object.assign({type:'exam', content:text.trim(), needClass:false, needStudent:false}, ex);
   const t=text, nt=norm(text);
   const cls=aiClasses(lt);
   // 날짜
@@ -1933,7 +2039,27 @@ function renderAI(){
   let log=myLog.map(x=>`<div class="aim user">${esc(x.text)}</div>
     <div class="aim bot"><span class="ok">✔ 저장됨</span> — ${esc(AI_TYPES[x.type])} · ${esc(x.cls)}${x.student?' · '+esc(x.student):''} · ${esc(x.date)}</div>`).join('');
   let confirm='';
-  if(p){
+  if(p && p.type==='exam'){
+    const e=p.entry;
+    const itemsHTML=(p.items||[]).map((it,ii)=>{
+      const candHTML=(it.cands||[]).map(c=>{
+        const es=c.entryId?(e.students||[]).find(x=>x.id===c.entryId):null;
+        const n=es&&e.scores&&e.scores[es.id]?Object.keys(e.scores[es.id]).length:0;
+        const tags=[c.grade?c.grade+'학년':'', c.school, c.className].filter(Boolean).join(' · ');
+        return `<label style="display:flex;gap:8px;align-items:flex-start;padding:7px 9px;border:1.5px solid ${c.gradeMatch?'#2563eb':'var(--line)'};border-radius:8px;margin-bottom:5px;background:${c.gradeMatch?'#f3f7ff':'#fff'};cursor:pointer"><input type="radio" name="aiXC${ii}" value="${esc(c.key)}" ${it.candKey===c.key?'checked':''} style="margin-top:3px">
+          <span style="font-size:.82rem;line-height:1.4"><b>${esc(c.ko||'')}</b>${c.en?` <span style="color:#2563eb;font-weight:800">${esc(c.en)}</span>`:' <span style="color:#c0392b">(영어이름 없음)</span>'}${c.gradeMatch?' <span style="background:#2563eb;color:#fff;border-radius:6px;padding:0 6px;font-size:.68rem;font-weight:800">같은 학년</span>':''}<br><span style="color:var(--sub);font-size:.74rem">${esc(tags||'학년·학교·반 정보 없음')} · ${n?`이 리포트 채점 ${n}문항 입력됨`:'이 리포트 채점 없음'}</span></span></label>`; }).join('');
+      return `<div style="border:1.5px solid var(--line);border-radius:10px;padding:8px 10px;margin:8px 0;background:#fcfcff">
+        <div style="font-size:.74rem;color:var(--sub);margin-bottom:4px">${(p.items.length>1?(ii+1)+'번째 · ':'')}“${esc((it.chunk||'').slice(0,60))}”</div>
+        ${it.ambiguous?'<div style="color:#c0392b;font-weight:800;font-size:.78rem;margin:4px 0">⚠ 같은 이름의 학생이 여러 명이에요. 이 리포트 학년('+esc(e.grade||'미입력')+')과 같은 학생이 위에 있어요. 꼭 확인하고 선택해주세요.</div>':''}
+        ${candHTML}
+        <label style="display:flex;gap:8px;align-items:center;padding:4px 9px;font-size:.8rem"><input type="radio" name="aiXC${ii}" value="" ${(!it.candKey&&!it.ambiguous)?'checked':''}> 새 학생으로 추가 <input type="text" class="aiXN" data-i="${ii}" value="${esc(it.newName||'')}" placeholder="이름" style="flex:1;min-width:80px"></label>
+        <div class="aigrid"><label>틀린 문항</label><input type="text" class="aiXW" data-i="${ii}" value="${esc(it.wrongText||'')}" placeholder="예: 2, 3, 4 (없으면 전부 정답)"></div></div>`;
+    }).join('');
+    confirm=`<div class="aiconfirm" style="border-color:${lt.t.color}">
+      <div class="t">📝 ${esc(e?(e.school||'')+' '+(e.grade||'')+' '+(e.examTitle||''):'')} 채점 ${p.items.length}명을 입력할까요?<div style="font-weight:400;color:var(--sub);font-size:.76rem;margin-top:3px">적은 번호는 오답(X), 나머지 문항은 정답(O)으로 입력돼요. 서술형은 오답 0점, 나머지는 배점 만점이에요. 입력 대상을 한 번 더 확인해주세요.</div></div>
+      ${itemsHTML}
+      <div style="display:flex;gap:8px"><button class="btn primary" id="aiXSave" style="background:${lt.t.color};border-color:${lt.t.color}">입력</button><button class="btn" id="aiCancel">취소</button></div></div>`;
+  } else if(p){
     const cls=aiClasses(lt);
     const stuOpts = p.cls ? ['<option value="">(학생 없음 · 반 전체)</option>'].concat((p.cls.students||[]).map(s=>`<option ${s===p.student?'selected':''}>${esc(s)}</option>`)).join('') : '<option value="">반을 먼저 선택</option>';
     confirm=`<div class="aiconfirm" style="border-color:${lt.t.color}">
@@ -1955,7 +2081,7 @@ function renderAI(){
     <h2><span class="tdot" style="background:${lt.t.color}"></span>💬 ${esc(lt.t.name)} 선생님 업무 기록 도우미
       <button id="aiClose" style="margin-left:auto;border:none;background:none;font-size:1.1rem;cursor:pointer;color:var(--sub)">✕</button></h2>
     <div class="sub">업무를 선택하고 문장으로 적으면 반·학생·날짜를 알아서 찾아 해당 기록란에 채워 넣습니다.
-    예: "오늘 JB3 Alva 학생 어머니와 상담했어. 내신 총점 199점, 고등학교 진학 고민 중"</div>
+    예: "오늘 JB3 Alva 학생 어머니와 상담했어. 내신 총점 199점, 고등학교 진학 고민 중"<br>📝 내신 분석 리포트를 열어둔 상태에서는 "김민준 2,3,4번 틀렸어"처럼 적으면 그 학생 채점이 자동 입력돼요.</div>
 
     <div class="airow">
       <textarea id="aiIn" placeholder="업무 내용을 문장으로 적어주세요… (Enter=줄바꿈, 기록 버튼으로 전송)"></textarea>
@@ -1976,6 +2102,19 @@ function bindAI(){
   };
   const cP=state.aiPending;
   const sel=id=>v.querySelector(id);
+  if(cP && cP.type==='exam'){
+    const xs=sel('#aiXSave');
+    if(xs) xs.onclick=()=>{
+      const p=state.aiPending;
+      p.items.forEach((it,ii)=>{ const rc=v.querySelector(`input[name=aiXC${ii}]:checked`); it.candKey=rc?rc.value:''; const nn=v.querySelector(`.aiXN[data-i="${ii}"]`), ww=v.querySelector(`.aiXW[data-i="${ii}"]`); it.newName=nn?nn.value:''; it.wrongText=ww?ww.value:''; });
+      const r=applyExamScore(p);
+      if(!r.ok){ if(!r.silent) alert(r.msg); return; }
+      store.ailog.push({ts:Date.now(), who:lt.a+'|'+lt.i, type:'memo', cls:'내신 분석', student:'', date:todayISO(), text:p.content+' → '+r.msg});
+      state.aiPending=null; render(true);
+    };
+    const xc=sel('#aiCancel'); if(xc) xc.onclick=()=>{ state.aiPending=null; render(true); };
+    return;
+  }
   if(cP){
     const aiC=sel('#aiC');
     if(aiC) aiC.onchange=()=>{
