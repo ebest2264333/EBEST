@@ -5604,7 +5604,7 @@ function renderToday(list){
   clsForAbsent.forEach(c=>{
     applyRosterAbsence(c);
     const partner=mergedPartnerClass(c);
-    if(partner && classMeets(partner, wd) && partner.students && partner.students.length) applyRosterAbsence(partner);
+    if(partner && (classMeets(partner, wd) || !(partner.subjects||[]).some(x=>subjOnDay(x,wd))) && partner.students && partner.students.length) applyRosterAbsence(partner);
   });
   // 오늘, 모든 과목에서 결석 처리된 학생은 단어시험도 자동으로 "미응시"로 처리해둔다 (단어 범위표에도 같이 반영됨)
   if(state.date===todayISO()){
@@ -5625,7 +5625,7 @@ function renderToday(list){
     clsForAbsent.forEach(c=>{
       markWordTestAbsent(c);
       const partner=mergedPartnerClass(c);
-      if(partner && classMeets(partner, wd) && partner.students && partner.students.length) markWordTestAbsent(partner);
+      if(partner && (classMeets(partner, wd) || !(partner.subjects||[]).some(x=>subjOnDay(x,wd))) && partner.students && partner.students.length) markWordTestAbsent(partner);
     });
   }
   if(absAutoChanged) save();
@@ -5677,7 +5677,7 @@ function renderToday(list){
     collectStay(c);
     // 합반 상대 반 학생도 같이 모아준다 (합반 카드 안에서 체크한 "오늘 남기"가 목록에서 누락되지 않도록)
     const partner=mergedPartnerClass(c);
-    if(partner && classMeets(partner, wd) && partner.students && partner.students.length) collectStay(partner);
+    if(partner && (classMeets(partner, wd) || !(partner.subjects||[]).some(x=>subjOnDay(x,wd))) && partner.students && partner.students.length) collectStay(partner);
   });
  // 재시험 대상 학생도 "오늘 남는 학생"에 자동으로 합쳐서 보여준다 (재시험은 보통 남아서 다시 봐야 하므로)
   store.wordTests.filter(r=>r.date===state.date && r.retestNeeded && !r.retestCompleted && !r.absent).forEach(r=>{
@@ -5757,7 +5757,7 @@ function renderToday(list){
   clsForAbsent.forEach(c=>{
     collectAbsent(c);
     const partner=mergedPartnerClass(c);
-    if(partner && classMeets(partner, wd) && partner.students && partner.students.length) collectAbsent(partner, c);
+    if(partner && (classMeets(partner, wd) || !(partner.subjects||[]).some(x=>subjOnDay(x,wd))) && partner.students && partner.students.length) collectAbsent(partner, c);
   });
 
   const depts = ['초등', '중등', '고등', '기타'];
