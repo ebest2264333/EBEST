@@ -5661,7 +5661,10 @@ function renderToday(list){
       const bySubjEntries = rec.bySubject ? Object.entries(rec.bySubject).filter(([,v])=>v) : [];
       const doneSubjects = rec.doneSubjects || {};
       let subjects;
-      if(bySubjEntries.length){
+      const staySubKeys = rec.staySubjects ? Object.keys(rec.staySubjects).filter(x=>rec.staySubjects[x]) : [];
+      if(staySubKeys.length){
+        subjects = staySubKeys.map(sub=>({subj:subjKeyDecode(sub), memo:(rec.bySubject&&rec.bySubject[sub])||'', done:!!doneSubjects[sub]}));
+      } else if(bySubjEntries.length){
         subjects = bySubjEntries.map(([sub,memo])=>({subj:subjKeyDecode(sub), memo, done:!!doneSubjects[sub]}));
       } else if(rec.memo){
         const subjLabel = subjLabelAll || cl.name;
@@ -5981,12 +5984,13 @@ function renderToday(list){
 
       const stayRow = rowMulti
         ? `<div style="padding:1px 0 7px 2px">
-            <label class="hwlab" style="color:${srec.stay?'#b45309':'var(--sub)'}"><input type="checkbox" class="staychk" data-k="${esc(ownerK)}" data-s="${esc(s)}" ${srec.stay?'checked':''}>🙋 오늘 남기</label>
+            <div style="font-size:.74rem;font-weight:800;color:${srec.stay?'#b45309':'var(--sub)'}">🙋 오늘 남기 <span style="font-weight:400">(남길 과목을 체크하세요)</span></div>
             <div style="display:flex;flex-direction:column;gap:4px;margin-top:4px">
               ${ownerAttKeys.map(({subject})=>{
                 const subMemo=(srec.bySubject&&srec.bySubject[subjKey(subject)])||'';
+                const subOn=!!(srec.staySubjects&&srec.staySubjects[subjKey(subject)]);
                 return `<div style="display:flex;gap:6px;align-items:center">
-                  <b style="font-size:.68rem;color:var(--sub);font-weight:800;min-width:44px">${esc(subject)}</b>
+                  <label class="hwlab" style="min-width:64px;color:${subOn?'#b45309':'var(--sub)'};font-weight:800"><input type="checkbox" class="staysubchk" data-k="${esc(ownerK)}" data-s="${esc(s)}" data-subj="${esc(subject)}" ${subOn?'checked':''}> ${esc(subject)}</label>
                   <input type="text" class="staynote-sub" data-k="${esc(ownerK)}" data-s="${esc(s)}" data-subj="${esc(subject)}" placeholder="이 과목 남는 이유" value="${esc(subMemo)}" style="flex:1;max-width:260px;border:1px solid var(--line);border-radius:7px;padding:4px 9px;font-family:inherit;font-size:.76rem;background:#fbfcfe">
                 </div>`;
               }).join('')}
@@ -6278,6 +6282,15 @@ function bindToday(){
     const k=cb.dataset.k, st=cb.dataset.s, st2=stayFor(state.date);
     st2[k]=st2[k]||{}; st2[k][st]=st2[k][st]||{}; st2[k][st].stay=cb.checked; save(); render(true);
   });
+  v.querySelectorAll('.staysubchk').forEach(cb=>cb.onchange=()=>{
+    const k=cb.dataset.k, st=cb.dataset.s, subj=cb.dataset.subj, st2=stayFor(state.date);
+    st2[k]=st2[k]||{}; const r=st2[k][st]=st2[k][st]||{};
+    r.staySubjects=r.staySubjects||{};
+    if(cb.checked) r.staySubjects[subjKey(subj)]=true; else delete r.staySubjects[subjKey(subj)];
+    r.stay=Object.keys(r.staySubjects).length>0;
+    if(cb.checked && r.doneSubjects) delete r.doneSubjects[subjKey(subj)];
+    save(); render(true);
+  });
   v.querySelectorAll('.allabsentchk').forEach(cb=>cb.onchange=()=>{
     if(!isAdminRole())return;
     const keys=cb.dataset.keys.split(','), sname=cb.dataset.s, at2=atFor(state.date);
@@ -6304,7 +6317,7 @@ function bindToday(){
     const parts=b.dataset.staydonesub.split('|'); const subj=parts.pop(); const sname=parts.pop(); const k=parts.join('|');
     const st2=stayFor(state.date);
     st2[k]=st2[k]||{}; st2[k][sname]=st2[k][sname]||{};
-    if(subj && st2[k][sname].bySubject){
+    if(subj && (st2[k][sname].bySubject || st2[k][sname].staySubjects)){
       st2[k][sname].doneSubjects=st2[k][sname].doneSubjects||{};
       st2[k][sname].doneSubjects[subjKey(subj)]=true;
     } else {
