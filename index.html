@@ -10735,7 +10735,8 @@ function eaStudentDetailHTML(entry, studentId, ac){
       </div>
       <div style="flex:1;min-width:130px;border:1.5px solid var(--line);border-radius:10px;padding:12px;text-align:center">
         <div style="font-size:.72rem;color:var(--sub);font-weight:700">목표점수 대비</div>
-        <div style="font-size:1.4rem;font-weight:800;color:${pct>=target?'#16a34a':'#ef4444'}">${pct}점 ${pct>=target?'달성':'미달'}</div>
+        <div style="font-size:1.4rem;font-weight:800;color:${pct>=target?'#16a34a':'#ef4444'}">${pct>=target?(pct>target?(pct-target)+'점 초과 달성':'목표 달성'):(target-pct)+'점 미달'}</div>
+        <div style="font-size:.72rem;color:var(--sub);margin-top:2px">목표 ${target}점 · 현재 ${pct}점</div>
       </div>
     </div>`;
   if(!cats.length) h+='<div class="empty" style="text-align:left">아직 입력된 문항이 없습니다.</div>';
