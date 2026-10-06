@@ -5826,7 +5826,9 @@ function renderToday(list){
     ...lateHwList.map(x=>({cn:x.className, nm:_nm(x.student), txt:'지각'+((x.absReasonToday||'').trim()?` (${x.absReasonToday.trim()})`:''), pre:false}))
   ];
   const _clsOrder=[]; _sumEntries.forEach(e=>{ if(!_clsOrder.includes(e.cn)) _clsOrder.push(e.cn); });
-  _sumEntries.sort((a,b)=>_clsOrder.indexOf(a.cn)-_clsOrder.indexOf(b.cn));
+  const _PFX=['EC','RG','PJ','JM','JF','JB']; // 요약 복사 순서: EC - RG - PJ - JM - JF - JB - 고등부(그 외)
+  const _rank=cn=>{ const u=String(cn||'').trim().toUpperCase(); const i=_PFX.findIndex(p=>u.startsWith(p)); return i<0?_PFX.length:i; };
+  _sumEntries.sort((a,b)=>{ const d=_rank(a.cn)-_rank(b.cn); if(d) return d; if(a.cn!==b.cn) return String(a.cn).localeCompare(String(b.cn),'ko',{numeric:true}); return 0; });
   const _fmtGroup=list=>{ let out=[], prev=null; list.forEach(e=>{ const tag=`[${e.cn}] `; out.push((e.cn===prev?' '.repeat(tag.length+2):tag)+`${e.nm} - ${e.txt}`); prev=e.cn; }); return out.join('\n'); };
   const _dm=String(state.date).split('-');
   const _normal=_sumEntries.filter(e=>!e.pre), _preList=_sumEntries.filter(e=>e.pre);
@@ -5838,7 +5840,7 @@ function renderToday(list){
   if(_normal.length) _parts.push(_fmtGroup(_normal)+'\n\n*결석생 과제 안내 부탁드립니다');
   if(_preList.length) _parts.push(_fmtGroup(_preList));
   if(_noteText) _parts.push(_noteText);
-  const absentSummaryText=`<${+_dm[1]}월${+_dm[2]}일 결석생>\n\n`+_parts.join('\n\n');
+  const absentSummaryText=`<${+_dm[1]}월 ${+_dm[2]}일 결석생>\n\n`+_parts.join('\n\n');
   const absentNoteBox=`<div style="margin:0 0 10px"><div style="font-size:.76rem;font-weight:800;color:var(--sub);margin-bottom:4px">📝 특이사항 (요약 복사 맨 아래에 들어가요 · 한 줄에 하나)</div><textarea class="absentNoteInput" data-date="${esc(state.date)}" rows="2" placeholder="예: RG1 남예령 Amy - 11월복귀예정 / 과제문자발송" style="width:100%;border:1.5px solid #f1f3f8;border-radius:8px;padding:6px 10px;font-family:inherit;box-sizing:border-box">${esc(_noteFor(state.date))}</textarea></div>`;
   const absentSummaryBtn=absentNoteBox+((_sumEntries.length||_noteText)?`<div style="margin:0 0 10px"><button type="button" class="absentSummaryCopy" data-text="${esc(absentSummaryText)}" style="border:1.5px solid #c0392b;background:#fff;color:#c0392b;font-weight:800;border-radius:8px;padding:6px 12px;cursor:pointer;font-family:inherit">📋 결석·지각 요약 복사 (${_sumEntries.length}명)</button></div>`:'');
   const lateGroupsHTML=lateHwList.length?`<details open style="margin-bottom:10px;border:1px solid #f3d9a4;border-radius:8px;padding:8px 12px;background:#fff"><summary style="cursor:pointer;font-weight:800;color:#b45309;font-size:.95rem">⏰ 지각 (${lateHwList.length}명)</summary><div style="margin-top:8px">${lateHwList.map(x=>`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0;border-bottom:1px solid #f1f3f8"><b style="color:#b45309">${esc(x.student)}</b><span style="font-size:.78rem;color:var(--sub)">[${esc(x.className)}]</span><input type="text" class="absreasoninput" data-k="${esc(x.k)}" data-s="${esc(x.s)}" placeholder="지각 사유 (선택)" value="${esc(x.absReasonToday)}" style="flex:1;min-width:140px;border:1.5px solid #f1f3f8;border-radius:8px;padding:6px 10px;font-family:inherit"></div>`).join('')}</div></details>`:'';
