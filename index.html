@@ -1745,7 +1745,11 @@ function buildTabs(){
     goTab(b.dataset.tab);
   });
   const mb=nav.querySelector('#moreBtn');
-  if(mb) mb.onclick=e=>{ e.stopPropagation(); document.getElementById('moreMenu').classList.toggle('open'); };
+  if(mb) mb.onclick=e=>{ e.stopPropagation();
+    const mm=document.getElementById('moreMenu'); mm.classList.toggle('open');
+    // 사이드바가 overflow-x:auto라 absolute 메뉴가 잘려 안 보였다 → 화면 기준(fixed)으로 버튼 아래에 띄운다
+    if(mm.classList.contains('open')){ const r=mb.getBoundingClientRect(); mm.style.position='fixed'; mm.style.top=(r.bottom+4)+'px'; mm.style.left='auto'; mm.style.right=Math.max(8,window.innerWidth-r.right)+'px'; mm.style.zIndex=1000; }
+  };
   adjustTabOverflow();
 }
 function adjustTabOverflow(){
@@ -5149,7 +5153,7 @@ function mySubjectKeys(c, wd, lt){
   const mine=daySubjs.filter(s=>!s.teacher || norm(s.teacher)===nm);
   
   // ✨ 추가 2: 앨리스 선생님(담당과목 0개) 프리패스 완벽 차단!
-  if(mine.length === 0) return new Set(['__NONE__']);
+  if(mine.filter(s=>!isWordTestSubject(s)).length === 0) return new Set(['__NONE__']); // 단어시험만 내 담당이면 출석 수업은 없는 것 → 그 반 카드 숨김
 
   return new Set(mine.map(s=>s.subject||'-'));
 }
@@ -9436,7 +9440,8 @@ function eaTextOn(hex){
   return lum>0.62 ? '#3a2f10' : '#ffffff';
 }
 function eaNewId(p){ return p+Date.now().toString(36)+Math.random().toString(36).slice(2,6)+Math.random().toString(36).slice(2,4); }
-function eaBlankQuestion(){ return {id:eaNewId('eaq'), no:'', question:'', points:'', difficulty:''}; }
+function eaOriginHTML(q){ return (q&&q.origin)?`<div style="margin-top:4px;font-size:.74rem;color:#6b7280;font-weight:600">📌 출처: ${esc(q.origin)}</div>`:''; }
+function eaBlankQuestion(){ return {id:eaNewId('eaq'), no:'', question:'', origin:'', points:'', difficulty:''}; }
 // 선생님 코멘트는 굵게/밑줄/글자색 서식을 쓸 수 있게 HTML로 저장한다 — 옛날에 일반 텍스트로만 저장된 메모는 줄바꿈만 살려서 그대로 보여준다
 function eaNoteInitialHTML(note){
   const s=String(note||''); if(!s) return '';
@@ -9552,7 +9557,7 @@ function eaApplyAiResult(d, r){
   const isHS=eaDept(d)==='고등';
   const cats=(r.categories||[]).filter(c=>c && Array.isArray(c.questions) && c.questions.length).map(c=>{
     const qs=c.questions.map(q=>({
-      id:eaNewId('eaq'), no:String(q.no==null?'':q.no), question:esc(String(q.summary||'')),
+      id:eaNewId('eaq'), no:String(q.no==null?'':q.no), question:esc(String(q.summary||'')), origin:String(q.source||'').slice(0,80),
       points:(Number(q.points)>0?String(Number(q.points)):''), difficulty:(EA_DIFF_OPTIONS.includes(q.difficulty)?q.difficulty:'')
     }));
     const cat={name:String(c.name||'기타'), count:qs.length, questions:qs};
@@ -10232,7 +10237,7 @@ function renderEaForm(){
       cat.questions.forEach((q,qi)=>{
         h+=`<tr>
           <td style="padding:4px"><input type="text" class="eaQNo" data-ci="${ci}" data-qi="${qi}" value="${esc(q.no||'')}" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:6px;text-align:center;font-family:inherit"></td>
-          <td style="padding:4px"><div contenteditable="true" class="eaQText" data-ci="${ci}" data-qi="${qi}" data-placeholder="문제 내용을 입력하세요 (밑줄 등 서식은 복사해 붙여넣으면 그대로 유지됩니다)" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:6px;font-family:inherit;min-height:1.4em">${eaSanitizeNoteHTML(eaNoteInitialHTML(q.question||''))}</div></td>
+          <td style="padding:4px"><div contenteditable="true" class="eaQText" data-ci="${ci}" data-qi="${qi}" data-placeholder="문제 내용을 입력하세요 (밑줄 등 서식은 복사해 붙여넣으면 그대로 유지됩니다)" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:6px;font-family:inherit;min-height:1.4em">${eaSanitizeNoteHTML(eaNoteInitialHTML(q.question||''))}</div>${eaDept(d)==='고등'?`<input type="text" class="eaQOrigin" data-ci="${ci}" data-qi="${qi}" value="${esc(q.origin||'')}" placeholder="원문 출처 (예: 4과 대화문, 26년 고1 3월 모고 38번)" style="width:100%;margin-top:4px;padding:5px 8px;border:1px dashed var(--line);border-radius:6px;font-size:.78rem;font-family:inherit">`:''}</td>
           <td style="padding:4px"><input type="number" class="eaQPoints" data-ci="${ci}" data-qi="${qi}" value="${esc(q.points||'')}" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:6px;text-align:center;font-family:inherit"></td>
           <td style="padding:4px"><select class="eaQDiff" data-ci="${ci}" data-qi="${qi}" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:6px;font-family:inherit">
             <option value="">선택</option>
@@ -10451,7 +10456,7 @@ function eaReportBody(entry, opts){
         </tr></thead>
         ${eaMergedCatTableHTML(cats, (cat,q)=>`
           <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line);font-weight:700">${esc(q.no||'')}</td>
-          <td style="padding:8px;border-bottom:1px solid var(--line)">${eaQuestionHTML(q.question)}</td>
+          <td style="padding:8px;border-bottom:1px solid var(--line)">${eaQuestionHTML(q.question)}${eaOriginHTML(q)}</td>
           <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line)">${esc(q.points||'')}</td>
           <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line);font-weight:700">${eaDiffText(q.difficulty)}</td>
         `)}
@@ -10473,7 +10478,7 @@ function eaReportBody(entry, opts){
           </tr></thead><tbody>
           ${(cat.questions||[]).map(q=>`<tr>
             <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line);font-weight:700">${esc(q.no||'')}</td>
-            <td style="padding:8px;border-bottom:1px solid var(--line)">${eaQuestionHTML(q.question)}</td>
+            <td style="padding:8px;border-bottom:1px solid var(--line)">${eaQuestionHTML(q.question)}${eaOriginHTML(q)}</td>
             <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line)">${esc(q.points||'')}</td>
             <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line)">${q.difficulty?`<span style="display:inline-block;padding:2px 10px;border-radius:999px;background:${EA_DIFF_COLOR[q.difficulty]||'#dfe3ea'};color:${eaTextOn(EA_DIFF_COLOR[q.difficulty]||'#dfe3ea')};font-size:.74rem;font-weight:800">${esc(q.difficulty)}</span>`:''}</td>
           </tr>`).join('')}
@@ -10578,7 +10583,7 @@ function eaStudentDetailHTML(entry, studentId, ac){
             return `<tr style="${bg}">
               <td style="padding:8px;text-align:center;font-weight:800;${isLast?'border-bottom:1px solid var(--line);':''}border-right:1.5px solid var(--line);vertical-align:middle;background:${catBg}">${qi===0?esc(cat.name):''}</td>
               <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line);font-weight:700">${esc(q.no||'')}</td>
-              <td style="padding:8px;border-bottom:1px solid var(--line)">${eaQuestionHTML(q.question)}</td>
+              <td style="padding:8px;border-bottom:1px solid var(--line)">${eaQuestionHTML(q.question)}${eaOriginHTML(q)}</td>
               <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line)">${esc(q.points||'')}</td>
               <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line)">${resultHTML}</td>
             </tr>`;
@@ -10605,7 +10610,7 @@ function eaStudentDetailHTML(entry, studentId, ac){
             const {resultHTML,rowBg}=gradeResultHTML(cat,q);
             return `<tr style="${rowBg}">
             <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line);font-weight:700">${esc(q.no||'')}</td>
-            <td style="padding:8px;border-bottom:1px solid var(--line)">${eaQuestionHTML(q.question)}</td>
+            <td style="padding:8px;border-bottom:1px solid var(--line)">${eaQuestionHTML(q.question)}${eaOriginHTML(q)}</td>
             <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line)">${esc(q.points||'')}</td>
             <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line)">${resultHTML}</td>
           </tr>`;
@@ -10639,7 +10644,7 @@ function eaStudentDetailHTML(entry, studentId, ac){
                 return `<tr style="background:${rowBg}">
                 <td style="padding:8px;text-align:center;font-weight:800;${isLast?'border-bottom:1px solid var(--line);':''}border-right:1.5px solid var(--line);vertical-align:middle;background:${catBg}">${qi===0?esc(label):''}</td>
                 <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line);font-weight:700">${esc(q.no||'')}</td>
-                <td style="padding:8px;border-bottom:1px solid var(--line)">${eaQuestionHTML(q.question)}</td>
+                <td style="padding:8px;border-bottom:1px solid var(--line)">${eaQuestionHTML(q.question)}${eaOriginHTML(q)}</td>
                 <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line)">${esc(q.points||'')}</td>
                 <td style="padding:8px;text-align:center;border-bottom:1px solid var(--line);font-weight:700">${eaDiffText(q.difficulty)}</td>
               </tr>`;
@@ -10745,10 +10750,12 @@ function eaMockExamChartHTML(series){
 function eaMockExamChartFor(entry, studentId){
   const s=(entry.students||[]).find(x=>x.id===studentId); if(!s) return '';
   const rosterStu=eaFindRosterStudentByName(s.name); if(!rosterStu) return '';
-  const series=mockExamSeriesFor(rosterStu.id);
+  let series=mockExamSeriesFor(rosterStu.id);
+  let lastIdx=-1; series.forEach((r,i)=>{ if(r.score!=null||r.absent) lastIdx=i; });
+  series=series.slice(0,Math.max(lastIdx+1,1));
   if(!series.some(r=>r.score!=null || r.absent)) return '';
   return `<div style="border:1.5px solid var(--line);border-radius:10px;margin-top:4px;page-break-inside:avoid;break-inside:avoid">
-    <div style="background:#7c3aed;color:#fff;padding:8px 14px;font-weight:800;font-size:.86rem">🎓 모의고사 회차별 점수 추이 <span style="font-weight:400;font-size:.76rem">(단어시험 기록 연동 · 1~10회차)</span></div>
+    <div style="background:#7c3aed;color:#fff;padding:8px 14px;font-weight:800;font-size:.86rem">🎓 모의고사 회차별 점수 추이 <span style="font-weight:400;font-size:.76rem">(단어시험 기록 연동 · 입력된 회차까지)</span></div>
     <div style="padding:14px;overflow-x:auto">${eaMockExamChartHTML(series)}</div>
   </div>`;
 }
@@ -10873,7 +10880,7 @@ function bindEaForm(){
     const oldQuestions=cat.questions||[];
     if(newCount<oldQuestions.length){
       const removed=oldQuestions.slice(newCount);
-      const hasContent=removed.some(q=>q.question||q.no||q.points||q.difficulty);
+      const hasContent=removed.some(q=>q.question||q.origin||q.no||q.points||q.difficulty);
       if(hasContent && !confirm(`문항수를 줄이면 이미 입력된 문항 ${removed.length}개가 사라집니다. 계속할까요?`)){ render(true); return; }
     }
     eaResizeCategory(cat, newCount);
@@ -10881,7 +10888,7 @@ function bindEaForm(){
   });
   v.querySelectorAll('.eaCatDelBtn').forEach(btn=>btn.onclick=()=>{
     const ci=Number(btn.dataset.ci); const cat=d.categories[ci];
-    const hasContent=(cat.questions||[]).some(q=>q.question||q.no||q.points||q.difficulty);
+    const hasContent=(cat.questions||[]).some(q=>q.question||q.origin||q.no||q.points||q.difficulty);
     if(hasContent && !confirm(`"${cat.name}" 카테고리를 삭제하면 입력된 문항도 함께 사라집니다. 계속할까요?`)) return;
     d.categories.splice(ci,1);
     render(true);
@@ -10899,6 +10906,7 @@ function bindEaForm(){
       if(el.innerHTML!==clean) el.innerHTML=clean;
     };
   });
+  v.querySelectorAll('.eaQOrigin').forEach(inp=>inp.onchange=()=>{ d.categories[Number(inp.dataset.ci)].questions[Number(inp.dataset.qi)].origin=inp.value.trim(); });
   v.querySelectorAll('.eaQPoints').forEach(inp=>inp.onchange=()=>{ d.categories[Number(inp.dataset.ci)].questions[Number(inp.dataset.qi)].points=inp.value; render(true); });
   v.querySelectorAll('.eaQDiff').forEach(sel=>sel.onchange=()=>{ d.categories[Number(sel.dataset.ci)].questions[Number(sel.dataset.qi)].difficulty=sel.value; });
   v.querySelectorAll('.eaSrcLabel').forEach(inp=>inp.onchange=()=>{ d.categories[Number(inp.dataset.ci)].sources[Number(inp.dataset.si)].label=inp.value; render(true); });
@@ -11559,8 +11567,10 @@ function ttgParseSheet(academy, wb, sheetName, examOnly){
     const ws=wb.getWorksheet(sheetName);
     const colorMap={}, codeMap={};
     store.teachers[academy].forEach(t=>{
-      if(t.ttColor) colorMap[t.ttColor.replace('#','FF').toUpperCase()]=t.name;
-      if(t.ttCode) codeMap[t.ttCode.trim().toUpperCase()]=t.name;
+      const dTt=ttgDefaultTt(academy,t);
+      const tc=t.ttColor||dTt.color, tcode=t.ttCode||dTt.code;
+      if(tc) colorMap[tc.replace('#','FF').toUpperCase()]=t.name;
+      if(tcode) codeMap[tcode.trim().toUpperCase()]=t.name;
     });
     const {results, unresolved}=ttgParseWorkbook(ws, colorMap, codeMap);
     if(!results.length){ if(statusEl) statusEl.textContent='시간표 형식을 인식하지 못했습니다. (시트: '+sheetName+')'; return; }
@@ -11591,14 +11601,21 @@ function ttgParseSheet(academy, wb, sheetName, examOnly){
   }
 }
 /* ---------- 그리드 시간표 엑셀 다운로드 (현재 반·교재 자료 기준으로 업로드와 같은 형식으로 내보내기) ---------- */
+// 선생님 목록이 초기화돼 시간표 코드·색이 비어 있어도 엑셀 다운로드·업로드가 되도록, 이베스트 기본 선생님은 이름으로 기본 코드·색을 보충한다(저장된 값이 있으면 그걸 우선)
+const TTG_DEFAULT_TT={alice:['AL','#0000FF'], sunny:['SU','#FFFF00'], joy:['JY','#00FFFF'], may:['MA','#00FF00'], matilda:['MAT','#8328A8'], daniel:['DN','#ED7E23'], raina:['RN','#00B0F0']};
+function ttgDefaultTt(academy, t){
+  const d=(academy==='ebest' && t && t.name) ? TTG_DEFAULT_TT[String(t.name).trim().toLowerCase()] : null;
+  return d ? {code:d[0], color:d[1]} : {code:'', color:''};
+}
 function ttgTeacherCode(academy, teacherName){
   if(!teacherName) return '';
   const t=(store.teachers[academy]||[]).find(x=>x.name===teacherName);
-  return (t && t.ttCode) ? t.ttCode.trim() : teacherName;
+  const code=(t && t.ttCode) || ttgDefaultTt(academy, t||{name:teacherName}).code;
+  return code ? String(code).trim() : teacherName;
 }
 function ttgTeacherColorHex(academy, teacherName){
   const t=(store.teachers[academy]||[]).find(x=>x.name===teacherName);
-  return (t && t.ttColor) ? t.ttColor : null;
+  return ((t && t.ttColor) || ttgDefaultTt(academy, t||{name:teacherName}).color) || null;
 }
 function ttgIsDarkColor(hex){
   if(!hex) return false;
@@ -11668,12 +11685,13 @@ async function exportTtGrid(academy){
         (store.teachers[academy]||[]).forEach((t,i)=>{
           const r=headRow+1+i;
           const nmCell=ws.getCell(r,legendCol); nmCell.value=t.name; nmCell.alignment=CENTER; bordered(nmCell);
-          if(t.ttColor){
-            const hex='FF'+t.ttColor.replace('#','').toUpperCase();
+          const tColor=t.ttColor||ttgDefaultTt(academy,t).color;
+          if(tColor){
+            const hex='FF'+tColor.replace('#','').toUpperCase();
             nmCell.fill={type:'pattern', pattern:'solid', fgColor:{argb:hex}};
-            nmCell.font={color:{argb: ttgIsDarkColor(t.ttColor) ? 'FFFFFFFF' : 'FF000000'}};
+            nmCell.font={color:{argb: ttgIsDarkColor(tColor) ? 'FFFFFFFF' : 'FF000000'}};
           }
-          const codeCell=ws.getCell(r,legendCol+1); codeCell.value=t.ttCode||''; codeCell.alignment=CENTER; bordered(codeCell);
+          const codeCell=ws.getCell(r,legendCol+1); codeCell.value=t.ttCode||ttgDefaultTt(academy,t).code||''; codeCell.alignment=CENTER; bordered(codeCell);
         });
         legendPlaced=true;
       }
