@@ -5647,10 +5647,12 @@ function renderToday(list){
       ${alertList.map(x=>`<div class="rowitem" style="align-items:flex-start"><span class="key">${esc(x.student)} ${MODE==='all'?bdg(x.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(x.className)}</span></span><span class="val" style="display:flex;gap:8px;align-items:flex-start"><span>${esc(x.note)}</span><button class="btn small" data-rsalertdone="${x.id}" style="white-space:nowrap">✔ 해제</button></span></div>`).join('')}
     </div></div>`:'';
   const stayList=[]; const seenStay=new Set(); const seenStayName=new Set();
-  const collectStay=(cl)=>{
+  const collectStay=(cl, borrowFrom)=>{
     const k=ckey(cl);
     const recs=stay[k]||{};
-    const daySubjNamesForCl=daySubjectNames(cl, wd);
+    let daySubjNamesForCl=daySubjectNames(cl, wd);
+    if(!daySubjNamesForCl.length && borrowFrom) daySubjNamesForCl=daySubjectNames(borrowFrom, wd); // 합반 상대 반은 메인 반 과목을 빌려 표시
+    const subjLabelAll=daySubjNamesForCl.length?daySubjNamesForCl.join(', '):null;
     Object.keys(recs).forEach(sname=>{
       const rec=recs[sname];
       if(!rec || !rec.stay) return;
@@ -5662,10 +5664,10 @@ function renderToday(list){
       if(bySubjEntries.length){
         subjects = bySubjEntries.map(([sub,memo])=>({subj:subjKeyDecode(sub), memo, done:!!doneSubjects[sub]}));
       } else if(rec.memo){
-        const subjLabel = daySubjNamesForCl.length===1 ? daySubjNamesForCl[0] : cl.name;
+        const subjLabel = subjLabelAll || cl.name;
         subjects = [{subj:subjLabel, memo:rec.memo, done:!!rec.doneDate}];
       } else {
-        subjects = [{subj:null, memo:'', done:!!rec.doneDate}];
+        subjects = [{subj:subjLabelAll, memo:'', done:!!rec.doneDate}];
       }
       if(!subjects.some(s=>!s.done)) return; // 전부 완료 처리됐으면 목록에서 뺀다 (과목별 완료 반영)
       seenStay.add(dedupKey);
@@ -5677,7 +5679,7 @@ function renderToday(list){
     collectStay(c);
     // 합반 상대 반 학생도 같이 모아준다 (합반 카드 안에서 체크한 "오늘 남기"가 목록에서 누락되지 않도록)
     const partner=mergedPartnerClass(c);
-    if(partner && (classMeets(partner, wd) || !(partner.subjects||[]).some(x=>subjOnDay(x,wd))) && partner.students && partner.students.length) collectStay(partner);
+    if(partner && (classMeets(partner, wd) || !(partner.subjects||[]).some(x=>subjOnDay(x,wd))) && partner.students && partner.students.length) collectStay(partner, c);
   });
  // 재시험 대상 학생도 "오늘 남는 학생"에 자동으로 합쳐서 보여준다 (재시험은 보통 남아서 다시 봐야 하므로)
   store.wordTests.filter(r=>r.date===state.date && r.retestNeeded && !r.retestCompleted && !r.absent).forEach(r=>{
