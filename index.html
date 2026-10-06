@@ -1948,6 +1948,10 @@ function parseWork(text, lt){
   else if(/그제|그저께/.test(t)){ const d=new Date(todayISO()+'T00:00:00'); d.setDate(d.getDate()-2); date=ymd(d); }
   const dm=t.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
   if(dm) date=`${date.slice(0,4)}-${String(+dm[1]).padStart(2,'0')}-${String(+dm[2]).padStart(2,'0')}`;
+  // 🚫 "모든 반 모든 학생 숙제 없음" 처럼 전체 대상 지시면 반·학생을 고르게 하지 않고 전부에 한 번에 적용한다
+  if(/숙제/.test(t) && /(없음|없는|없다|없게|없이|안\s*내|면제|제외)/.test(t) && /(모든|전체|전부|다\s*같이|다들)/.test(t)){
+    return {type:'nohwall', date, content:text.trim(), cls:null, student:'', needClass:false, needStudent:false, warn:'', status:'출', hwDone:true};
+  }
   // 학생 (명단 대조)
   let stuHit=null; const stuCands=[];
   cls.forEach(c=>(c.students||[]).forEach(s=>{
@@ -1955,7 +1959,7 @@ function parseWork(text, lt){
     const enOk = en.length>=3 && nt.includes(norm(en));
     const koOk = ko.length>=2 && t.includes(ko);
     const bare = !s.includes('(') && s.length>=2 && t.includes(s);
-    if(enOk||koOk||bare) stuCands.push({c,s});
+    if(enOk||koOk||bare) stuCands.push({c,s,tok:enOk?norm(en):(koOk?ko:s)});
   }));
   // 반 (이름 토큰)
   let clsHit=null;
@@ -1969,6 +1973,20 @@ function parseWork(text, lt){
       warn=`${stuHit.s} 학생은 ${stuHit.c.name} 소속이라 반을 ${stuHit.c.name}(으)로 잡았어요. 아니면 아래에서 바꿔주세요.`;
       clsHit=stuHit.c;
     } else clsHit=stuHit.c;
+  }
+  // 👥 학생이 2명 이상 언급되면(같은 반 · 합반) 전원을 한꺼번에 처리 대상으로 잡는다
+  let multi=null;
+  if(stuHit){
+    const prim=clsHit||stuHit.c; const partner=mergedPartnerClass(prim), mainOf=mergedMainClass(prim);
+    const near=c=>c.name===prim.name || (partner&&c.name===partner.name) || (mainOf&&c.name===mainOf.name);
+    const byTok={}; stuCands.forEach(x=>{ (byTok[x.tok]=byTok[x.tok]||[]).push(x); });
+    const picked=[]; const seen=new Set(); let dupWarn=false;
+    Object.values(byTok).forEach(list=>{
+      const pick=list.find(x=>x.c.name===prim.name)||list.find(x=>near(x.c))||list[0];
+      if(list.length>1 && !list.some(x=>near(x.c))) dupWarn=true;
+      const key=pick.c.name+'|'+pick.s; if(!seen.has(key) && near(pick.c)){ seen.add(key); picked.push({cls:pick.c, s:pick.s, on:true}); }
+    });
+    if(picked.length>1){ multi=picked; clsHit=prim; stuHit={c:prim, s:picked[0].s}; if(dupWarn) warn=(warn?warn+' ':'')+'같은 이름의 다른 반 학생이 있어요 — 학생 목록을 꼭 확인해주세요.'; }
   }
   // 유형
   let type = state.aiType!=='auto' ? state.aiType : null;
@@ -1984,10 +2002,31 @@ function parseWork(text, lt){
   if(/결석/.test(t)) status='결'; else if(/지각/.test(t)) status='지';
   let hwDone=true;
   if(/안\s*했|안했|미제출|못\s*했|안\s*해|빼먹/.test(t)) hwDone=false;
-  return {type, date, cls:clsHit, student:stuHit?stuHit.s:'', status, hwDone, content:text.trim(), warn,
+  const allClass=!!(clsHit && !stuHit && /(전원|반\s*전체|모두|전부|다들|애들\s*다|학생\s*전체|전체\s*학생)/.test(t)); // "JB3 전원 …" — 그 반 학생 전부에게 적용
+  return {type, date, multi, all:allClass, cls:clsHit, student:stuHit?stuHit.s:'', status, hwDone, content:text.trim(), warn,
           needClass:!clsHit, needStudent:!stuHit && (type==='consult'||type==='attend'||type==='hw')};
 }
+function applyNoHwAll(p, lt){
+  const wd=wdOf(p.date); let nClass=0, nTag=0;
+  aiClasses(lt).forEach(c=>{
+    if(!classMeets(c, wd)) return;
+    const k=ckey(c); const hw=hwFor(p.date); hw[k]=hw[k]||{}; hw[k]['_assign']=hw[k]['_assign']||{};
+    const m=hw[k]['_assign'].noHw=hw[k]['_assign'].noHw||{};
+    m[noHwStoreKey('')]=true; nTag++;
+    daySubjectNames(c, wd).forEach(sn=>{ m[noHwStoreKey(sn)]=true; nTag++; });
+    nClass++;
+  });
+  store.ailog.push({ts:Date.now(), who:lt.a+'|'+lt.i, type:'hw', cls:'전체 '+nClass+'개 반', student:'', date:p.date, text:p.content});
+  if(store.ailog.length>40) store.ailog=store.ailog.slice(-40);
+  save();
+  return nClass;
+}
 function applyWork(p, lt){
+  if(p.multi && p.multi.length>1){
+    const sel=p.multi.filter(m=>m.on!==false); let w='';
+    sel.forEach(m=>{ w=applyWork(Object.assign({}, p, {cls:m.cls, student:m.s, multi:null, all:false}), lt); });
+    return w+` (${sel.length}명)`;
+  }
   const k=p.cls.academy+'|'+p.cls.name;
   let where='';
   if(p.type==='consult'){
@@ -2008,7 +2047,18 @@ function applyWork(p, lt){
   } else if(p.type==='attend'){
     const at=atFor(p.date); at[k]=at[k]||{};
     if(p.student) at[k][p.student]=p.status;
+    else if(p.all){ const keys=attKeysFor(p.cls, wdOf(p.date)); activeStudentsForDate(p.cls, p.date).forEach(sn=>{ (keys.length?keys:[{key:k}]).forEach(({key})=>{ at[key]=at[key]||{}; at[key][sn]=p.status; }); }); }
     where='[오늘 수업] · [출결] 탭';
+  } else if(p.type==='hw' && p.all && !p.student){
+    const hw=hwFor(p.date); hw[k]=hw[k]||{};
+    if(/(없음|없는|없다|없게|없이|면제|제외)/.test(p.content) && !p.hwDoneExplicit){
+      hw[k]['_assign']=hw[k]['_assign']||{}; const m=hw[k]['_assign'].noHw=hw[k]['_assign'].noHw||{};
+      m[noHwStoreKey('')]=true; daySubjectNames(p.cls, wdOf(p.date)).forEach(sn=>{ m[noHwStoreKey(sn)]=true; });
+      where='[오늘 수업] · 이 반 전체 숙제없음';
+    } else {
+      activeStudentsForDate(p.cls, p.date).forEach(sn=>{ hw[k][sn]=hw[k][sn]||{}; hw[k][sn].done=p.hwDone; });
+      where='[오늘 수업] · 이 반 전원 숙제 체크';
+    }
   } else if(p.type==='hw'){
     const hw=hwFor(p.date); hw[k]=hw[k]||{};
     const key=p.student||'_class';
@@ -2039,7 +2089,13 @@ function renderAI(){
   let log=myLog.map(x=>`<div class="aim user">${esc(x.text)}</div>
     <div class="aim bot"><span class="ok">✔ 저장됨</span> — ${esc(AI_TYPES[x.type])} · ${esc(x.cls)}${x.student?' · '+esc(x.student):''} · ${esc(x.date)}</div>`).join('');
   let confirm='';
-  if(p && p.type==='exam'){
+  if(p && p.type==='nohwall'){
+    const wd0=wdOf(p.date); const cc=aiClasses(lt).filter(c=>classMeets(c, wd0));
+    confirm=`<div class="aiconfirm" style="border-color:${lt.t.color}">
+      <div class="t">🚫 ${esc(p.date)} (${esc(wd0)}) 숙제 없음으로 처리할까요?<div style="font-weight:400;color:var(--sub);font-size:.78rem;margin-top:4px">그날 수업이 있는 ${esc(lt.a==='ebest'?'이베스트':'아이콘')} 전체 ${cc.length}개 반의 모든 과목에 "숙제없음"을 표시해서, 그날 숙제 체크 대상에서 빼고 숙제 체크표에도 '-'로 나오게 해요. (반·학생을 고를 필요 없이 한 번에 적용돼요)</div></div>
+      <div class="aigrid"><label>날짜</label><input type="date" id="aiNHD" value="${esc(p.date)}"></div>
+      <div style="display:flex;gap:8px"><button class="btn primary" id="aiNHSave" style="background:${lt.t.color};border-color:${lt.t.color}">전체 적용</button><button class="btn" id="aiCancel">취소</button></div></div>`;
+  } else if(p && p.type==='exam'){
     const e=p.entry;
     const itemsHTML=(p.items||[]).map((it,ii)=>{
       const candHTML=(it.cands||[]).map(c=>{
@@ -2061,14 +2117,14 @@ function renderAI(){
       <div style="display:flex;gap:8px"><button class="btn primary" id="aiXSave" style="background:${lt.t.color};border-color:${lt.t.color}">입력</button><button class="btn" id="aiCancel">취소</button></div></div>`;
   } else if(p){
     const cls=aiClasses(lt);
-    const stuOpts = p.cls ? ['<option value="">(학생 없음 · 반 전체)</option>'].concat((p.cls.students||[]).map(s=>`<option ${s===p.student?'selected':''}>${esc(s)}</option>`)).join('') : '<option value="">반을 먼저 선택</option>';
+    const stuOpts = p.cls ? ['<option value="">'+(p.all?'(반 전원에게 적용)':'(학생 없음 · 반 전체)')+'</option>'].concat((p.cls.students||[]).map(s=>`<option ${s===p.student?'selected':''}>${esc(s)}</option>`)).join('') : '<option value="">반을 먼저 선택</option>';
     confirm=`<div class="aiconfirm" style="border-color:${lt.t.color}">
       <div class="t">이렇게 기록할까요?${p.warn?`<div class="warn" style="font-weight:400;color:var(--warn);font-size:.76rem;margin-top:3px">⚠ ${esc(p.warn)}</div>`:''}</div>
       <div class="aigrid">
         <label>업무</label><select id="aiT">${Object.entries(AI_TYPES).map(([k,v])=>`<option value="${k}" ${p.type===k?'selected':''}>${v}</option>`).join('')}</select>
         <label>날짜</label><input type="date" id="aiD" value="${p.date}">
         <label>반</label><select id="aiC"><option value="">반 선택…</option>${cls.map(c=>`<option ${p.cls&&c.name===p.cls.name?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
-        <label>학생</label><select id="aiS">${stuOpts}</select>
+        <label>학생</label>${p.multi?`<div style="display:flex;flex-direction:column;gap:3px">${p.multi.map((m,i)=>`<label style="font-size:.82rem;display:flex;gap:6px;align-items:center"><input type="checkbox" class="aiMulti" data-i="${i}" ${m.on!==false?'checked':''}> <b>${esc(m.s)}</b> <span style="color:var(--sub);font-size:.74rem">${esc(m.cls.name)}</span></label>`).join('')}</div>`:`<select id="aiS">${stuOpts}</select>`}
       </div>
       <textarea id="aiM">${esc(p.content)}</textarea> 
       <div style="display:flex;gap:8px">
@@ -2102,6 +2158,12 @@ function bindAI(){
   };
   const cP=state.aiPending;
   const sel=id=>v.querySelector(id);
+  if(cP && cP.type==='nohwall'){
+    const nb=sel('#aiNHSave');
+    if(nb) nb.onclick=()=>{ const p=state.aiPending; const d=sel('#aiNHD'); if(d&&d.value) p.date=d.value; applyNoHwAll(p, lt); state.aiPending=null; render(true); };
+    const nc=sel('#aiCancel'); if(nc) nc.onclick=()=>{ state.aiPending=null; render(true); };
+    return;
+  }
   if(cP && cP.type==='exam'){
     const xs=sel('#aiXSave');
     if(xs) xs.onclick=()=>{
@@ -2124,6 +2186,7 @@ function bindAI(){
       render(true);
     };
     const aiS=sel('#aiS'); if(aiS) aiS.onchange=()=>{ state.aiPending.student=aiS.value; };
+    v.querySelectorAll('.aiMulti').forEach(cb=>cb.onchange=()=>{ state.aiPending.multi[Number(cb.dataset.i)].on=cb.checked; });
     const aiT=sel('#aiT'); if(aiT) aiT.onchange=()=>{ state.aiPending.type=aiT.value; };
     const aiD=sel('#aiD'); if(aiD) aiD.onchange=()=>{ state.aiPending.date=aiD.value||todayISO(); };
     const aiM=sel('#aiM'); if(aiM) aiM.onchange=()=>{ state.aiPending.content=aiM.value; };
@@ -2132,7 +2195,7 @@ function bindAI(){
       const p=state.aiPending;
       if(!p.cls){ alert('반을 선택해주세요.'); return; }
       const m=v.querySelector('#aiM'); if(m) p.content=m.value;
-      const s=v.querySelector('#aiS'); if(s) p.student=s.value;
+      const s=v.querySelector('#aiS'); if(s && !p.multi) p.student=s.value;
       const d=v.querySelector('#aiD'); if(d&&d.value) p.date=d.value;
       const t=v.querySelector('#aiT'); if(t) p.type=t.value;
       const where=applyWork(p, lt);
