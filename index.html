@@ -11713,6 +11713,30 @@ function ttgFindZones(ws, headerRow, maxCol){
     return { timeCol, classStart: cs, classEnd: isLast ? ttgTrimTrailingZone(ws,headerRow,cs,maxCol) : (starts[i+1]-1) };
   });
 }
+// 15분짜리 회색 줄(단어시험 줄) 공통 규칙 — 엑셀·이미지 업로드 모두 사용.
+// 칸 글자는 반드시 "숫자(코드)"(코드는 2글자 이상) 또는 "어학실". 공백·전각 괄호는 바로잡고, 그 외 글자(RECESS 등)는 버린다(null).
+// "어학실"은 강의실=어학실, 담당=환경설정의 어학실 기본 담당인 단어시험으로 등록한다(langWT).
+function ttgNormWordSlot(tr, raw){
+  const [h1,m1]=tr.start.split(':').map(Number), [h2,m2]=tr.end.split(':').map(Number);
+  let dur=(h2*60+m2)-(h1*60+m1); if(dur<=0) dur+=12*60;
+  if(dur>15) return {text:raw, langWT:false};
+  const t=String(raw||'').replace(/\s+/g,'').replace(/（/g,'(').replace(/）/g,')');
+  if(/^\d+\([A-Za-z가-힣]{2,}\)$/.test(t)) return {text:t, langWT:false};
+  if(t==='어학실') return {text:'어학실', langWT:true};
+  return null;
+}
+// 등록된 반과 한 글자만 다른 이름(오타·오인식)은 그 반으로 교정한다(후보가 하나일 때만). 교정한 내역을 돌려준다.
+function ttgSnapNames(results, known){
+  const fixed={};
+  results.forEach(x=>{
+    const nm=x.className;
+    if(known.includes(nm) || nm.length<3) return;
+    if(fixed[nm]){ x.className=fixed[nm]; return; }
+    const near=known.filter(k=>k.length>=3 && ttgLev(k.toLowerCase(),nm.toLowerCase())===1);
+    if(near.length===1){ fixed[nm]=near[0]; x.className=near[0]; }
+  });
+  return fixed;
+}
 function ttgParseWorkbook(ws, colorMap, codeMap){
   const maxRow=ws.rowCount, maxCol=ws.columnCount;
   const results=[], unresolved=[];
@@ -11742,8 +11766,9 @@ function ttgParseWorkbook(ws, colorMap, codeMap){
           for(let c=z.classStart;c<=z.classEnd;c++){
             if(!classNameOf[c]) continue;
             const cell=ws.getCell(rr,c);
-            const cellText=ttgCellText(cell.value);
-            const parsed=ttgParseCell(cellText);
+            const slot=ttgNormWordSlot(tr, ttgCellText(cell.value)); if(!slot) continue;
+            const cellText=slot.text;
+            const parsed=slot.langWT ? {subject:'단어시험', room:'어학실', code:null, isWordTest:true} : ttgParseCell(cellText);
             if(!parsed) continue;
             let teacher=null;
             if(parsed.code){
@@ -11803,11 +11828,30 @@ const TTG_KEY_SEP='␟'; // 반이름과 요일을 합쳐 매칭 대상 선택�
 function ttgKey(nm, day){ return nm+TTG_KEY_SEP+day; }
 // 과목명이 완전히 똑같지 않아도(띄어쓰기·오타·약간의 표기 차이 등) 한쪽 이름이 다른 쪽을 포함하면 "같은 과목"으로 보고
 // 예전에 적어둔 담당·교재·과제·진도를 이어받는다 — 그리드 시간표 업로드마다 매번 새로 적어야 하는 번거로움을 줄이기 위함.
+// 과목 약어 묶음 — 같은 묶음 안의 이름은 같은 과목으로 본다(대소문자·띄어쓰기는 norm에서 이미 무시).
+// 새 과목 약어가 생기면 여기에 한 줄 추가하면 된다.
+const SUBJ_ALIAS_GROUPS=[['gr','grammar'],['rc','reading'],['sp','speak','speaking'],['wr','write','writing']];
+function subjCanon(x){
+  const n=norm(x);
+  const i=SUBJ_ALIAS_GROUPS.findIndex(g=>g.includes(n));
+  return i>=0 ? '#'+i : n;
+}
+// 약어 추론: 영문 2~3글자 약어가 긴 이름의 "첫 글자가 같고 글자 순서대로 들어있는" 글자들이면 같은 과목으로 본다(예: sp→speak, gr→grammar). 위 묶음에 이미 속한 이름은 묶음 기준만 따른다.
+function subjAbbrevMatch(na, nb){
+  const sh=na.length<=nb.length?na:nb, lo=na.length<=nb.length?nb:na;
+  if(sh.length<2||sh.length>3||lo.length<4||!/^[a-z]+$/.test(sh)||!/^[a-z]+$/.test(lo)||sh[0]!==lo[0]) return false;
+  if(SUBJ_ALIAS_GROUPS.some(g=>g.includes(sh)||g.includes(lo))) return false;
+  let i=0; for(const ch of lo){ if(ch===sh[i]) i++; if(i===sh.length) return true; }
+  return false;
+}
 function subjSimilar(a,b){
   const na=norm(a), nb=norm(b);
   if(!na||!nb) return false;
   if(na===nb) return true;
-  return na.includes(nb) || nb.includes(na);
+  if(subjCanon(a)===subjCanon(b)) return true;
+  if(SUBJ_ALIAS_GROUPS.some(g=>g.includes(na)) && SUBJ_ALIAS_GROUPS.some(g=>g.includes(nb))) return false; // 서로 다른 묶음(예: gr vs rc)은 절대 같은 과목이 아니다
+  if(na.includes(nb) || nb.includes(na)) return true;
+  return subjAbbrevMatch(na, nb);
 }
 function ttgAutoMatchClasses(nm, existing){
   // 1) 원본 이름과 완전히 똑같은 반이 실제로 있으면(이름 자체를 합반명으로 쓰는 경우) 그것만 사용
@@ -11840,18 +11884,19 @@ function ttgParseSheet(academy, wb, sheetName, examOnly){
     if(ttgLangTeacher){
       results.forEach(x=>{
         const su=String(x.subject||'').trim().toUpperCase();
-        if((su==='L/C'||su==='LC'||su==='IBT') && !String(x.teacher||'').trim()) x.teacher=ttgLangTeacher;
+        if((su==='L/C'||su==='LC'||su==='IBT'||(x.isWordTest&&x.room==='어학실')) && !String(x.teacher||'').trim()) x.teacher=ttgLangTeacher;
       });
     }
     // 반명 자동 매칭 (해당 학원 · 이번 달 기존 반과 이름이 정확히 같으면 자동 연결). 한 칸에 여러 반이 합반으로 적혀있을 수도 있고,
     // 같은 이름이라도 요일마다 합반 여부가 다를 수 있어서(예: 금요일만 합반) — 반영할 반은 "이름+요일" 단위로 각각 따로 고를 수 있게 한다.
     const existing=ttgExistingClasses(academy, examOnly);
+    const fixedNamesX=ttgSnapNames(results, [...new Set(existing.map(c=>String(c.name||'').trim()).filter(Boolean))]);
     const rawNames=[...new Set(results.map(x=>x.className))];
     const classMap={};
     results.forEach(x=>{ const k=ttgKey(x.className,x.day); if(!(k in classMap)) classMap[k]=ttgAutoMatchClasses(x.className, existing); });
-    state.ttGrid={academy, sheetName, results, unresolved, classMap, examOnly:!!examOnly};
+    state.ttGrid={academy, sheetName, results, unresolved, classMap, examOnly:!!examOnly, canReplace:!examOnly, replaceAll:!examOnly};
     state.ttGridWb=null;
-    if(statusEl) statusEl.textContent=`분석 완료 (시트: ${sheetName}) — ${results.length}개 항목, 반 ${rawNames.length}개 (아래에서 확인 후 적용하세요)`;
+    if(statusEl) statusEl.textContent=`분석 완료 (시트: ${sheetName}) — ${results.length}개 항목, 반 ${rawNames.length}개${Object.keys(fixedNamesX).length?` (반 이름 자동 교정: ${Object.keys(fixedNamesX).map(k=>k+'→'+fixedNamesX[k]).join(', ')})`:''} (아래에서 확인 후 적용하세요)`;
     render(true);
   }catch(e){
     if(statusEl) statusEl.textContent='오류: '+e.message;
@@ -11962,7 +12007,7 @@ function ttgImgPrompt(legend, knownClasses, tileN, fixedDay){
 - 시간은 그 행의 시간 열에 적힌 그대로 "1:40~2:20" 형태로 씁니다.
 - 반 이름 헤더 칸이 두 열에 걸쳐 합쳐져 있으면(예: JM3, JF3, 안화중3A가 두 열을 차지) 그 이름 하나가 반 하나입니다 — 없는 이름(JM4 등)을 만들지 마세요. 수업 칸이 여러 열에 걸쳐 합쳐진 경우, 그 열들에 서로 다른 이름의 반 헤더가 있으면 그 반마다 각각 한 항목씩, 헤더가 하나뿐이면 한 항목만 만듭니다.
 - 글자가 없는 칸, RECESS 줄은 제외합니다. 색이 없는 글자 칸(L/C, EC, 모의고사, 어학실 등)은 칸 글자 그대로 포함하되 담당은 ""로 둡니다.
-- 회색 줄의 "3(RN)", "1(MAT)", "6(DN)" 같은 괄호 표기는 글자 그대로 쓰고 담당은 ""로 둡니다.
+- 회색 줄(약 15분, 예: 7:25~7:40)은 단어시험 줄이며 칸 글자는 반드시 "숫자(코드)" 형태(코드는 2~3글자 영문, 예: 3(RN), 1(MAT), 6(DN); 한 글자 코드는 없음) 아니면 "어학실" 둘 중 하나입니다. "어학실" 칸도 빠뜨리지 말고 글자 그대로 포함하고 담당은 ""로 둡니다.
 - 색이 칠해진 수업 칸의 담당은 아래 색상표에서 칸 배경색과 가장 가까운 선생님 이름 하나(목록에 적힌 표기 그대로)로 씁니다. 배경이 흰색/무색이면 담당과 배경색 모두 "". 담당 이름을 확신할 수 없어도 배경색 RGB는 반드시 눈에 보이는 색에 가깝게 적습니다. 같은 계열처럼 보여도 진한 파랑(Alice)과 하늘·청록 계열은 서로 다른 선생님입니다.
 - 표에 없는 항목을 추측해서 만들지 마세요. 시간표에 보이는 모든 수업 칸을 빠짐없이 포함하세요.
 선생님 색상표(이름 = 대표 색 RGB):
@@ -12026,18 +12071,22 @@ async function handleTtGridImage(file, academy){
       const {full, tiles}=await ttgImgTiles(file);
       arr=await callAi([full,...tiles], ttgImgPrompt(legend,knownClasses,tiles.length,null));
     }
-    const results=[], unresolved=[], seen=new Set(), fixedNames={};
+    const results=[], unresolved=[], seen=new Set(), fixedNames={}; let langNoTeacher=false;
     arr.forEach(r=>{
       if(!Array.isArray(r)||r.length<4) return;
       let className=String(r[1]).trim();
-      const day=String(r[0]).trim(), cellText=String(r[3]).trim(), aiT=String(r[4]||'').trim(), aiHex=String(r[5]||'').trim().replace('#','').toUpperCase();
+      const day=String(r[0]).trim(); let cellText=String(r[3]).trim(); const aiT=String(r[4]||'').trim(), aiHex=String(r[5]||'').trim().replace('#','').toUpperCase();
       const tr=ttgTimeRange(String(r[2]));
       if(!TTG_DAYS.includes(day)||!className||!tr) return;
       if(!knownClasses.includes(className) && className.length>=3){
         const near=knownClasses.filter(k=>k.length>=3 && ttgLev(k.toLowerCase(),className.toLowerCase())===1);
         if(near.length===1){ fixedNames[className]=near[0]; className=near[0]; }
       }
-      const parsed=ttgParseCell(cellText); if(!parsed) return;
+      // 15분짜리 회색 줄(단어시험 줄)은 반드시 "숫자(영문코드)" 또는 "어학실" 두 형태뿐이다 — 공백·전각 괄호 등은 바로잡고, 그 외 글자는 버린다
+      const slot=ttgNormWordSlot(tr, cellText); if(!slot) return;
+      cellText=slot.text; const langWT=slot.langWT;
+      // 단어시험 줄의 "어학실"은 강의실=어학실, 담당=환경설정의 어학실 기본 담당인 단어시험으로 등록한다
+      const parsed=langWT ? {subject:'단어시험', room:'어학실', code:null, isWordTest:true} : ttgParseCell(cellText); if(!parsed) return;
       const dk=[day,className,tr.start,cellText].join('|'); if(seen.has(dk)) return; seen.add(dk);
       let teacher=null;
       if(parsed.code){
@@ -12049,6 +12098,7 @@ async function handleTtGridImage(file, academy){
         if(!teacher && /^[0-9A-F]{6}$/.test(aiHex)) teacher=ttgResolveColorTeacher('FF'+aiHex, colorMap)||null;
         if(!teacher) unresolved.push({day,className,reason:'color',color:(aiT||'')+' #'+aiHex+' (AI 판단)',near:/^[0-9A-F]{6}$/.test(aiHex)?ttgNearestInfo('FF'+aiHex,colorMap):'',text:cellText});
       }
+      if(langWT){ teacher=(store.ttgLangTeacher||'').trim()||null; if(!teacher) langNoTeacher=true; }
       results.push({day, className, subject:parsed.subject, room:parsed.room, teacher, time:tr.start+'-'+tr.end, isWordTest:!!parsed.isWordTest});
     });
     if(!results.length){ say('시간표 항목을 하나도 읽지 못했습니다. 더 선명한 이미지로 다시 시도해주세요.'); return; }
@@ -12058,7 +12108,7 @@ async function handleTtGridImage(file, academy){
     if(ttgLangTeacher){
       results.forEach(x=>{
         const su=String(x.subject||'').trim().toUpperCase();
-        if((su==='L/C'||su==='LC'||su==='IBT') && !String(x.teacher||'').trim()) x.teacher=ttgLangTeacher;
+        if((su==='L/C'||su==='LC'||su==='IBT'||(x.isWordTest&&x.room==='어학실')) && !String(x.teacher||'').trim()) x.teacher=ttgLangTeacher;
       });
     }
     const existing=ttgExistingClasses(academy, false);
@@ -12068,8 +12118,9 @@ async function handleTtGridImage(file, academy){
     state.ttGrid={academy, sheetName:'이미지(AI 인식)', results, unresolved, classMap, examOnly:false, fromImage:true, replaceAll:true};
     state.ttGridWb=null;
     const fx=Object.keys(fixedNames); const fxMsg=fx.length?` (반 이름 자동 교정: ${fx.map(k=>k+'→'+fixedNames[k]).join(', ')})`:'';
+    const lnMsg=langNoTeacher?' ⚠ 어학실 단어시험의 담당이 비어 있어요(설정의 "L/C·IBT 기본 담당(어학실)"에 이름을 적어두면 자동으로 채워집니다).':'';
     const bfMsg=bandFail.length?` ⚠ ${bandFail.join('·')}은(는) 읽지 못해 빠졌습니다 — 이미지를 다시 올려보세요.`:'';
-    say(`AI 인식 완료 — ${results.length}개 항목, 반 ${rawNames.length}개${fxMsg}${bfMsg}. AI가 읽은 결과라 틀릴 수 있으니 아래 미리보기에서 꼭 확인한 뒤 적용하세요.`);
+    say(`AI 인식 완료 — ${results.length}개 항목, 반 ${rawNames.length}개${fxMsg}${bfMsg}${lnMsg}. AI가 읽은 결과라 틀릴 수 있으니 아래 미리보기에서 꼭 확인한 뒤 적용하세요.`);
     render(true);
   }catch(e){
     say('오류: '+e.message);
@@ -12237,13 +12288,25 @@ function renderTtGridSheetPicker(){
       <button class="btn" id="ttgSheetCancel">취소</button></div>
   </div>`;
 }
+function ttgNormTime(t){ return String(t||'').replace(/\s+/g,'').replace(/~/g,'-').replace(/(^|[^\d])(\d):/g,'$10$2:'); }
 function ttgDiffFor(targetCls, x){
   // targetCls가 없으면(아직 반을 매칭 안 함) 비교할 기존 자료가 없으므로 "신규"로 취급
   if(!targetCls) return {status:'new'};
-  const s=(targetCls.subjects||[]).find(sub=>(sub.subject||'')===x.subject && (sub.day||'')===x.day);
-  if(!s) return {status:'new'};
-  const oldTime=s.time||'', oldRoom=s.room||'', oldTeacher=s.teacher||'';
-  const changed = oldTime!==(x.time||'') || oldRoom!==(x.room||'') || oldTeacher!==(x.teacher||'');
+  // 기존 과목의 요일은 "월,수,금"처럼 여러 요일이 한 줄로 합쳐져 저장돼 있으므로, 쉼표로 나눠서 이 요일이 들어있는지 본다.
+  // 과목명은 대소문자·띄어쓰기·약어(Wr↔Writing)·L/C↔IBT 차이를 같은 과목으로 본다(실제 적용 때 기존 줄을 이어받는 규칙과 같음).
+  const xs=normalizeLCtoIBT(x.subject||'');
+  const cands=(targetCls.subjects||[]).filter(sub=>{
+    const days=String(sub.day||'').split(',').map(d=>d.trim()).filter(Boolean);
+    if(!days.includes(x.day)) return false;
+    const ss=normalizeLCtoIBT(sub.subject||'');
+    return norm(ss)===norm(xs) || subjSimilar(ss,xs);
+  });
+  if(!cands.length) return {status:'new'};
+  const xt=ttgNormTime(x.time);
+  const exact=sub=>norm(normalizeLCtoIBT(sub.subject||''))===norm(xs);
+  const s0=cands.find(sub=>exact(sub)&&ttgNormTime(sub.time)===xt) || cands.find(sub=>ttgNormTime(sub.time)===xt) || cands.find(exact) || cands[0];
+  const oldTime=s0.time||'', oldRoom=s0.room||'', oldTeacher=s0.teacher||'';
+  const changed = ttgNormTime(oldTime)!==xt || String(oldRoom).trim()!==String(x.room||'').trim() || String(oldTeacher).trim().toLowerCase()!==String(x.teacher||'').trim().toLowerCase();
   return {status: changed?'changed':'same', oldTime, oldRoom, oldTeacher};
 }
 // 합반이면 매칭 대상 반이 여러 개일 수 있어서, 그중 대표(첫번째)를 기준으로 미리보기 비교를 보여준다 (실제 적용은 선택된 반 전부에 똑같이 반영됨)
@@ -12319,8 +12382,8 @@ function renderTtGridPreview(){
       })()}
     </div>`;
   });
-  if(g.fromImage){
-    h+=`<label style="display:flex;align-items:flex-start;gap:7px;margin:4px 0 10px;padding:9px 11px;background:#fff1f0;border:1.5px solid #f5b5b0;border-radius:10px;font-size:.82rem;font-weight:700;color:#b42318;cursor:pointer"><input type="checkbox" id="ttgReplaceAll" ${g.replaceAll?'checked':''} style="margin-top:3px"><span>적용할 때 <u>${esc(state.month)} ${esc(AC[g.academy].label)}의 기존 시간표를 모두 지우고</u> 이 이미지 내용으로 교체<br><span style="font-weight:400;color:#7a271a">이미지에 없는 반의 시간표(과목·시간·담당)도 비워집니다. 학생 명단·출결은 그대로 유지됩니다. 체크를 끄면 기존 시간표 위에 덮어쓰기만 합니다.</span></span></label>`;
+  if(g.fromImage||g.canReplace){
+    h+=`<label style="display:flex;align-items:flex-start;gap:7px;margin:4px 0 10px;padding:9px 11px;background:#fff1f0;border:1.5px solid #f5b5b0;border-radius:10px;font-size:.82rem;font-weight:700;color:#b42318;cursor:pointer"><input type="checkbox" id="ttgReplaceAll" ${g.replaceAll?'checked':''} style="margin-top:3px"><span>적용할 때 <u>${esc(state.month)} ${esc(AC[g.academy].label)}의 기존 시간표를 모두 지우고</u> 이 시간표 내용으로 교체<br><span style="font-weight:400;color:#7a271a">이미지에 없는 반의 시간표(과목·시간·담당)도 비워집니다. 학생 명단·출결은 그대로 유지됩니다. 체크를 끄면 기존 시간표 위에 덮어쓰기만 합니다.</span></span></label>`;
   }
   h+=`<div class="cbtns"><button class="btn primary" id="ttgApply">✅ 선택한 반에 적용</button><button class="btn" id="ttgCancel">취소</button></div></div>`;
   return h;
@@ -12366,13 +12429,20 @@ function applyTtGridUpdate(){
     const c=realArr.find(x=>x._id===c0._id)||c0;
     c.subjects=c.subjects||[];
     touchedClasses.add(c);
+    const usedOld=new Set();
     const origSubjects=(snapSubjects[c._id]||c.subjects).slice(); // 합치기 전 원본 스냅샷(전체 교체 시엔 지우기 직전 사본) — 기존에 적어둔 교재·과제·진도를 그대로 이어가기 위해 씀
     perTarget[target].forEach(group=>{
       const dayStr=[...group.days].sort((a,b)=>TTG_DAYS.indexOf(a)-TTG_DAYS.indexOf(b)).join(',');
       // 과목명은 대소문자·띄어쓰기가 완전히 같지 않아도(norm 기준) 같은 과목으로 보고 예전 줄을 찾는다 —
       // "지난달 Gr"이 이번 업로드에 "GR"로 적혀 있어도 새 과목으로 취급되지 않도록.
       const sameKey=sub=>norm(sub.subject||'')===norm(group.subject) && (sub.time||'')===group.time && (sub.room||'')===group.room && (sub.teacher||'')===group.teacher;
-      const oldMatch=origSubjects.find(sameKey) || origSubjects.find(sub=>norm(sub.subject||'')===norm(group.subject)) || origSubjects.find(sub=>subjSimilar(sub.subject, group.subject));
+      const pickOld=(arr)=>arr.find(x=>!usedOld.has(x))||arr[0]||null; // 같은 과목 옛 줄이 여러 개면, 아직 다른 줄이 가져가지 않은 줄을 우선
+      const sameT=sub=>ttgNormTime(sub.time)===ttgNormTime(group.time);
+      const oldMatch=pickOld(origSubjects.filter(sameKey))
+        || pickOld(origSubjects.filter(sub=>subjSimilar(sub.subject, group.subject)&&sameT(sub)))
+        || pickOld(origSubjects.filter(sub=>norm(sub.subject||'')===norm(group.subject)))
+        || pickOld(origSubjects.filter(sub=>subjSimilar(sub.subject, group.subject)));
+      if(oldMatch) usedOld.add(oldMatch);
       // 지금 이 요일 묶음으로 새로 합쳐질 항목과 겹치던(같은 과목·시간·강의실·담당이라 요일 조각으로 남아있던) 예전 줄들은 지우고, 합쳐진 한 줄로 대체한다.
       // c.subjects 배열 자체가 store에 저장된 실제 배열이므로(재할당하면 그 연결이 끊어져 저장이 안 됨) splice로 제자리에서 지운다.
       for(let i=c.subjects.length-1;i>=0;i--){ if(sameKey(c.subjects[i])) c.subjects.splice(i,1); }
@@ -12820,7 +12890,7 @@ function bindTtGrid(){
     const ra=document.getElementById('ttgReplaceAll'); if(ra && state.ttGrid) state.ttGrid.replaceAll=ra.checked;
     const gg=state.ttGrid;
     const msg=(gg&&gg.replaceAll)
-      ? `⚠ ${state.month} ${AC[gg.academy].label}의 기존 시간표를 전부 지우고 이미지 내용으로 교체할까요?\n(이미지에 없는 반의 시간표도 비워집니다. 학생 명단·출결은 유지됩니다)`
+      ? `⚠ ${state.month} ${AC[gg.academy].label}의 기존 시간표를 전부 지우고 이 시간표 내용으로 교체할까요?\n(이미지에 없는 반의 시간표도 비워집니다. 학생 명단·출결은 유지됩니다)`
       : '선택한 반들의 요일별 과목·시간·강의실·담당을 갱신할까요? (학생 명단·교재·진도는 그대로 유지됩니다)';
     if(!confirm(msg)) return;
     applyTtGridUpdate();
