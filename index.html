@@ -11858,6 +11858,114 @@ function ttgParseSheet(academy, wb, sheetName, examOnly){
     console.error(e);
   }
 }
+/* ---------- 시간표 이미지 업로드 (AI가 사진·캡처의 격자 시간표를 읽어, 엑셀 업로드와 같은 미리보기·반 매칭·적용 흐름으로 넘긴다) ---------- */
+// 긴 변 3000px 이하 JPEG로 줄여서 보낸다(용량·속도). 글자가 작은 격자표라 너무 줄이지는 않는다.
+async function ttgImgToB64(file){
+  const url=URL.createObjectURL(file);
+  try{
+    const img=await new Promise((res,rej)=>{ const im=new Image(); im.onload=()=>res(im); im.onerror=()=>rej(new Error('이미지를 열지 못했습니다')); im.src=url; });
+    const sc=Math.min(1, 3000/Math.max(img.naturalWidth,img.naturalHeight));
+    const cv=document.createElement('canvas'); cv.width=Math.round(img.naturalWidth*sc); cv.height=Math.round(img.naturalHeight*sc);
+    const ctx=cv.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,cv.width,cv.height); ctx.drawImage(img,0,0,cv.width,cv.height);
+    return cv.toDataURL('image/jpeg',0.92).split(',')[1];
+  } finally { URL.revokeObjectURL(url); }
+}
+function ttgImgPrompt(legend){
+  return `첨부 이미지는 한국 영어학원의 주간 그리드 시간표입니다. 요일(월~금) 블록이 위에서 아래로 나열되고, 각 블록의 맨 왼쪽 세로 글자가 요일입니다. 한 요일 블록 안에는 반 그룹이 가로로 여러 구역(좌/중/우)으로 나뉘어 있을 수 있습니다. 각 구역의 맨 위 행은 반 이름, 그 아래 행은 강의실 번호, 그 아래로 시간 행(예: "1:40 ~ 2:20")이 이어집니다.
+수업이 적힌 칸만 읽어서 아래 형식의 JSON 배열로만 답하세요 (설명·마크다운·코드펜스 금지).
+[["요일","반이름","시작~끝","칸에 적힌 글자 그대로","담당선생님","칸 배경색 RGB(예: #00FF00)"], ...]
+규칙:
+- 요일은 월/화/수/목/금 한 글자. 반 이름은 헤더에 적힌 글자 그대로(대소문자·숫자 유지, 예: Ec-1, RG1, JM3, 안화중3).
+- 시간은 그 행의 시간 열에 적힌 그대로 "1:40~2:20" 형태로 씁니다.
+- 여러 반 칸에 걸쳐 합쳐진(병합) 칸은 걸친 반마다 각각 한 항목씩 만듭니다.
+- 글자가 없는 칸, RECESS 줄은 제외합니다. 색이 없는 글자 칸(L/C, EC, 모의고사, 어학실 등)은 칸 글자 그대로 포함하되 담당은 ""로 둡니다.
+- 회색 줄의 "3(RN)", "1(MAT)", "6(DN)" 같은 괄호 표기는 글자 그대로 쓰고 담당은 ""로 둡니다.
+- 색이 칠해진 수업 칸의 담당은 아래 색상표에서 칸 배경색과 가장 가까운 선생님 이름 하나(목록에 적힌 표기 그대로)로 씁니다. 배경이 흰색/무색이면 담당과 배경색 모두 "". 담당 이름을 확신할 수 없어도 배경색 RGB는 반드시 눈에 보이는 색에 가깝게 적습니다. 같은 계열처럼 보여도 진한 파랑(Alice)과 하늘·청록 계열은 서로 다른 선생님입니다.
+- 표에 없는 항목을 추측해서 만들지 마세요. 시간표에 보이는 모든 수업 칸을 빠짐없이 포함하세요.
+선생님 색상표(이름 = 대표 색 RGB):
+${legend}`;
+}
+function ttgImgParseJson(text){
+  const i0=text.indexOf('['); if(i0<0) throw new Error('AI 응답을 해석하지 못했습니다. 다시 시도해주세요.');
+  const i1=text.lastIndexOf(']');
+  try{ return JSON.parse(text.slice(i0,i1+1)); }catch(e){}
+  // 응답이 길어서 중간에 끊긴 경우: 마지막으로 완성된 항목까지만 살린다
+  const cut=text.lastIndexOf('],');
+  if(cut>i0){ try{ return JSON.parse(text.slice(i0,cut+1)+']'); }catch(e){} }
+  throw new Error('AI 응답 형식이 올바르지 않습니다. 다시 시도해주세요.');
+}
+async function handleTtGridImage(file, academy){
+  const statusEl=document.getElementById('ttgStatus');
+  const say=(m)=>{ if(statusEl) statusEl.textContent=m; };
+  try{
+    const key=eaAiAskKey(false); if(!key){ say('AI 키가 없어 취소했습니다.'); return; }
+    const colorMap={}, codeMap={}, nameMap={}, legendLines=[];
+    store.teachers[academy].forEach(t=>{
+      const dTt=ttgDefaultTt(academy,t);
+      const tc=t.ttColor||dTt.color, tcode=t.ttCode||dTt.code;
+      nameMap[String(t.name).trim().toLowerCase()]=t.name;
+      if(tc){ colorMap[tc.replace('#','FF').toUpperCase()]=t.name; legendLines.push('- '+t.name+' = '+(tc.startsWith('#')?tc:'#'+tc.replace(/^FF/i,''))); }
+      if(tcode) codeMap[tcode.trim().toUpperCase()]=t.name;
+    });
+    say('이미지 준비 중…');
+    const b64=await ttgImgToB64(file);
+    say('AI가 시간표를 읽는 중… (30초~1분 걸릴 수 있어요)');
+    const res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:eaAiModel(), max_tokens:16000, messages:[{role:'user', content:[{type:'image', source:{type:'base64', media_type:'image/jpeg', data:b64}},{type:'text', text:ttgImgPrompt(legendLines.join('\n')||'(등록된 색상 없음)')}]}]})
+    });
+    if(!res.ok){
+      let msg=''; try{ const j=await res.json(); msg=(j.error&&j.error.message)||''; }catch(e){}
+      if(res.status===401) throw new Error('AI 키가 올바르지 않습니다(내신 분석의 🔑 AI 키 버튼으로 다시 입력해주세요). '+msg);
+      throw new Error('HTTP '+res.status+(msg?' — '+msg:''));
+    }
+    const j=await res.json();
+    const text=(j.content||[]).filter(c=>c.type==='text').map(c=>c.text).join('').trim();
+    const arr=ttgImgParseJson(text);
+    const results=[], unresolved=[], seen=new Set();
+    arr.forEach(r=>{
+      if(!Array.isArray(r)||r.length<4) return;
+      const day=String(r[0]).trim(), className=String(r[1]).trim(), cellText=String(r[3]).trim(), aiT=String(r[4]||'').trim(), aiHex=String(r[5]||'').trim().replace('#','').toUpperCase();
+      const tr=ttgTimeRange(String(r[2]));
+      if(!TTG_DAYS.includes(day)||!className||!tr) return;
+      const parsed=ttgParseCell(cellText); if(!parsed) return;
+      const dk=[day,className,tr.start,cellText].join('|'); if(seen.has(dk)) return; seen.add(dk);
+      let teacher=null;
+      if(parsed.code){
+        teacher=codeMap[parsed.code.toUpperCase()]||null;
+        if(!teacher) unresolved.push({day,className,reason:'code',code:parsed.code,text:cellText});
+      } else if(!parsed.isWordTest && (aiT||aiHex)){
+        teacher=nameMap[aiT.toLowerCase()]||null;
+        // AI가 이름을 못 정했거나 목록에 없는 이름이면, 엑셀 업로드와 똑같이 색상 거리로 가장 비슷한 선생님을 찾는다
+        if(!teacher && /^[0-9A-F]{6}$/.test(aiHex)) teacher=ttgResolveColorTeacher('FF'+aiHex, colorMap)||null;
+        if(!teacher) unresolved.push({day,className,reason:'color',color:(aiT||'')+' #'+aiHex+' (AI 판단)',near:/^[0-9A-F]{6}$/.test(aiHex)?ttgNearestInfo('FF'+aiHex,colorMap):'',text:cellText});
+      }
+      results.push({day, className, subject:parsed.subject, room:parsed.room, teacher, time:tr.start+'-'+tr.end, isWordTest:!!parsed.isWordTest});
+    });
+    if(!results.length){ say('시간표 항목을 하나도 읽지 못했습니다. 더 선명한 이미지로 다시 시도해주세요.'); return; }
+    // 이후는 엑셀 업로드(ttgParseSheet)와 같은 후처리: L/C→IBT, 어학실 기본 담당, 반 자동 매칭, 미리보기
+    results.forEach(x=>{ x.subject=normalizeLCtoIBT(x.subject); });
+    const ttgLangTeacher=(store.ttgLangTeacher||'').trim();
+    if(ttgLangTeacher){
+      results.forEach(x=>{
+        const su=String(x.subject||'').trim().toUpperCase();
+        if((su==='L/C'||su==='LC'||su==='IBT') && !String(x.teacher||'').trim()) x.teacher=ttgLangTeacher;
+      });
+    }
+    const existing=ttgExistingClasses(academy, false);
+    const rawNames=[...new Set(results.map(x=>x.className))];
+    const classMap={};
+    results.forEach(x=>{ const k=ttgKey(x.className,x.day); if(!(k in classMap)) classMap[k]=ttgAutoMatchClasses(x.className, existing); });
+    state.ttGrid={academy, sheetName:'이미지(AI 인식)', results, unresolved, classMap, examOnly:false, fromImage:true, replaceAll:true};
+    state.ttGridWb=null;
+    say(`AI 인식 완료 — ${results.length}개 항목, 반 ${rawNames.length}개. AI가 읽은 결과라 틀릴 수 있으니 아래 미리보기에서 꼭 확인한 뒤 적용하세요.`);
+    render(true);
+  }catch(e){
+    say('오류: '+e.message);
+    console.error(e);
+  }
+}
 /* ---------- 그리드 시간표 엑셀 다운로드 (현재 반·교재 자료 기준으로 업로드와 같은 형식으로 내보내기) ---------- */
 // 선생님 목록이 초기화돼 시간표 코드·색이 비어 있어도 엑셀 다운로드·업로드가 되도록, 이베스트 기본 선생님은 이름으로 기본 코드·색을 보충한다(저장된 값이 있으면 그걸 우선)
 const TTG_DEFAULT_TT={alice:['AL','#0000FF'], sunny:['SU','#FFFF00'], joy:['JY','#00FFFF'], may:['MA','#00FF00'], matilda:['MAT','#8328A8'], daniel:['DN','#ED7E23'], raina:['RN','#00B0F0']};
@@ -12087,6 +12195,9 @@ function renderTtGridPreview(){
       }).join('')}
     </div>`;
   });
+  if(g.fromImage){
+    h+=`<label style="display:flex;align-items:flex-start;gap:7px;margin:4px 0 10px;padding:9px 11px;background:#fff1f0;border:1.5px solid #f5b5b0;border-radius:10px;font-size:.82rem;font-weight:700;color:#b42318;cursor:pointer"><input type="checkbox" id="ttgReplaceAll" ${g.replaceAll?'checked':''} style="margin-top:3px"><span>적용할 때 <u>${esc(state.month)} ${esc(AC[g.academy].label)}의 기존 시간표를 모두 지우고</u> 이 이미지 내용으로 교체<br><span style="font-weight:400;color:#7a271a">이미지에 없는 반의 시간표(과목·시간·담당)도 비워집니다. 학생 명단·출결은 그대로 유지됩니다. 체크를 끄면 기존 시간표 위에 덮어쓰기만 합니다.</span></span></label>`;
+  }
   h+=`<div class="cbtns"><button class="btn primary" id="ttgApply">✅ 선택한 반에 적용</button><button class="btn" id="ttgCancel">취소</button></div></div>`;
   return h;
 }
@@ -12115,12 +12226,23 @@ function applyTtGridUpdate(){
     });
   });
   const realArr=editArr(g.academy, state.month); // classesFor()가 넘겨주는 건 사본이라, 실제 저장 배열에서 같은 반을 다시 찾아 거기에 직접 반영한다
+  // 이미지 업로드 + "기존 시간표 모두 지우기" 선택 시: 이 달·이 학원 모든 반의 과목(시간표)을 먼저 비운다.
+  // 예전에 적어둔 교재·과제·진도는 아래 oldMatch가 이어받을 수 있도록 지우기 직전 사본(snapSubjects)을 따로 보관한다.
+  const snapSubjects={}; let clearedN=0;
+  if(g.replaceAll){
+    existing.forEach(c0=>{
+      const rc=realArr.find(x=>x._id===c0._id); if(!rc) return;
+      snapSubjects[rc._id]=(rc.subjects||[]).map(x=>Object.assign({},x));
+      if((rc.subjects||[]).length){ rc.subjects.splice(0,rc.subjects.length); clearedN++; }
+      rc.days=''; rc.updatedAt=Date.now();
+    });
+  }
   Object.keys(perTarget).forEach(target=>{
     const c0=existing.find(x=>x.name===target); if(!c0) return;
     const c=realArr.find(x=>x._id===c0._id)||c0;
     c.subjects=c.subjects||[];
     touchedClasses.add(c);
-    const origSubjects=c.subjects.slice(); // 합치기 전 원본 스냅샷 — 기존에 적어둔 교재·과제·진도를 그대로 이어가기 위해 씀
+    const origSubjects=(snapSubjects[c._id]||c.subjects).slice(); // 합치기 전 원본 스냅샷(전체 교체 시엔 지우기 직전 사본) — 기존에 적어둔 교재·과제·진도를 그대로 이어가기 위해 씀
     perTarget[target].forEach(group=>{
       const dayStr=[...group.days].sort((a,b)=>TTG_DAYS.indexOf(a)-TTG_DAYS.indexOf(b)).join(',');
       // 과목명은 대소문자·띄어쓰기가 완전히 같지 않아도(norm 기준) 같은 과목으로 보고 예전 줄을 찾는다 —
@@ -12166,7 +12288,7 @@ function applyTtGridUpdate(){
   save();
   state.ttGrid=null;
   render();
-  alert(`반영 완료! 반 ${clsN}개, 과목 항목 ${subN}개가 갱신됐습니다.`);
+  alert(`반영 완료! 반 ${clsN}개, 과목 항목 ${subN}개가 갱신됐습니다.`+(g.replaceAll?`\n(기존 시간표가 있던 반 ${clearedN}개는 먼저 비우고 새로 적용했습니다)`:''));
 }
 // 이 브라우저(기기)에 저장된 store의 항목별 크기를 대략 추정한다 — localStorage 저장 실패(용량 초과)를 진단할 때 사용
 function storeFieldSizes(){
@@ -12304,6 +12426,7 @@ function renderSet(){
       <div class="cbtns">
         <select id="ttgAcSel" style="padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${academies().map(a=>`<option value="${a}">${AC[a].label}</option>`).join('')}</select>
         <button class="btn primary" id="ttgBtn">🕒 그리드 시간표 엑셀 업로드</button><input type="file" id="ttgFile" accept=".xlsx,.xls" style="display:none">
+        <button class="btn primary" id="ttgImgBtn">🖼 시간표 이미지 업로드 (AI 인식)</button><input type="file" id="ttgImgFile" accept="image/*" style="display:none">
         <button class="btn" id="ttgDlBtn">⬇ 현재 그리드 시간표 엑셀 다운로드</button>
         <span id="ttgStatus" style="font-size:.8rem;color:var(--sub)"></span>
         <span id="ttgDlStatus" style="font-size:.8rem;color:var(--sub)"></span>
@@ -12543,6 +12666,14 @@ function bindTtGrid(){
     const ac=document.getElementById('ttgAcSel');
     exportTtGrid(ac?ac.value:academies()[0]);
   };
+  const ttgImgBtn=document.getElementById('ttgImgBtn'), ttgImgFile=document.getElementById('ttgImgFile');
+  if(ttgImgBtn) ttgImgBtn.onclick=()=>ttgImgFile.click();
+  if(ttgImgFile) ttgImgFile.onchange=()=>{
+    const f=ttgImgFile.files[0]; if(!f) return;
+    const ac=document.getElementById('ttgAcSel');
+    handleTtGridImage(f, ac?ac.value:academies()[0]);
+    ttgImgFile.value='';
+  };
   if(ttgFile) ttgFile.onchange=()=>{
     const f=ttgFile.files[0]; if(!f) return;
     const ac=document.getElementById('ttgAcSel');
@@ -12558,7 +12689,12 @@ function bindTtGrid(){
     if(state.ttGrid){ state.ttGrid.classMap[ttgKey(sel.dataset.raw,sel.dataset.day)]=[...sel.selectedOptions].map(o=>o.value); render(true); } // 반 매칭이 바뀌면 변경/신규 비교도 다시 계산해야 해서 다시 그린다
   });
   const ttgApply=document.getElementById('ttgApply'); if(ttgApply) ttgApply.onclick=()=>{
-    if(!confirm('선택한 반들의 요일별 과목·시간·강의실·담당을 갱신할까요? (학생 명단·교재·진도는 그대로 유지됩니다)')) return;
+    const ra=document.getElementById('ttgReplaceAll'); if(ra && state.ttGrid) state.ttGrid.replaceAll=ra.checked;
+    const gg=state.ttGrid;
+    const msg=(gg&&gg.replaceAll)
+      ? `⚠ ${state.month} ${AC[gg.academy].label}의 기존 시간표를 전부 지우고 이미지 내용으로 교체할까요?\n(이미지에 없는 반의 시간표도 비워집니다. 학생 명단·출결은 유지됩니다)`
+      : '선택한 반들의 요일별 과목·시간·강의실·담당을 갱신할까요? (학생 명단·교재·진도는 그대로 유지됩니다)';
+    if(!confirm(msg)) return;
     applyTtGridUpdate();
   };
   const ttgCancel=document.getElementById('ttgCancel'); if(ttgCancel) ttgCancel.onclick=()=>{ state.ttGrid=null; render(true); };
