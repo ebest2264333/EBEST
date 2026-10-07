@@ -1627,6 +1627,38 @@ function teacherColorByName(academy, name){
 const WORDTEST_SLOT_STARTS=[5+5/60, 7+25/60];
 function isWordTestSlot(r){ return !!r && WORDTEST_SLOT_STARTS.some(x=>Math.abs(r[0]-x)<0.01); }
 
+// [반·교재] 탭 반 정렬: 학원 → 초등 → 중등 → 고등 → 반 앞글자 순서(EC,RG,PJ / JM,JF,JB) → 이름(숫자는 크기순).
+// 부서(dept)가 비어 있는 반(예: 시간표 업로드로 새로 생긴 반)은 이름으로 추정한다 — EC·RG·PJ·초 → 초등, JM·JF·JB·중 → 중등, 고 → 고등.
+function classDeptGuess(c){
+  if(c.dept && DEPT_SORT_ORDER[c.dept]!=null) return c.dept;
+  const n=String(c.name||'');
+  if(/고/.test(n)) return '고등';
+  if(/중/.test(n) || /^J[MFB]/i.test(n)) return '중등';
+  if(/초/.test(n) || /^(EC|RG|PJ|RC)/i.test(n)) return '초등';
+  return '';
+}
+function sortClassesByDept(list){
+  const acs=academies();
+  const rank=(c)=>{ const d=classDeptGuess(c); return DEPT_SORT_ORDER[d]!=null?DEPT_SORT_ORDER[d]:99; };
+  const pre=(c)=>{
+    const nm=String(c.name||'');
+    const g=nm.match(/중\s*([123])/); // 이름에 중1·중2·중3이 들어있으면 JM(중1)·JF(중2)·JB(중3) 묶음에 속한 것으로 본다(예: 병점중3·안화중3A → JB 묶음)
+    if(g) return CLASS_PREFIX_ORDER['JM']+Number(g[1])-1;
+    const p=nm.replace(/[^A-Za-z]/g,'').toUpperCase().slice(0,2); return CLASS_PREFIX_ORDER[p]!=null?CLASS_PREFIX_ORDER[p]:99;
+  };
+  return list.map((c,i)=>({c,i})).sort((x,y)=>{
+    const ax=acs.indexOf(x.c.academy), ay=acs.indexOf(y.c.academy);
+    if(ax!==ay) return ax-ay;
+    const rx=rank(x.c), ry=rank(y.c); if(rx!==ry) return rx-ry;
+    if(rx===DEPT_SORT_ORDER['고등']){ // 고등부는 학년 순(고1 → 고2 → 고3): "안화고1A"·"고3"처럼 이름 안의 "고+숫자"로 판단
+      const gx=(String(x.c.name||'').match(/고\s*(\d)/)||[])[1], gy=(String(y.c.name||'').match(/고\s*(\d)/)||[])[1];
+      const nx=gx?Number(gx):99, ny=gy?Number(gy):99; if(nx!==ny) return nx-ny;
+    }
+    const px=pre(x.c), py=pre(y.c); if(px!==py) return px-py;
+    const nc=String(x.c.name||'').localeCompare(String(y.c.name||''),'ko',{numeric:true});
+    return nc || x.i-y.i;
+  }).map(o=>o.c);
+}
 function filtered(){
   const deptChipShown = state.tab!=='yearly' && state.tab!=='roster' && state.tab!=='timetable' && state.tab!=='report';
   return classesFor(state.month).filter(c=>{
@@ -13524,6 +13556,7 @@ function render(keepOpen){
   const fl=document.getElementById('filters'); fl.style.display = simpleHome?'none':'';
   try{ buildFilters(); }catch(e){ console.error('buildFilters 오류', e); }
   let list=[]; try{ list=filtered(); }catch(e){ console.error('filtered 오류', e); }
+  if(state.tab==='dash'){ try{ list=sortClassesByDept(list); }catch(e){ console.error('반 정렬 오류', e); } } // [반·교재] 탭: 초→중→고 순
   const v=document.getElementById('view');
   try{
   if(state.tab==='dash'){
