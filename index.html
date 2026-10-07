@@ -11740,6 +11740,7 @@ function ttgSnapNames(results, known){
 function ttgParseWorkbook(ws, colorMap, codeMap){
   const maxRow=ws.rowCount, maxCol=ws.columnCount;
   const results=[], unresolved=[];
+  const seenCells=new Set(); // 반 이름 헤더가 두 열에 걸쳐 합쳐져 있으면(예: JF3가 JF3·JF4 열을 차지) 두 열 모두 같은 반 이름·같은 칸 내용으로 읽혀 중복되므로, 같은 (요일·반·시간·내용)은 한 번만 담는다
   const isDayHeader=(row)=>{
     const cell=ws.getCell(row,1);
     const v=ttgCellText(cell.value).trim();
@@ -11768,6 +11769,7 @@ function ttgParseWorkbook(ws, colorMap, codeMap){
             const cell=ws.getCell(rr,c);
             const slot=ttgNormWordSlot(tr, ttgCellText(cell.value)); if(!slot) continue;
             const cellText=slot.text;
+            { const dkey=[day,classNameOf[c],tr.start,tr.end,cellText.replace(/\s+/g,'')].join('|'); if(seenCells.has(dkey)) continue; seenCells.add(dkey); }
             const parsed=slot.langWT ? {subject:'단어시험', room:'어학실', code:null, isWordTest:true} : ttgParseCell(cellText);
             if(!parsed) continue;
             let teacher=null;
