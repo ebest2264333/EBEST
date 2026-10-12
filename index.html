@@ -10080,7 +10080,7 @@ async function eaAiText(content, maxTokens){
     res=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:eaAiModel(), max_tokens:maxTokens||6000, messages:[{role:'user', content}]})
+      body:JSON.stringify({model:eaAiModel(), max_tokens:maxTokens||6000, temperature:0, messages:[{role:'user', content}]})
     });
   }catch(e){ throw new Error('AI 서버(api.anthropic.com)에 연결하지 못했습니다. API 키에 한글·공백이 섞이지 않았는지(🔑 AI 키로 다시 입력), 광고차단/보안 프로그램·학원 네트워크가 막고 있지 않은지 확인해주세요. ('+((e&&e.message)||e)+')'); }
   if(!res.ok){
@@ -10158,8 +10158,8 @@ function eaTrendPromptV2(d, entries, docCount, part){
 아래 JSON 객체로만 답하세요(설명·마크다운·코드펜스 금지).
 {
   "examNames": ["비교하는 시험의 표기 이름을 시간순으로, 이번 시험이 마지막. 시험지 표지·자료에서 어떤 시험인지 스스로 알아내 \"1학기 1차 지필\", \"1학기 2차 지필\", \"2학기 1차 지필\", \"2학기 2차 지필\" 형식(학교가 중간·기말이라 부르면 \"1학기 중간\"처럼 그 학교 용어). 날짜는 쓰지 않음. 비교 시험의 학년이 서로 다르면 \"고1 2학기 2차 지필\", \"고2 1학기 1차 지필\"처럼 학년을 앞에 붙이고, 같은 학년이면 붙이지 않음"],
-  "reportTitle": "학교 학년 과목 · examNames를 \" → \"로 이은 뒤 \" 동향 분석\" (예: 망포고 1학년 공통영어2 · 1학기 2차 지필 → 2학기 1차 지필 동향 분석). 비교 시험이 3개면 \"1학기 1차 지필 → 1학기 2차 지필 → 2학기 1차 지필 동향 분석\". 학년이 바뀌면 시험 이름에 학년이 들어간 그대로(예: 고1 2학기 2차 지필 → 고2 1학기 1차 지필 동향 분석). 비교 시험이 하나뿐이면 \"2학기 1차 지필 분석\"",
-  "examInfo": "시행일 · 교과서/범위 · 문항 구성(예: 선택형 21(80점)+논술형 4(20점)) · 비교 대상",
+  "reportTitle": "짧은 제목 한 줄: \"학년도 학교 학년 시험 → 시험 동향 분석\" 형식(과목명은 넣지 않고 맨 끝에 \" 동향 분석\"을 붙임). 예: 2026학년도 망포고 1학년 1학기 2차 지필 → 2학기 1차 지필 동향 분석. 비교 시험이 3개면 \"2026학년도 망포고 1학년 1학기 1차 지필 → 1학기 2차 지필 → 2학기 1차 지필 동향 분석\". 시험이 서로 다른 학년·학년도에 걸치면 바뀌는 쪽에 학년도·학년을 다시 씀(예: 2025학년도 망포고 1학년 2학기 2차 지필 → 2026학년도 2학년 1학기 1차 지필 동향 분석). 비교 시험이 하나뿐이면 \"2026학년도 망포고 1학년 2학기 1차 지필 분석\"",
+  "examInfo": "한 줄 60자 이내: 시행일 · 문항 구성(예: 선택형 21문항+논술형 2문항, 100점 만점)",
   "strategy": "출제 전략 요약 5~7문장. 이번 시험이 이전과 어떻게 다른지, 어떤 유형·배점이 핵심인지, 문항 번호·점수 근거 포함",
   "metrics": [{"label": "지표명(예: 학력 배점, 판단 난도 지수, 영어 읽기량, 논술 배점 구성)", "before": "이전 값(없으면 빈 문자열)", "after": "이번 값", "note": "한 줄 설명(기준·범위)"}],
   "charts": [
@@ -10172,7 +10172,7 @@ function eaTrendPromptV2(d, entries, docCount, part){
 }
 규칙:
 - 시험 이름 통일: 먼저 examNames를 정하고, 막대 차트의 series, 도넛의 label, 비교표의 열 제목, 지표의 before/after, 본문(strategy·changes·sections·teaching)에서 시험을 가리킬 때는 모두 examNames의 이름을 글자 그대로 똑같이 쓰세요(같은 시험을 \"1학기 중간\", \"중간고사\", \"4월 시험\" 등으로 다르게 부르지 마세요). 시험 이름에 날짜는 넣지 마세요.
-- metrics 5~8개. 각 값(before/after)은 짧은 숫자·핵심어만(12자 이내, 예: \"3.26\", \"약 2,830단어\", \"31.8점\"). 괄호 설명·\"추정\"·세부 내역은 값에 넣지 말고 note에 쓰세요. charts는 항상 정확히 4개, 이 순서·주제로 고정: ① 출처별 배점(항목은 기본 \"교과서\", \"부교재\", \"외부 지문\" 세 가지로 두고, 모의고사·수능 기출·EBS·프린트 등 그 밖의 출처에서 나온 문항이 실제로 있으면 \"모의고사\" 같은 항목을 추가하세요. 해당 문항이 없는 항목은 만들지 않고, 같은 항목 이름을 시험마다 똑같이 쓰세요. 막대) ② 유형군별 문항 수(막대) ③ 변형 단계별 문항 수(원문 그대로/일부 변형/대폭 변형 등, 막대) ④ 난도 분포(도넛). 시험지에서 직접 확인이 어려운 차트(출처·변형)도 문항 내용으로 최대한 판단해 채우고 확실하지 않으면 제목 끝에 \"(추정)\"을 붙이세요. 3개 이하로 줄이거나 다른 주제로 바꾸지 마세요. 막대 차트는 시험 간 비교가 되도록 series에 시험명, rows에 항목(예: 출처별 배점, 유형군별 문항 수, 변형 단계별 문항 수). 비교할 이전 시험이 없으면 series는 이번 시험 하나만.
+- metrics 5~8개. 각 값(before/after)은 짧은 숫자·핵심어만(12자 이내, 예: \"3.26\", \"약 2,830단어\", \"31.8점\"). 괄호 설명·\"추정\"·세부 내역은 값에 넣지 말고 note에 쓰세요. charts는 항상 정확히 4개, 이 순서·주제로 고정: ① 출처별 배점(항목은 기본 \"교과서\", \"부교재\", \"외부 지문\" 세 가지로 두고, 모의고사·수능 기출·EBS·프린트 등 그 밖의 출처에서 나온 문항이 실제로 있으면 \"모의고사\" 같은 항목을 추가하세요. 같은 항목 이름을 시험마다 똑같이 쓰세요. 분류 방법: 모든 문항(선택형·서술형 전부)을 하나씩 교과서 본문과 대조해 교과서 지문 / 부교재 지문 / 외부 지문(모의고사 등 포함)으로 분류하고, 항목별 배점을 합산해 시험마다 합계가 100점이 되게 하세요. 교과서·부교재 본문 자료가 첨부되지 않아 대조할 수 없으면 임의로 한 항목에 몰아 쓰지 말고, 시험지의 지문 표기(교과서 쪽수, 출처 표기, 프린트 안내)와 입력된 시험 분석의 출처 정보를 근거로 판단하세요. 두 시험의 값은 같은 기준으로 분류해 서로 비교 가능해야 합니다. 해당 문항이 없는 항목은 만들지 않되, 막대) ② 유형군별 문항 수(막대) ③ 변형 단계별 문항 수(원문 그대로/일부 변형/대폭 변형 등, 막대) ④ 난도 분포(도넛). 시험지에서 직접 확인이 어려운 차트(출처·변형)도 문항 내용으로 최대한 판단해 채우고 확실하지 않으면 제목 끝에 \"(추정)\"을 붙이세요. 3개 이하로 줄이거나 다른 주제로 바꾸지 마세요. 막대 차트는 시험 간 비교가 되도록 series에 시험명, rows에 항목(예: 출처별 배점, 유형군별 문항 수, 변형 단계별 문항 수). 비교할 이전 시험이 없으면 series는 이번 시험 하나만.
 - 도넛은 차트 하나(kind donut)에 items를 비교하는 시험 수만큼 모두 넣으세요(자료에 시험이 2개면 도넛 2개, 3개면 3개 — 실제 자료에 있는 시험 수만큼만, 이번 시험이 마지막). 비교 시험 수는 자료에 따라 1~4개로 달라지며 항상 실제 개수에 맞추세요. 도넛을 시험별로 따로 차트로 나누지 마세요. 각 item의 parts는 난도 상/중상/중/중하/하 다섯 단계별 배점 합계(해당 없는 단계는 생략)(총합 약 100), center는 "상·중상 N점"(상과 중상 합계). 위 예시의 빈 parts는 자리표시일 뿐이며 실제로는 모두 채우세요.
 - changes 5~8개, 각 detail은 구체적으로.
 - sections 4~6개, PDF의 '난도 측정 방식' 형식(소제목 순서대로): 제목에는 번호(0-1, ①, 1. 등)나 기호를 붙이지 말고 글자만 쓰세요: "유형별 난도 기준 분포", "이번 문항별 대응과 판정"(열: 문항 / 배점 / 판정 / 가장 가까운 이전 시험 문항·근거(예: \"중1·21번 함축=상\") / 대안 판정(없으면 \"—\"). 대응 칸 작성 규칙: 첨부된 이전 시험 자료(파일명·표지·날짜로 어느 시험인지 스스로 파악)의 문항 원문을 직접 읽고, 지문·유형·출처·형식이 가장 비슷한 이전 문항을 \"시험명 약칭·번호 유형=그 문항 난도\"로 쓰세요. 이전 시험에 비슷한 문항이 정말 없으면 \"신규 유형\", 이전 시험 자료가 첨부되지 않았으면 \"이전 시험지 없음\"이라고 쓰세요(\"—\"로 비워 두지 마세요). 이번 시험의 모든 문항을 번호 순서대로 한 줄씩, 선택형·서술형 전부), "시험 비교 — 같은 방법으로 측정"(자료의 시험 수 그대로 2개든 3개든 그 수만큼 열을 만드세요. 시험 수를 3개로 맞추려고 지어내지 마세요)(지표 × 시험 비교표: 판단 난도 지수, 영어 읽기량, 평균 지문 길이, 시간 부담, 배점 구성 등), "시간을 많이 쓰는 문항"(문항·분량·소요 시간 추정 표 + 진단 문장) 순서로. 세부: (1) 난도 측정 방식 설명(어떤 기준으로 상/중상/중/하를 판정했는지), (2) 시험 간 비교표(지표 × 시험: 판단 난도 지수, 영어 읽기량, 평균 지문 길이, 시간 부담, 배점 구성 등), (3) 이번 시험 유형별 분포 또는 이전 시험 대비 대응표, (4) 시간·분량이 큰 문항 분석 등 자료에서 의미 있는 추가 표. 표 작성법(PDF 0-3 표처럼): 첫 열은 지표명, 나머지 열은 시험(시간순, 이번 시험이 마지막 열, highlightLast=true). 지표를 묶는 소제목 행(예: "① 판단 난도", "② 시간 부담")은 값이 하나뿐인 행 ["① 판단 난도"]으로 넣고, 비교표는 이렇게 묶음 행으로 구분하세요. 값에는 단위·괄호 비율(예: 17.8점 (22%))을 함께 쓰고, 해당 없으면 "—". 해석·기준 설명은 note에 넣으세요. 표는 행 60개 이하, 각 표 위에 해석 설명(text)을 3~6문장 넣으세요.
@@ -10238,8 +10238,9 @@ function eaTrendBuildRecord(d, r, entries){
   const title=([school,grade].filter(Boolean).join(' ')+' '+(entries.length?entries.map(e=>e.examTitle||'').filter(Boolean).join(' → '):'')+' 동향 분석').replace(/\s+/g,' ').trim();
   const rep2=(r&&r.v2)?eaTrendCleanReportV2(r.o, r.q):null;
   const typed='';
-  const finalTitle=(rep2&&rep2.reportTitle)||title;
-  return {id:d.id, academy:d.academy, school, grade, title:finalTitle, memo:d.memo||'', source:'ai', kind:'compare', titleCustom:!!typed, entryIds:entries.map(e=>e.id), snaps,
+  let finalTitle=(rep2&&rep2.reportTitle)||title;
+  { const base=finalTitle, taken=new Set(eaTrendActive().map(t=>t.title)); let n=2; while(taken.has(finalTitle)){ finalTitle=base+' ('+n+')'; n++; } }
+  return {id:d.id, academy:d.academy, school, grade, title:finalTitle, memo:d.memo||'', source:'ai', kind:'compare', titleCustom:true, entryIds:entries.map(e=>e.id), snaps,
     files:d.files||[], report:(rep2?Object.assign(rep2,{qFailed:!!r.qFailed}):eaTrendCleanReport(r)), aiModel:eaAiModel(), createdAt:Date.now(), updatedAt:Date.now(), createdBy:eaWho()};
 }
 // 내신 분석 폼에서 "🤖 AI 분석"을 돌릴 때도, 그 결과를 동향 분석 리포트 탭에 자동으로 남긴다(같은 시험지를 다시 분석하면 그 리포트를 갱신)
@@ -10386,9 +10387,9 @@ function eaTrendReportBodyV2(t, ac, r){
   let h=`<div style="background:${ac.color};color:#fff;border-radius:14px 14px 0 0;padding:20px 22px">
     <div style="font-size:.78rem;opacity:.85;font-weight:700;letter-spacing:.02em">${esc(ac.label||'')} 동향 분석 리포트 <span style="background:rgba(255,255,255,.22);border-radius:999px;padding:1px 9px;margin-left:4px">🤖 AI 작성</span></div>
     <div style="font-size:1.35rem;font-weight:800;margin-top:4px;line-height:1.35">${esc((t.titleCustom?t.title:r.reportTitle)||t.title||'')}</div>
-    ${r.examInfo?`<div style="font-size:.84rem;font-weight:600;margin-top:6px;opacity:.95;line-height:1.55">${esc(r.examInfo)}</div>`:`<div style="font-size:.9rem;font-weight:600;margin-top:2px;opacity:.95">${esc([t.school,t.grade].filter(Boolean).join(' '))}</div>`}
   </div>
   <div style="border:1.5px solid var(--line);border-top:none;border-radius:0 0 14px 14px;padding:18px 22px;background:#fff">`;
+  if(r.examInfo) h+=`<div style="font-size:.8rem;color:var(--sub);margin-bottom:10px;line-height:1.5">${esc(r.examInfo)}</div>`;
   if(r.strategy) h+=`<div style="background:${ac.tint||'#f4f6fb'};border-radius:10px;padding:14px 16px;margin-bottom:16px;page-break-inside:avoid;break-inside:avoid"><div style="display:inline-block;background:#2b3648;color:#fff;font-weight:800;font-size:.76rem;border-radius:5px;padding:2px 8px;margin-bottom:6px">출제 전략 요약</div><div style="font-size:.88rem;line-height:1.75;white-space:pre-wrap">${esc(r.strategy)}</div></div>`;
   if((r.metrics||[]).length){
     const mTile=(m,mi)=>{ const ac2=Object.assign({},ac,{color:EA_TREND_ACCENTS[mi%EA_TREND_ACCENTS.length]});
@@ -10473,7 +10474,7 @@ function eaTrendReportBody(t){
 }
 function renderEaTrendView(){
   const t=eaTrendFind(state.etViewId);
-  return `<div class="todaybar" style="margin-bottom:10px"><button class="btn small" id="etBackBtn">◀ 목록으로</button></div>
+  return `<div class="todaybar" style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn small" id="etBackBtn">◀ 목록으로</button><button class="btn small" id="etRenameBtn">✏ 이름 바꾸기</button></div>
     <div style="max-width:820px;margin:0 auto">${eaTrendReportBody(t)}</div>`;
 }
 function renderEaTrendForm(){
@@ -10532,6 +10533,13 @@ function bindEaTrend(){
   if(state.etMode==='form'){ bindEaTrendForm(); return; }
   if(state.etMode==='view'){
     const back=v.querySelector('#etBackBtn'); if(back) back.onclick=()=>{ state.etMode='list'; render(true); };
+    const ren=v.querySelector('#etRenameBtn'); if(ren) ren.onclick=()=>{
+      const t=eaTrendFind(state.etViewId); if(!t) return;
+      const nv=prompt('리포트 이름을 입력하세요', t.title||''); if(nv===null) return;
+      const name=nv.trim(); if(!name){ alert('이름을 비워둘 수 없어요.'); return; }
+      let final=name; const taken=new Set(eaTrendActive().filter(x=>x.id!==t.id).map(x=>x.title)); let n=2; while(taken.has(final)){ final=name+' ('+n+')'; n++; }
+      t.title=final; t.titleCustom=true; t.updatedAt=Date.now(); save(); render(true); toast('이름을 바꿨어요');
+    };
     return;
   }
   const search=v.querySelector('#etSearch');
@@ -13731,6 +13739,11 @@ function reportHTML(){
     const eaSid=state.eaStudentViewId;
     // 학생 한 명만 따로 보고 있으면 그 학생 리포트만 그대로 인쇄하고, 전체 리포트를 보고 있으면 화면에서 고른
     // "인쇄에 포함할 항목"(전체 분석표 여부·어느 학생들) 선택을 반영해서 인쇄・엑셀 결과를 만든다.
+    if(state.eaSub==='trend'){
+      // 동향 분석 리포트 탭에서는 열려 있는 리포트를 인쇄한다(색이 빠지지 않게 배경색 인쇄 강제)
+      const tr=(state.etMode==='view')?eaTrendFind(state.etViewId):null;
+      body='<style>*{-webkit-print-color-adjust:exact;print-color-adjust:exact}</style>'+(tr?eaTrendReportBody(tr):'<div class="empty">인쇄할 동향 분석 리포트를 먼저 열어주세요. (목록에서 "👁 리포트 보기"를 누른 뒤 인쇄)</div>');
+    } else
     body=(eaSid && eaEntry && (eaEntry.students||[]).some(s=>s.id===eaSid)) ? eaStudentReportBody(eaEntry, eaSid) : eaReportBody(eaEntry, eaPrintOptsFor(eaEntry));
   }
   else { body=repSet(); }
