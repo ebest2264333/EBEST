@@ -10072,7 +10072,8 @@ function eaTrendPrompt(d, entries, docCount){
 ${entText?'\n[학원이 입력한 시험 분석]\n'+entText.slice(0,40000):''}`;
 }
 // 공통 AI 호출 — 문서·이미지 블록과 지시문을 보내고 JSON 한 덩어리를 돌려받는다
-async function eaAiJson(content, maxTokens){
+// 공통 AI 호출(글자 그대로) — 문서·이미지 블록과 지시문을 보내고 응답 글자를 돌려받는다
+async function eaAiText(content, maxTokens){
   const key=eaAiKey(); if(!key) throw new Error('AI 키가 없습니다(🔑 AI 키 버튼으로 입력해주세요)');
   let res;
   try{
@@ -10088,7 +10089,11 @@ async function eaAiJson(content, maxTokens){
     throw new Error('HTTP '+res.status+(msg?' — '+msg:''));
   }
   const j=await res.json();
-  const text=(j.content||[]).filter(c=>c.type==='text').map(c=>c.text).join('').trim();
+  return (j.content||[]).filter(c=>c.type==='text').map(c=>c.text).join('').trim();
+}
+// 공통 AI 호출 — JSON 한 덩어리를 돌려받는다
+async function eaAiJson(content, maxTokens){
+  const text=await eaAiText(content, maxTokens);
   const i0=text.indexOf('{'), i1=text.lastIndexOf('}');
   if(i0<0||i1<=i0) throw new Error('AI 응답을 해석하지 못했습니다. 다시 시도해주세요.');
   try{ return JSON.parse(text.slice(i0,i1+1)); }catch(e){ throw new Error('AI 응답 형식이 올바르지 않습니다. 다시 시도해주세요.'); }
@@ -10111,12 +10116,78 @@ async function eaTrendDocBlocks(d, entries){
   }
   return {blocks, count:refs.length};
 }
+/* ---- 상세 리포트(v2): PDF "한눈에 보기" 형식 — 요약·지표·차트 / 난도 측정·비교표 / 문항별 분석표(강사용) ---- */
+function eaTrendPromptV2(d, entries, docCount, part){
+  const entText=entries.map(eaTrendEntryText).join('\n\n');
+  const head=`당신은 한국 영어학원의 내신 분석 전문가입니다. 첨부 자료(시험지·분석 파일 ${docCount}개)와 학원이 입력해둔 시험 분석(${entries.length}건)을 처음부터 끝까지 꼼꼼히 읽고, 강사용 "시험 한눈에 보기" 상세 리포트를 만듭니다. 자료 중 날짜가 가장 최근인 시험이 "이번 시험"이고, 나머지는 비교 대상입니다(비교 대상이 없으면 이번 시험 자체의 특징 중심으로). 스캔본이나 사진이어도 문항 글자를 직접 읽으세요. 자료에서 확인되는 사실만 쓰고 수치를 지어내지 마세요(확실하지 않으면 "추정"이라고 표시). 한국어로 쓰고, 문항 번호·배점·점수 같은 구체적 근거를 풍부하게 넣으세요.`;
+  const tail=`${d.instr?'\n추가 요청: '+d.instr:''}\n${entText?'\n[학원이 입력한 시험 분석]\n'+entText.slice(0,40000):''}`;
+  if(part==='questions') return head+`
+이번 시험의 "문항별 분석표"만 만드세요. 모든 문항(선택형·서술형/논술형 전부)을 빠짐없이, 시험지 번호 순서대로 포함합니다. 아래 형식의 JSON 배열 한 개로만 답하세요(설명·마크다운·코드펜스 금지). 각 항목은 문자열 8개의 배열입니다.
+[["번호","파트","배점","난도","변형","유형","출처","해설·정답"], ...]
+- 번호: 1, 2, ... 서술형은 "논1" "논2"처럼.
+- 파트: 독해 / 어법 / 어휘 / 영작 / 듣기 등 시험지에서 판단되는 영역.
+- 배점: 숫자만(예: 3.8).
+- 난도: 하 / 중 / 중상 / 상 중 하나(정답률·함정·사고 단계로 판단).
+- 변형: 하 = 원문·교과서 그대로, 중 = 일부(1~2곳) 변형, 상 = 새로 쓰거나 대폭 변형.
+- 유형: 문제가 묻는 방식(예: 빈칸 추론, 어법상 옳은 것 모두, 순서 배열, 대화 목적).
+- 출처: 교과서 몇 과·지문, 부교재, 외부 지문, 프린트 등 근거. 모르면 "외부 지문(추정)".
+- 해설·정답: 정답 번호와 풀이 근거, 대표 함정 1~3문장. 서술형은 모범 답안과 채점 포인트.
+글자 안에 큰따옴표가 들어가면 \\"로 이스케이프하세요.`+tail;
+  return head+`
+아래 JSON 객체로만 답하세요(설명·마크다운·코드펜스 금지).
+{
+  "reportTitle": "학교 학년 과목 · 시험명 한눈에 보기 (예: 망포고 1학년 공통영어2 · 2학기 중간고사 한눈에 보기)",
+  "examInfo": "시행일 · 교과서/범위 · 문항 구성(예: 선택형 21(80점)+논술형 4(20점)) · 비교 대상",
+  "strategy": "출제 전략 요약 5~7문장. 이번 시험이 이전과 어떻게 다른지, 어떤 유형·배점이 핵심인지, 문항 번호·점수 근거 포함",
+  "metrics": [{"label": "지표명(예: 학력 배점, 판단 난도 지수, 영어 읽기량, 논술 배점 구성)", "before": "이전 값(없으면 빈 문자열)", "after": "이번 값", "note": "한 줄 설명(기준·범위)"}],
+  "charts": [
+    {"title": "① 출처별 배점 (100점 중)", "kind": "bar", "series": ["이전 시험명", "이번 시험명"], "rows": [{"label": "교과서", "values": [47.6, 52.6]}]},
+    {"title": "④ 난도 분포", "kind": "donut", "items": [{"label": "시험명", "center": "난도 3.5", "parts": [{"name": "상", "value": 20}, {"name": "중상", "value": 25}, {"name": "중", "value": 35}, {"name": "하", "value": 20}]}]}
+  ],
+  "changes": [{"title": "무엇이 달라졌나(한 줄)", "detail": "2~4문장. 해당 문항 번호·점수·수치 근거 포함"}],
+  "sections": [{"heading": "0. 난도 측정 방식 / 0-1 ... 같은 소제목", "text": "방법·해석 설명 3~6문장", "table": {"columns": ["열1", "열2"], "rows": [["값", "값"]]}}],
+  "teaching": ["수업·내신 대비 시사점 한 문장씩(구체적 훈련 방법 포함)"]
+}
+규칙:
+- metrics 5~8개. charts 3~4개(막대 차트 2~3개 + 난도 분포 도넛 1개). 막대 차트는 시험 간 비교가 되도록 series에 시험명, rows에 항목(예: 출처별 배점, 유형군별 문항 수, 변형 단계별 문항 수). 비교할 이전 시험이 없으면 series는 이번 시험 하나만.
+- 도넛 items는 시험마다 하나(난도 상/중상/중/하별 배점 합계). center에는 판단 난도 지수 등 한 줄.
+- changes 5~8개, 각 detail은 구체적으로.
+- sections 4~6개, PDF의 '0. 난도 측정 방식' 형식: 제목은 "0-1. 유형별 난도 기준 분포", "0-2. 이번 시험 문항별 대응·판정"(문항 번호·배점·판정 난도·근거 표, 문항 전부), "0-3. 세 시험 비교 — 같은 방법으로 측정"(지표 × 시험 비교표: 판단 난도 지수, 영어 읽기량, 평균 지문 길이, 시간 부담, 배점 구성 등), "0-4. 시간을 많이 쓰는 문항"(문항·분량·소요 시간 추정 표 + 진단 문장) 순서로. 세부: (1) 난도 측정 방식 설명(어떤 기준으로 상/중상/중/하를 판정했는지), (2) 시험 간 비교표(지표 × 시험: 판단 난도 지수, 영어 읽기량, 평균 지문 길이, 시간 부담, 배점 구성 등), (3) 이번 시험 유형별 분포 또는 이전 시험 대비 대응표, (4) 시간·분량이 큰 문항 분석 등 자료에서 의미 있는 추가 표. 표는 행 40개 이하, 각 표 위에 해석 설명(text)을 3~6문장 넣으세요.
+- teaching 5~8개.`+tail;
+}
+function eaTrendCleanReportV2(o, q){
+  const str=v=>String(v==null?'':v).trim();
+  const num=v=>{ const n=Number(String(v==null?'':v).replace(/[^0-9.\-]/g,'')); return isFinite(n)?n:0; };
+  const arr=v=>Array.isArray(v)?v:[];
+  const charts=arr(o.charts).slice(0,5).map(c=>{
+    if(!c) return null;
+    if(c.kind==='donut'){
+      const items=arr(c.items).slice(0,4).map(it=>({label:str(it&&it.label), center:str(it&&it.center), parts:arr(it&&it.parts).slice(0,8).map(pt=>({name:str(pt&&pt.name), value:num(pt&&pt.value)})).filter(pt=>pt.name&&pt.value>0)})).filter(it=>it.parts.length);
+      return items.length?{title:str(c.title), kind:'donut', items}:null;
+    }
+    const series=arr(c.series).slice(0,4).map(str).filter(Boolean);
+    const rows=arr(c.rows).slice(0,12).map(r=>({label:str(r&&r.label), values:arr(r&&r.values).slice(0,4).map(num)})).filter(r=>r.label&&r.values.length);
+    return rows.length?{title:str(c.title), kind:'bar', series:series.length?series:['값'], rows}:null;
+  }).filter(Boolean);
+  const sections=arr(o.sections).slice(0,8).map(sc=>{
+    const t=sc&&sc.table, cols=arr(t&&t.columns).slice(0,9).map(str);
+    const rows=arr(t&&t.rows).slice(0,40).map(r=>arr(r).slice(0,9).map(str));
+    return {heading:str(sc&&sc.heading), text:str(sc&&sc.text), table:(cols.length&&rows.length)?{columns:cols, rows}:null};
+  }).filter(sc=>sc.heading||sc.text||sc.table);
+  const questions=arr(q).slice(0,120).map(r=>arr(r)).filter(r=>r.length>=4).map(r=>({no:str(r[0]), part:str(r[1]), points:str(r[2]), difficulty:str(r[3]), variation:str(r[4]), type:str(r[5]), source:str(r[6]), explanation:str(r[7])}));
+  return {v:2, reportTitle:str(o.reportTitle), examInfo:str(o.examInfo), headline:'', strategy:str(o.strategy),
+    metrics:arr(o.metrics).slice(0,10).map(m=>({label:str(m&&m.label), before:str(m&&m.before), after:str(m&&m.after), note:str(m&&m.note)})).filter(m=>m.label),
+    charts, changes:arr(o.changes).slice(0,10).map(c=>({title:str(c&&c.title), detail:str(c&&c.detail)})).filter(c=>c.title),
+    sections, teaching:arr(o.teaching).slice(0,10).map(str).filter(Boolean), questions};
+}
 async function eaTrendGenerate(d){
   const entries=(d.entryIds||[]).map(id=>eaFindActive(id)).filter(Boolean);
   const {blocks,count}=await eaTrendDocBlocks(d, entries);
   if(!entries.length && !count) throw new Error('비교할 시험이나 파일을 하나 이상 골라주세요');
-  const r=await eaAiJson([...blocks, {type:'text', text:eaTrendPrompt(d, entries, count)}], 6000);
-  return {r, entries};
+  // 개요(요약·지표·차트·비교표)와 문항별 분석표를 따로, 동시에 만든다 — 한 번에 만들면 내용이 길어 잘리거나 간추려지기 때문
+  const pOverview=eaAiJson([...blocks, {type:'text', text:eaTrendPromptV2(d, entries, count, 'overview')}], 14000);
+  const o=await pOverview;
+  return {r:{v2:true, o, q:[], qFailed:false}, entries};
 }
 function eaTrendCleanReport(r){
   const str=v=>String(v==null?'':v).trim();
@@ -10133,7 +10204,7 @@ function eaTrendBuildRecord(d, r, entries){
   const grade=(d.grade||'').trim()||(entries[0]&&entries[0].grade)||'';
   const title=(d.title||'').trim()||([school,grade].filter(Boolean).join(' ')+' '+(entries.length?entries.map(e=>e.examTitle||'').filter(Boolean).join(' → '):'')+' 동향 분석').replace(/\s+/g,' ').trim();
   return {id:d.id, academy:d.academy, school, grade, title, memo:d.memo||'', source:'ai', kind:'compare', entryIds:entries.map(e=>e.id), snaps,
-    files:d.files||[], report:eaTrendCleanReport(r), aiModel:eaAiModel(), createdAt:Date.now(), updatedAt:Date.now(), createdBy:eaWho()};
+    files:d.files||[], report:(r&&r.v2?Object.assign(eaTrendCleanReportV2(r.o, r.q),{qFailed:!!r.qFailed}):eaTrendCleanReport(r)), aiModel:eaAiModel(), createdAt:Date.now(), updatedAt:Date.now(), createdBy:eaWho()};
 }
 // 내신 분석 폼에서 "🤖 AI 분석"을 돌릴 때도, 그 결과를 동향 분석 리포트 탭에 자동으로 남긴다(같은 시험지를 다시 분석하면 그 리포트를 갱신)
 function eaTrendUpsertFromPaper(d, p, r){
@@ -10207,10 +10278,78 @@ function eaTrendCompareHTML(snaps){
   }
   return h+'</tbody></table></div>';
 }
+const EA_TREND_SERIES_COLORS=['#c9ced8','#8f98ab','#4b5563','#2b3648'];
+function eaTrendBarChartHTML(c, ac){
+  const n=c.series.length;
+  const cols=n===1?[ac.color]:(n===2?['#c9ced8','#2b3648']:EA_TREND_SERIES_COLORS.slice(4-n));
+  const max=Math.max(1,...c.rows.flatMap(r=>r.values));
+  let h=`<div style="display:flex;flex-wrap:wrap;gap:10px;margin:4px 0 10px">${c.series.map((sname,i)=>`<span style="font-size:.72rem;color:#475069;white-space:nowrap"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${cols[i]};margin-right:4px;vertical-align:-1px"></span>${esc(sname)}</span>`).join('')}</div>`;
+  c.rows.forEach(r=>{
+    h+=`<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px"><div style="width:84px;flex:none;font-size:.76rem;font-weight:700;line-height:1.3;padding-top:2px">${esc(r.label)}</div><div style="flex:1;min-width:0">`;
+    c.series.forEach((_,i)=>{
+      const v=r.values[i]; if(v==null) return;
+      h+=`<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px"><div style="height:13px;border-radius:2px;background:${cols[i]};width:${Math.max(1,Math.round(v/max*100))}%;min-width:2px"></div><span style="font-size:.72rem;color:#475069;white-space:nowrap">${eaRoundPts(v)}</span></div>`;
+    });
+    h+='</div></div>';
+  });
+  return h;
+}
+function eaTrendDonutHTML(c){
+  const palette=['#2b3648','#7c3aed','#2e5fb7','#8f98ab','#c9ced8','#e5e7ee'];
+  const colorOf=(name,i)=>(typeof EA_DIFF_COLOR!=='undefined'&&EA_DIFF_COLOR[name])||palette[i%palette.length];
+  return `<div style="display:flex;flex-wrap:wrap;gap:16px;justify-content:space-around">${c.items.map(it=>{
+    const tot=it.parts.reduce((m,pt)=>m+pt.value,0)||1; let acc=0;
+    const segs=it.parts.map((pt,i)=>{ const pct=pt.value/tot*100; const seg=`<circle cx="21" cy="21" r="15.9155" fill="none" stroke="${colorOf(pt.name,i)}" stroke-width="7" stroke-dasharray="${pct.toFixed(2)} ${(100-pct).toFixed(2)}" stroke-dashoffset="${(25-acc).toFixed(2)}"></circle>`; acc+=pct; return seg; }).join('');
+    return `<div style="text-align:center;min-width:130px"><div style="font-size:.76rem;font-weight:800;margin-bottom:4px">${esc(it.label)}</div>
+      <div style="position:relative;width:118px;height:118px;margin:0 auto"><svg viewBox="0 0 42 42" width="118" height="118">${segs}</svg>
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:.74rem;font-weight:800;line-height:1.2;padding:0 26px">${esc(it.center||'')}</div></div>
+      <div style="margin-top:6px;font-size:.7rem;color:#475069;line-height:1.6">${it.parts.map((pt,i)=>`<span style="white-space:nowrap;margin:0 4px"><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${colorOf(pt.name,i)};margin-right:3px"></span>${esc(pt.name)} ${eaRoundPts(pt.value)}</span>`).join('')}</div></div>`;
+  }).join('')}</div>`;
+}
+function eaTrendReportBodyV2(t, ac, r){
+  const sec=(title,color)=>`<div style="background:${color||'#2b3648'};color:#fff;padding:8px 14px;font-weight:800;font-size:.84rem">${title}</div>`;
+  const card='border:1.5px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:16px;page-break-inside:avoid;break-inside:avoid';
+  const th='padding:7px 8px;font-size:.74rem;color:var(--sub);background:#f7f9fc;border-bottom:1.5px solid var(--line);text-align:left;vertical-align:top';
+  const td='padding:7px 8px;font-size:.8rem;border-bottom:1px solid var(--line);vertical-align:top;line-height:1.55';
+  let h=`<div style="background:${ac.color};color:#fff;border-radius:14px 14px 0 0;padding:20px 22px">
+    <div style="font-size:.78rem;opacity:.85;font-weight:700;letter-spacing:.02em">${esc(ac.label||'')} 동향 분석 리포트 <span style="background:rgba(255,255,255,.22);border-radius:999px;padding:1px 9px;margin-left:4px">🤖 AI 작성</span></div>
+    <div style="font-size:1.35rem;font-weight:800;margin-top:4px;line-height:1.35">${esc(r.reportTitle||t.title||'')}</div>
+    ${r.examInfo?`<div style="font-size:.84rem;font-weight:600;margin-top:6px;opacity:.95;line-height:1.55">${esc(r.examInfo)}</div>`:`<div style="font-size:.9rem;font-weight:600;margin-top:2px;opacity:.95">${esc([t.school,t.grade].filter(Boolean).join(' '))}</div>`}
+  </div>
+  <div style="border:1.5px solid var(--line);border-top:none;border-radius:0 0 14px 14px;padding:18px 22px;background:#fff">`;
+  if(r.strategy) h+=`<div style="background:${ac.tint||'#f4f6fb'};border-radius:10px;padding:14px 16px;margin-bottom:16px;page-break-inside:avoid;break-inside:avoid"><div style="display:inline-block;background:#2b3648;color:#fff;font-weight:800;font-size:.76rem;border-radius:5px;padding:2px 8px;margin-bottom:6px">출제 전략 요약</div><div style="font-size:.88rem;line-height:1.75;white-space:pre-wrap">${esc(r.strategy)}</div></div>`;
+  if((r.metrics||[]).length) h+=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin-bottom:16px">${r.metrics.map(m=>`<div style="border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;page-break-inside:avoid;break-inside:avoid">
+      <div style="font-size:.74rem;color:var(--sub);font-weight:700">${esc(m.label)}</div>
+      <div style="font-size:1.2rem;font-weight:800;margin:4px 0;color:${ac.color};line-height:1.3">${m.before?esc(m.before)+' <span style="color:#8b93a7">→</span> ':''}${esc(m.after)}</div>
+      ${m.note?`<div style="font-size:.74rem;color:var(--sub);line-height:1.5">${esc(m.note)}</div>`:''}</div>`).join('')}</div>`;
+  if((r.charts||[]).length) h+=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin-bottom:16px">${r.charts.map(c=>`<div style="border:1.5px solid var(--line);border-radius:10px;padding:12px 14px;page-break-inside:avoid;break-inside:avoid"><div style="font-weight:800;font-size:.86rem;margin-bottom:4px">${esc(c.title)}</div>${c.kind==='donut'?eaTrendDonutHTML(c):eaTrendBarChartHTML(c, ac)}</div>`).join('')}</div>`;
+  h+=eaTrendCompareHTML(t.snaps);
+  if((r.changes||[]).length) h+=`<div style="${card}">${sec('🔍 무엇이 달라졌나요')}<ol style="margin:0;padding:12px 16px 12px 36px;font-size:.88rem;line-height:1.7">${r.changes.map(c=>`<li style="margin-bottom:8px"><b>${esc(c.title)}</b>${c.detail?`<div style="font-size:.84rem;color:#475069;margin-top:2px">${esc(c.detail)}</div>`:''}</li>`).join('')}</ol></div>`;
+  (r.sections||[]).forEach(sc=>{
+    h+=`<div style="${card.replace('page-break-inside:avoid;break-inside:avoid','')}">${sec(esc(sc.heading||'분석'))}<div style="padding:10px 14px">${sc.text?`<div style="font-size:.84rem;line-height:1.7;white-space:pre-wrap;margin-bottom:${sc.table?'10':'0'}px">${esc(sc.text)}</div>`:''}
+      ${sc.table?`<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%"><thead><tr>${sc.table.columns.map(cn=>`<th style="${th}">${esc(cn)}</th>`).join('')}</tr></thead><tbody>${sc.table.rows.map((row,i)=>`<tr style="${i%2?'background:#fafbfd':''};page-break-inside:avoid">${sc.table.columns.map((_,ci)=>`<td style="${td}${ci===0?';font-weight:700':''}">${esc(row[ci]||'')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`:''}</div></div>`;
+  });
+  if((r.teaching||[]).length) h+=`<div style="${card}">${sec('🎯 수업·내신 대비 시사점','#7c3aed')}<ul style="margin:0;padding:12px 16px 12px 36px;font-size:.88rem;line-height:1.7">${r.teaching.map(x=>`<li style="margin-bottom:4px">${esc(x)}</li>`).join('')}</ul></div>`;
+  if((r.questions||[]).length){
+    const dc=k=>(typeof EA_DIFF_COLOR!=='undefined'&&EA_DIFF_COLOR[k])||'#8b93a7';
+    h+=`<div style="border:1.5px solid var(--line);border-radius:10px;margin-bottom:16px;overflow:hidden">${sec('1. 문항별 분석표 (강사용)')}
+      <div style="font-size:.76rem;color:var(--sub);padding:8px 14px;line-height:1.6">난도 하·중·중상·상 / 변형 하 = 원문 그대로 · 중 = 일부 변형 · 상 = 새로 쓰거나 대폭 변형</div>
+      <div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;min-width:760px"><thead><tr>${['번호','파트','배점','난도','변형','유형','출처','해설·정답'].map(x=>`<th style="${th}">${x}</th>`).join('')}</tr></thead><tbody>
+      ${r.questions.map((q,i)=>`<tr style="${i%2?'background:#fafbfd':''};page-break-inside:avoid;break-inside:avoid"><td style="${td};font-weight:800;white-space:nowrap">${esc(q.no)}</td><td style="${td};white-space:nowrap">${esc(q.part)}</td><td style="${td};white-space:nowrap">${esc(q.points)}</td>
+        <td style="${td};white-space:nowrap">${q.difficulty?`<span style="display:inline-block;border-radius:5px;padding:1px 7px;font-weight:800;font-size:.74rem;color:#fff;background:${dc(q.difficulty)}">${esc(q.difficulty)}</span>`:''}</td>
+        <td style="${td};white-space:nowrap">${esc(q.variation)}</td><td style="${td}">${esc(q.type)}</td><td style="${td}">${esc(q.source)}</td><td style="${td}">${esc(q.explanation)}</td></tr>`).join('')}</tbody></table></div></div>`;
+  } else if(r.qFailed) h+=`<div style="border:1.5px dashed #f5b5b0;background:#fff1f0;color:#b42318;border-radius:10px;padding:10px 14px;font-size:.82rem;margin-bottom:16px">⚠ 문항별 분석표를 만들지 못했어요(AI 응답이 길어 실패했을 수 있어요). 새 리포트를 다시 만들어 보세요.</div>`;
+  if(t.memo) h+=`<div style="font-size:.84rem;line-height:1.6;white-space:pre-wrap;border:1.5px dashed var(--line);border-radius:10px;padding:10px 14px;margin-bottom:18px"><b>📝 메모</b>\n${esc(t.memo)}</div>`;
+  const files=t.files||[];
+  if(files.length) h+=`<div style="font-size:.82rem;margin-bottom:14px"><b>📎 자료</b><div style="display:flex;flex-direction:column;gap:4px;margin-top:6px">${files.map(p=>`<a href="${esc(stoUrl(p))}" target="_blank" rel="noopener" style="color:#2e5fb7;font-weight:700;text-decoration:none;word-break:break-all">📄 ${esc(p.fileName)}</a>`).join('')}</div></div>`;
+  h+=`<div style="font-size:.7rem;color:var(--sub)">AI 추정 분석 · ${esc(t.aiModel||'')} · ${new Date(t.createdAt||Date.now()).toLocaleDateString('ko-KR')} — 수치·판단은 시험지 원본과 함께 확인해주세요.</div>`;
+  return h+'</div>';
+}
 function eaTrendReportBody(t){
   if(!t) return '<div class="empty">삭제되었거나 찾을 수 없는 리포트입니다.</div>';
   const ac=AC[t.academy]||{label:'', color:'#2e5fb7', tint:'#f4f6fb'};
   const r=t.report||null;
+  if(r && r.v===2) return eaTrendReportBodyV2(t, ac, r);
   const sec=(title,color)=>`<div style="background:${color||'#2b3648'};color:#fff;padding:8px 14px;font-weight:800;font-size:.84rem">${title}</div>`;
   let h=`<div style="background:${ac.color};color:#fff;border-radius:14px 14px 0 0;padding:20px 22px">
     <div style="font-size:.78rem;opacity:.85;font-weight:700;letter-spacing:.02em">${esc(ac.label||'')} 동향 분석 리포트 <span style="background:rgba(255,255,255,.22);border-radius:999px;padding:1px 9px;margin-left:4px">${t.source==='ai'?'🤖 AI 작성':'📎 업로드'}</span></div>
@@ -10371,7 +10510,7 @@ function bindEaTrendForm(){
   if(aiBtn) aiBtn.onclick=async()=>{
     if(!(d.entryIds||[]).length && !(d.files||[]).length){ alert('비교할 시험을 하나 이상 고르거나, 추가 자료 파일을 올려주세요.'); return; }
     if(!eaAiAskKey(false)) return;
-    const orig=aiBtn.textContent; aiBtn.disabled=true; aiBtn.textContent='⏳ AI가 리포트를 만드는 중... (1~3분)';
+    const orig=aiBtn.textContent; aiBtn.disabled=true; aiBtn.textContent='⏳ AI가 상세 리포트를 만드는 중... (1~3분)';
     try{
       const {r,entries}=await eaTrendGenerate(d);
       const rec=eaTrendBuildRecord(d, r, entries);
