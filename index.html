@@ -4783,6 +4783,10 @@ function subjectTeachersForClass(a, className){
   if(c.wordDuty!=null && c.wordDuty!==''){ const t=teacherByDutyVal(a,c.wordDuty); if(t) excludeNames.add(t.name); }
   const teacherNames=new Set();
   (c.subjects||[]).forEach(s=>{ if(s.teacher && !excludeNames.has(s.teacher)) teacherNames.add(s.teacher); });
+  // 신입생 상담은 고등부를 뺀 반에서는 시간표에 적힌 IBT 수업 담당 선생님이 항상 함께 들어간다(단어시험 담당과 겹쳐도 포함)
+  if(c.dept!=='고등'){
+    (c.subjects||[]).forEach(s=>{ if(s.teacher && normalizeLCtoIBT(String(s.subject||'').trim()).toUpperCase()==='IBT') teacherNames.add(s.teacher); });
+  }
   const idxs=[];
   (store.teachers[a]||[]).forEach((t,i)=>{ if(teacherNames.has(t.name)) idxs.push(i); });
   return idxs;
@@ -4928,7 +4932,7 @@ function renderNewStudentAdmin(){
   }).join('');
   return `<div class="setsec" style="border:2px solid var(--ebest)">
     <h3>🆕 신입생 상담 관리</h3>
-    <div class="desc">학생 명단에 먼저 등록한 신입생을 골라 추가하면, 그 반 수업을 담당하는 모든 선생님(단어시험 담당 선생님 제외) 화면에 어머님 번호와 함께 신입생 상담 항목이 나타나요. 선생님마다 상담 내용을 따로 작성하고, 여기서 한눈에 볼 수 있어요.</div>
+    <div class="desc">학생 명단에 먼저 등록한 신입생을 골라 추가하면, 그 반 수업을 담당하는 모든 선생님(단어시험 담당 선생님 제외)과, 고등부를 뺀 반은 시간표에 적힌 IBT 담당 선생님도 함께 어머님 번호와 같이 신입생 상담 항목이 나타나요. 선생님마다 상담 내용을 따로 작성하고, 여기서 한눈에 볼 수 있어요.</div>
     <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px">
       ${academies().map(a=>`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         <datalist id="dl_nscls_${a}">${classNameOptions(a).map(n=>`<option value="${esc(n)}">`).join('')}</datalist>
