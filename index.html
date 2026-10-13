@@ -4755,19 +4755,20 @@ function ensureAssign(){
   if(changed) persistStoreLocal();
 }
 // 선생님 한 명이 맡은 신입생 상담 인원(그 선생님이 담당하는 신입생 수)
-function nsCountFor(a,i){ return (store.newStudents||[]).filter(ns=>!ns._deleted && ns.academy===a && subjectTeachersForClass(a, ns.className).includes(i)).length; }
+function nsCountFor(a,i){ const l=(store.newStudents||[]).filter(ns=>!ns._deleted && ns.academy===a && subjectTeachersForClass(a, ns.className).includes(i)); return {total:l.length, done:l.filter(ns=>{const n=nsNote(ns,a+'|'+i);return n&&n.done;}).length}; }
 function teacherCards(list){
   let h='<div class="tsum">';
   for(const a of academies()){
     store.teachers[a].forEach((t,i)=>{
       const cls=list.filter(c=>c.academy===a && mAssign()[ckey(c)]===i);
       let d=0,tot=0; cls.forEach(c=>{const p=classProgress(c);d+=p.done;tot+=p.total;});
+      { const nc=nsCountFor(a,i); d+=nc.done; tot+=nc.total; }
       const pct=tot?Math.round(d/tot*100):0;
       const focus = state.tf && state.tf.a===a && state.tf.i===i;
       h+=`<div class="tcard ${focus?'focus':''}" data-tf="${a}|${i}" style="${focus?`border-color:${t.color}`:''}">
         <span class="tdot" style="background:${t.color}"></span>
         <div><div class="tn">${esc(t.name)}${MODE==='all'?` <span style="font-weight:400;color:var(--sub);font-size:.72rem">${AC[a].label}</span>`:''}</div>
-        <div class="tm">${cls.length}개 반 · 학생 ${d}/${tot}명 완료${nsCountFor(a,i)?` · 🆕 신입생 ${nsCountFor(a,i)}명`:''}</div>
+        <div class="tm">${cls.length}개 반 · 학생 ${d}/${tot}명 완료</div>
         <div class="tbar"><i style="width:${pct}%;background:${t.color}"></i></div>
         <div class="hint">${focus?'다시 누르면 전체 보기':'이름을 누르면 내 상담 기록'}</div></div></div>`;
     });
