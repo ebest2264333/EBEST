@@ -10117,7 +10117,7 @@ async function eaAiJson(content, maxTokens){
 async function eaTrendDocBlocks(d, entries){
   const refs=[];
   if(d.usePapers!==false) entries.forEach(en=>(en.papers||[]).forEach(p=>refs.push({p, label:[en.school,en.grade,en.examTitle,en.examDate||en.date].filter(Boolean).join(' ')+' 시험지'})));
-  (d.files||[]).forEach(p=>refs.push({p, label:'추가 자료(시험지 또는 분석 자료 — 파일명·내용으로 어느 시험인지 판단)'}));
+  (d.files||[]).forEach(p=>refs.push({p, label:p.kind==='book'?'교과서·부교재 본문 자료(출처 분류 기준 — 시험 지문이 이 자료에서 나왔는지 대조해 교과서/부교재 여부를 판단)':'추가 자료(시험지 또는 분석 자료 — 파일명·내용으로 어느 시험인지 판단)'}));
   // 같은 파일이 시험지와 추가 자료 양쪽에 있으면 한 번만 읽는다(저장 경로 또는 파일명+크기가 같으면 같은 파일)
   const seenF=new Set(); for(let i=refs.length-1;i>=0;i--){ const q=refs[i].p, k=(q.path||q.url||'')||((q.fileName||'')+'|'+(q.size||'')); if(seenF.has(k)) refs.splice(i,1); else seenF.add(k); }
   if(refs.length>8) throw new Error('첨부 자료가 너무 많아요(최대 8개). 시험 선택을 줄이거나 "시험지도 함께 읽기"를 꺼주세요.');
@@ -10145,7 +10145,7 @@ function eaTrendPromptV2(d, entries, docCount, part){
 - 분석표(sections의 표 포함)는 내용·구조·열·행·숫자·판정값·근거를 지금 방식 그대로 유지하세요. 표 칸의 분석 내용을 줄이거나 빼거나 바꾸지 말고, 어려운 어휘·약어·전문용어만 쉬운 말로 바꿔 쓰세요(의미와 정보량은 그대로).
 - 막연한 표현("다소", "일정 부분", "유의미")은 숫자나 문항 번호로 바꿔 쓰세요.
 - 시사점(teaching)은 "~연습이 필요합니다/~지도하는 것이 좋습니다"처럼 수업에서 바로 할 일로 쓰세요.`;
-  const tail=`${d.instr?'\n추가 요청: '+d.instr:''}\n${entText?'\n[학원이 입력한 시험 분석]\n'+entText.slice(0,40000):''}`;
+  const tail=`${d.books?'\n[교과서·부교재 정보 — 출처별 배점 분류의 기준으로 사용]\n'+String(d.books).slice(0,3000)+'\n위 교과서 범위에서 나온 지문은 "교과서", 부교재 범위에서 나온 지문은 "부교재"로 분류하고, 두 곳 어디에도 없으면 외부 지문 등 다른 출처로 분류하세요.':''}${d.instr?'\n추가 요청: '+d.instr:''}\n${entText?'\n[학원이 입력한 시험 분석]\n'+entText.slice(0,40000):''}`;
   if(part==='questions') return head+`
 이번 시험의 "문항별 분석표"만 만드세요. 모든 문항(선택형·서술형/논술형 전부)을 빠짐없이, 시험지 번호 순서대로 포함합니다. 아래 형식의 JSON 배열 한 개로만 답하세요(설명·마크다운·코드펜스 금지). 각 항목은 문자열 8개의 배열입니다.
 [["번호","파트","배점","난도","변형","유형","출처","해설·정답"], ...]
@@ -10244,7 +10244,7 @@ function eaTrendBuildRecord(d, r, entries){
   const typed='';
   let finalTitle=(rep2&&rep2.reportTitle)||title;
   { const base=finalTitle, taken=new Set(eaTrendActive().map(t=>t.title)); let n=2; while(taken.has(finalTitle)){ finalTitle=base+' ('+n+')'; n++; } }
-  return {id:d.id, academy:d.academy, school, grade, title:finalTitle, memo:d.memo||'', source:'ai', kind:'compare', titleCustom:true, entryIds:entries.map(e=>e.id), snaps,
+  return {id:d.id, academy:d.academy, school, grade, title:finalTitle, memo:d.memo||'', source:'ai', kind:'compare', titleCustom:true, books:d.books||'', entryIds:entries.map(e=>e.id), snaps,
     files:d.files||[], report:(rep2?Object.assign(rep2,{qFailed:!!r.qFailed}):eaTrendCleanReport(r)), aiModel:eaAiModel(), createdAt:Date.now(), updatedAt:Date.now(), createdBy:eaWho()};
 }
 // 내신 분석 폼에서 "🤖 AI 분석"을 돌릴 때도, 그 결과를 동향 분석 리포트 탭에 자동으로 남긴다(같은 시험지를 다시 분석하면 그 리포트를 갱신)
@@ -10510,14 +10510,27 @@ function renderEaTrendForm(){
     <label style="display:flex;align-items:center;gap:6px;font-size:.8rem;margin-bottom:16px"><input type="checkbox" id="etUsePapers" ${d.usePapers!==false?'checked':''}> 선택한 시험에 올려둔 시험지(PDF·사진)도 함께 읽기</label>
     <div style="border:1.5px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:16px;background:#fafbfd">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+        <span style="font-size:.82rem;font-weight:800;color:var(--sub)">📚 교과서·부교재 (선택 · 출처별 배점 분류 기준)</span>
+        <button type="button" class="btn small" id="etBookBtn">⬆ 본문 파일 올리기</button>
+        <input type="file" id="etBookFile" accept=".pdf,image/png,image/jpeg,image/webp" multiple style="display:none">
+      </div>
+      <textarea id="etBooks" rows="2" placeholder="예: 교과서: 천재교육 공통영어2 3~5과 / 부교재: 수능특강 영어 Lesson 5~8" style="width:100%;padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;resize:vertical;margin-bottom:6px">${esc(d.books||'')}</textarea>
+      <div style="font-size:.74rem;color:var(--sub);margin-bottom:6px">이름과 범위만 적어도 되고, 본문 PDF·사진을 올리면 시험 지문과 직접 대조해 분류해요(범위만 골라 올리는 걸 추천).</div>
+      ${(d.files||[]).filter(p=>p.kind==='book').map(p=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px dashed var(--line)">
+        <a href="${esc(stoUrl(p))}" target="_blank" rel="noopener" style="font-weight:700;font-size:.84rem;color:#2e5fb7;text-decoration:none;word-break:break-all">📄 ${esc(p.fileName)}</a>
+        <span style="font-size:.72rem;color:var(--sub)">${eaFmtSize(p.size||0)}</span>
+        <button type="button" class="del etFileDel" data-fid="${esc(p.id)}" style="margin-left:auto">삭제</button></div>`).join('')}
+    </div>
+    <div style="border:1.5px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:16px;background:#fafbfd">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
         <span style="font-size:.82rem;font-weight:800;color:var(--sub)">📎 추가 자료 (선택)</span>
         <button type="button" class="btn small" id="etFileBtn">⬆ 파일 올리기</button>
         <input type="file" id="etFile" accept=".pdf,image/png,image/jpeg,image/webp" multiple style="display:none">
         <button type="button" class="btn small" id="etAiKeyBtn" style="margin-left:auto" title="AI 분석에 쓰는 키(이 기기에만 저장)">🔑 AI 키</button>
       </div>
       <div style="font-size:.74rem;color:var(--sub);margin-bottom:6px">다른 학교 시험지나 기존 분석 자료를 올리면 같이 읽어요. 파일은 Firebase Storage에 저장돼요.</div>`;
-  if(!(d.files||[]).length) h+='<div style="font-size:.78rem;color:#8b93a7">올린 파일이 없습니다.</div>';
-  (d.files||[]).forEach(p=>{
+  if(!(d.files||[]).filter(p=>p.kind!=='book').length) h+='<div style="font-size:.78rem;color:#8b93a7">올린 파일이 없습니다.</div>';
+  (d.files||[]).filter(p=>p.kind!=='book').forEach(p=>{
     h+=`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px dashed var(--line)">
       <a href="${esc(stoUrl(p))}" target="_blank" rel="noopener" style="font-weight:700;font-size:.84rem;color:#2e5fb7;text-decoration:none;word-break:break-all">📄 ${esc(p.fileName)}</a>
       <span style="font-size:.72rem;color:var(--sub)">${eaFmtSize(p.size||0)}</span>
@@ -10568,7 +10581,7 @@ function bindEaTrendForm(){
   const v=document.getElementById('view');
   const d=state.etDraft; if(!d) return;
   const byId=id=>v.querySelector('#'+id);
-  [['etAcademy','academy'],['etSchool','school'],['etGrade','grade'],['etTitle','title'],['etMemo','memo'],['etInstr','instr']].forEach(([id,f])=>{
+  [['etAcademy','academy'],['etSchool','school'],['etGrade','grade'],['etTitle','title'],['etMemo','memo'],['etInstr','instr'],['etBooks','books']].forEach(([id,f])=>{
     const el=byId(id); if(el) el.onchange=()=>{ d[f]=el.value; if(f==='school'||f==='academy') render(true); };
   });
   v.querySelectorAll('.etEntryCb').forEach(cb=>cb.onchange=()=>{
@@ -10577,8 +10590,9 @@ function bindEaTrendForm(){
     else d.entryIds=d.entryIds.filter(x=>x!==cb.dataset.id);
   });
   const up=byId('etUsePapers'); if(up) up.onchange=()=>{ d.usePapers=up.checked; };
-  const fileBtn=byId('etFileBtn'), fileInp=byId('etFile');
-  if(fileBtn && fileInp){
+  const bindUpload=(btnId, inpId, kind, label)=>{
+    const fileBtn=byId(btnId), fileInp=byId(inpId);
+    if(!(fileBtn && fileInp)) return;
     fileBtn.onclick=()=>fileInp.click();
     fileInp.onchange=async()=>{
       const files=[...fileInp.files]; if(!files.length) return;
@@ -10588,15 +10602,17 @@ function bindEaTrendForm(){
         try{
           fileBtn.disabled=true; fileBtn.textContent='⏳ 업로드 중... 0%';
           const id=eaNewId('etf');
-          const ref=await stoUpload('examTrends/'+d.id+'/'+id+'_'+stoSafeName(f.name), f, f.type||'application/pdf', (l,t)=>{ const b=document.getElementById('etFileBtn'); if(b) b.textContent='⏳ 업로드 중... '+Math.round(l/t*100)+'%'; });
-          d.files=d.files||[]; d.files.push({id, fileName:f.name, size:f.size, mime:f.type||'application/pdf', bucket:ref.bucket, path:ref.path, token:ref.token, uploadedAt:Date.now(), uploadedBy:eaWho()});
+          const ref=await stoUpload('examTrends/'+d.id+'/'+id+'_'+stoSafeName(f.name), f, f.type||'application/pdf', (l,t)=>{ const b=document.getElementById(btnId); if(b) b.textContent='⏳ 업로드 중... '+Math.round(l/t*100)+'%'; });
+          d.files=d.files||[]; d.files.push({id, kind, fileName:f.name, size:f.size, mime:f.type||'application/pdf', bucket:ref.bucket, path:ref.path, token:ref.token, uploadedAt:Date.now(), uploadedBy:eaWho()});
         }catch(e){ fails.push(f.name+' — '+((e&&e.message)||e)); }
       }
       fileInp.value='';
       if(state.etDraft===d) render(true);
       if(fails.length) alert('다음 파일은 올리지 못했습니다:\n'+fails.join('\n'));
     };
-  }
+  };
+  bindUpload('etFileBtn','etFile','extra');
+  bindUpload('etBookBtn','etBookFile','book');
   v.querySelectorAll('.etFileDel').forEach(b=>b.onclick=()=>{
     const p=(d.files||[]).find(x=>x.id===b.dataset.fid); if(!p) return;
     if(!confirm('이 파일을 삭제할까요?')) return;
