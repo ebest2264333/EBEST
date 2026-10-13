@@ -828,7 +828,13 @@ function mergeField(local, remote){
       const cur=map[x[key]];
       if(!cur){ map[x[key]]=x; return; }
       const curTs=tsOf(cur.updatedAt||cur.createdAt), newTs=tsOf(x.updatedAt||x.createdAt);
-      if(newTs>=curTs) map[x[key]]=x;
+      const win=(newTs>=curTs)?x:cur, lose=(win===x)?cur:x;
+      // 신입생 상담처럼 선생님별 기록(notes)이 한 레코드에 같이 들어 있으면, 레코드째 덮어쓰지 않고 선생님 칸마다 더 최근 것을 합친다
+      if(win.notes && lose.notes && typeof win.notes==='object' && typeof lose.notes==='object'){
+        const merged={...lose.notes};
+        for(const w in win.notes){ const a=win.notes[w], b=lose.notes[w]; merged[w]=(!b||tsOf(a&&a.ts)>=tsOf(b&&b.ts))?a:b; }
+        map[x[key]]={...win, notes:merged};
+      } else map[x[key]]=win;
     });
     return Object.values(map);
   }
@@ -4681,10 +4687,21 @@ function prevConsultCmemoFor(k){
   return (store.cmemo[pm]||{})[k]||'';
 }
 function teacherOf(c){ const i=mAssign()[ckey(c)]; return (i!=null && store.teachers[c.academy][i])?store.teachers[c.academy][i]:null; }
+// 이번 달에 신입생으로 들어온 학생은 그 달에는 일반 상담 대상이 아니다(신입생 상담으로만 진행) — 등록한 달(createdAt)이 보는 달과 같으면 일반 상담 명단에서 뺀다
+function nsJoinedThisMonth(c, sname){
+  return (store.newStudents||[]).some(ns=>{
+    if(ns._deleted || ns.academy!==c.academy || String(ns.createdAt||'').slice(0,7)!==state.month) return false;
+    const st=nsStudentOf(ns);
+    if(st) return rosterNameMatchesStudent(sname, st.nameKo, st.nameEn) && (!ns.className||ns.className===c.name||classNameInMonth(st,state.month)===c.name);
+    return ns.name===sname && (!ns.className||ns.className===c.name);
+  });
+}
+function consultRoster(c){ return (c.students||[]).filter(sname=>!nsJoinedThisMonth(c,sname)); }
 function classProgress(c){
   const rec=mRecords()[ckey(c)]||{};
-  const total=(c.students||[]).length;
-  const done=(c.students||[]).filter(s=>rec[s]&&rec[s].done).length;
+  const ros=consultRoster(c);
+  const total=ros.length;
+  const done=ros.filter(s=>rec[s]&&rec[s].done).length;
   return {done,total};
 }
 function studentRow(k, s, showClass, c, readOnly){
@@ -4770,21 +4787,41 @@ function subjectTeachersForClass(a, className){
   (store.teachers[a]||[]).forEach((t,i)=>{ if(teacherNames.has(t.name)) idxs.push(i); });
   return idxs;
 }
+// 신입생 상담 — 학생 명단에 먼저 등록된 학생을 골라서 추가한다(어머님 번호·상담 전 확인 등 명단 정보를 그대로 보여주기 위해)
+function nsRosterOptions(a){
+  return store.students.filter(x=>x.academy===a && !x._deleted && x.status!=='퇴원').map(st=>({st, label:`${st.nameKo} (${classNameInMonth(st,state.month)||st.className||'반 미배정'}${st.school?' · '+st.school:''})`}));
+}
+function nsStudentOf(ns){ return ns&&ns.studentId?store.students.find(x=>x.id===ns.studentId&&!x._deleted):null; }
 function addNewStudentAction(a){
   const nameInp=document.querySelector(`[data-nsname="${CSS.escape(a)}"]`);
   const classInp=document.querySelector(`[data-nsclass="${CSS.escape(a)}"]`);
-  const name=(nameInp&&nameInp.value||'').trim();
-  if(!name){ alert('신입생 이름을 입력하세요.'); return; }
-  const className=(classInp&&classInp.value||'').trim();
-  store.newStudents.push({id:genClassId(), academy:a, name, className, memo:'', done:false, date:'', createdAt:todayISO(), updatedAt:Date.now()});
+  const typed=(nameInp&&nameInp.value||'').trim();
+  if(!typed){ alert('학생 명단에서 신입생을 골라주세요.'); return; }
+  const opts=nsRosterOptions(a);
+  let hit=opts.find(o=>o.label===typed);
+  if(!hit){ const same=opts.filter(o=>o.st.nameKo===typed); if(same.length===1) hit=same[0]; else if(same.length>1){ alert('같은 이름의 학생이 여러 명이에요. 목록에서 "이름 (반 · 학교)" 형태로 골라주세요.'); return; } }
+  if(!hit){ alert('학생 명단에서 찾을 수 없어요. 먼저 [학생 명단]에 신입생을 추가한 뒤 여기서 골라주세요.'); return; }
+  if(store.newStudents.some(x=>!x._deleted && x.studentId===hit.st.id)){ alert('이미 신입생 상담에 등록된 학생이에요.'); return; }
+  const className=(classInp&&classInp.value||'').trim()||classNameInMonth(hit.st,state.month)||hit.st.className||'';
+  store.newStudents.push({id:genClassId(), academy:a, studentId:hit.st.id, name:hit.st.nameKo, className, notes:{}, createdAt:todayISO(), updatedAt:Date.now()});
   if(nameInp) nameInp.value='';
   if(classInp) classInp.value='';
   save(); render(true);
 }
-function updateNewStudentField(id, field, value){
+// 선생님마다 상담 내용·완료·날짜를 따로 기록한다(key = 선생님 who "학원|번호")
+function nsNote(ns, who){
+  if(ns.notes && ns.notes[who]) return ns.notes[who];
+  if(!ns.notes || !Object.keys(ns.notes).length){ if(ns.memo||ns.done||ns.date) return {memo:ns.memo||'', done:!!ns.done, date:ns.date||'', legacy:true}; }
+  return {memo:'', done:false, date:''};
+}
+function updateNewStudentNote(id, who, field, value){
   const ns=store.newStudents.find(x=>x.id===id); if(!ns) return;
-  ns[field]=value; ns.updatedAt=Date.now();
-  save(); render(true);
+  ns.notes=ns.notes||{};
+  ns.notes[who]=Object.assign({}, nsNote(ns, who), {legacy:undefined}, {[field]:value, ts:Date.now()});
+  delete ns.notes[who].legacy;
+  ns.updatedAt=Date.now();
+  save();
+  if(field!=='memo') render(true);
 }
 function removeNewStudentAction(id){
   const idx=store.newStudents.findIndex(x=>x.id===id); if(idx<0) return;
@@ -4874,25 +4911,31 @@ function renderConsultRequestAdmin(){
 function renderNewStudentAdmin(){
   const rows=store.newStudents.filter(ns=>!ns._deleted).map(ns=>{
     const idxs=subjectTeachersForClass(ns.academy, ns.className);
-    const names=idxs.map(i=>(store.teachers[ns.academy]||[])[i]).filter(Boolean).map(t=>t.name);
-    const teacherLabel=names.length?names.join(', '):(ns.className?'담당 선생님을 찾을 수 없음 (반 이름 확인)':'반 미지정');
-    return `<div class="rowitem" style="align-items:center;flex-wrap:wrap">
-      <span class="key">${esc(ns.name)} ${MODE==='all'?bdg(ns.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(ns.className||'반 미지정')}</span></span>
+    const ts=idxs.map(i=>({i, t:(store.teachers[ns.academy]||[])[i]})).filter(x=>x.t);
+    const st=nsStudentOf(ns);
+    const doneN=ts.filter(x=>nsNote(ns, ns.academy+'|'+x.i).done).length;
+    const allDone=ts.length>0&&doneN===ts.length;
+    const teacherLabel=ts.length?'':(ns.className?'담당 선생님을 찾을 수 없음 (반 이름 확인)':'반 미지정');
+    return `<div class="rowitem" style="align-items:flex-start;flex-wrap:wrap">
+      <span class="key" style="display:flex;flex-direction:column;gap:2px"><span>${esc(ns.name)} ${MODE==='all'?bdg(ns.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(ns.className||'반 미지정')}</span></span>
+        ${st&&st.parentPhone?`<span style="font-size:.74rem;color:var(--sub);font-weight:400">📞 ${esc(st.parentPhone)}</span>`:(st?'':'<span style="font-size:.72rem;color:#b45309;font-weight:400">⚠ 학생 명단에서 찾을 수 없음</span>')}</span>
       <span class="val" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-        <span style="font-size:.78rem;color:var(--sub)">담당: ${esc(teacherLabel)}</span>
-        <span style="font-size:.78rem;color:${ns.done?'var(--ok)':'var(--sub)'}">${ns.done?'✔ 상담완료':'상담대기'}</span>
+        ${teacherLabel?`<span style="font-size:.78rem;color:var(--sub)">${teacherLabel}</span>`:`<span style="font-size:.78rem;color:${allDone?'var(--ok)':'var(--sub)'}">${allDone?'✔ 모든 선생님 상담완료':'상담 '+doneN+'/'+ts.length+'명 완료'}</span>`}
         <button class="del" data-nsdel="${ns.id}">삭제</button>
-      </span></div>`;
+      </span>
+      ${ts.length?`<div style="flex-basis:100%;display:flex;flex-direction:column;gap:4px;margin-top:6px">${ts.map(x=>{ const n=nsNote(ns, ns.academy+'|'+x.i); return `<div style="font-size:.78rem;border:1px solid var(--line);border-radius:8px;padding:5px 9px;background:${n.done?'#f1faf4':'#fafbfd'}"><b style="color:${x.t.color||'var(--ink)'}">${esc(x.t.name)}</b> <span style="color:${n.done?'var(--ok)':'var(--sub)'}">${n.done?'✔ 완료':'대기'}${n.date?' · '+esc(n.date):''}</span>${n.memo?`<div style="margin-top:2px;white-space:pre-wrap">${esc(n.memo)}</div>`:'<span style="color:#b5bbc8"> · 작성 전</span>'}</div>`; }).join('')}</div>`:''}
+    </div>`;
   }).join('');
   return `<div class="setsec" style="border:2px solid var(--ebest)">
     <h3>🆕 신입생 상담 관리</h3>
-    <div class="desc">신입생을 추가하고 반을 지정하면, 그 반 수업을 담당하는 모든 선생님(단어시험 담당 선생님 제외) 화면에 자동으로 신입생 상담 항목이 나타나 내용을 작성할 수 있습니다.</div>
+    <div class="desc">학생 명단에 먼저 등록한 신입생을 골라 추가하면, 그 반 수업을 담당하는 모든 선생님(단어시험 담당 선생님 제외) 화면에 어머님 번호와 함께 신입생 상담 항목이 나타나요. 선생님마다 상담 내용을 따로 작성하고, 여기서 한눈에 볼 수 있어요.</div>
     <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px">
       ${academies().map(a=>`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         <datalist id="dl_nscls_${a}">${classNameOptions(a).map(n=>`<option value="${esc(n)}">`).join('')}</datalist>
+        <datalist id="dl_nsstu_${a}">${nsRosterOptions(a).map(o=>`<option value="${esc(o.label)}">`).join('')}</datalist>
         ${MODE==='all'?`<span class="badge ${AC[a].cls}">${AC[a].label}</span>`:''}
-        <input type="text" placeholder="신입생 이름" data-nsname="${a}" style="width:110px;padding:6px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.85rem">
-        <input type="text" placeholder="반 이름 (검색)" list="dl_nscls_${a}" data-nsclass="${a}" style="width:120px;padding:6px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.85rem">
+        <input type="text" placeholder="학생 명단에서 신입생 검색" list="dl_nsstu_${a}" data-nsname="${a}" style="width:190px;padding:6px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.85rem">
+        <input type="text" placeholder="반 (비우면 명단의 반)" list="dl_nscls_${a}" data-nsclass="${a}" style="width:140px;padding:6px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.85rem">
         <button class="btn small" data-nsadd="${a}">+ 신입생 추가</button></div>`).join('')}
     </div>
     ${rows||'<div style="font-size:.8rem;color:#8b93a7">등록된 신입생이 없습니다.</div>'}
@@ -4907,15 +4950,26 @@ function renderNewStudentMine(a,i){
   const mine=store.newStudents.filter(ns=>!ns._deleted && ns.academy===a && subjectTeachersForClass(a, ns.className).includes(i));
   if(!mine.length) return '';
   const who=a+'|'+i;
-  const rows=mine.map(ns=>`<div class="myclass" style="display:block">
+  const rows=mine.map(ns=>{
+    const st=nsStudentOf(ns);
+    const n=nsNote(ns, who);
+    const others=subjectTeachersForClass(a, ns.className).filter(j=>j!==i).map(j=>({t:(store.teachers[a]||[])[j], n:nsNote(ns, a+'|'+j)})).filter(x=>x.t);
+    return `<div class="myclass" style="display:block">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
-      <b>${esc(ns.name)}</b>
-      <label style="font-size:.8rem;color:var(--sub)"><input type="checkbox" data-nsdone="${ns.id}" ${ns.done?'checked':''}> 상담 완료</label>
-      <input type="date" data-nsdate="${ns.id}" value="${esc(ns.date||'')}" style="border:1px solid var(--line);border-radius:8px;padding:4px 7px;font-family:inherit;font-size:.78rem">
+      <b>${esc(ns.name)}</b><span style="font-size:.78rem;color:var(--sub)">${esc(ns.className||'')}${st&&st.grade?' · '+esc(st.grade):''}${st&&st.school?' · '+esc(st.school):''}</span>
+      ${st&&st.parentPhone?`<span style="font-size:.8rem;color:var(--sub)">📞 ${esc(st.parentPhone)}</span>`:''}
+    </div>
+    ${st&&st.preCheck?`<div style="font-size:.76rem;color:#b45309;background:#fff8ec;border:1px solid #f0dcae;border-radius:7px;padding:5px 8px;margin-bottom:5px">🔎 상담 전 확인: ${esc(st.preCheck)}</div>`:''}
+    ${st&&st.note?`<div style="font-size:.76rem;color:#2e5fb7;background:#eef4ff;border:1px solid #cfe0fb;border-radius:7px;padding:5px 8px;margin-bottom:5px">📝 특이사항 코멘트(다른 선생님 포함): ${esc(st.note)}</div>`:''}
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+      <span style="font-size:.78rem;font-weight:800;color:var(--sub)">내 상담 기록</span>
+      <label style="font-size:.8rem;color:var(--sub)"><input type="checkbox" data-nsdone="${ns.id}" data-nswho="${esc(who)}" ${n.done?'checked':''}> 상담 완료</label>
+      <input type="date" data-nsdate="${ns.id}" data-nswho="${esc(who)}" value="${esc(n.date||'')}" style="border:1px solid var(--line);border-radius:8px;padding:4px 7px;font-family:inherit;font-size:.78rem">
       ${submitBtn('newstudent', who, ns.id, '#2e5fb7')}
     </div>
-    <textarea data-nsmemo="${ns.id}" placeholder="신입생 상담 내용 메모…" style="width:100%;min-height:50px;border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:.83rem">${esc(ns.memo||'')}</textarea>
-  </div>`).join('');
+    <textarea data-nsmemo="${ns.id}" data-nswho="${esc(who)}" placeholder="신입생 상담 내용 메모… (선생님마다 따로 기록돼요)" style="width:100%;min-height:50px;border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:.83rem">${esc(n.memo||'')}</textarea>
+    ${others.length?`<div style="margin-top:6px;display:flex;flex-direction:column;gap:4px">${others.map(x=>`<div style="font-size:.76rem;border:1px solid var(--line);border-radius:8px;padding:5px 9px;background:#fafbfd"><b style="color:${x.t.color||'var(--ink)'}">${esc(x.t.name)} 선생님</b> <span style="color:${x.n.done?'var(--ok)':'var(--sub)'}">${x.n.done?'✔ 완료':'대기'}${x.n.date?' · '+esc(x.n.date):''}</span>${x.n.memo?`<div style="margin-top:2px;white-space:pre-wrap">${esc(x.n.memo)}</div>`:''}</div>`).join('')}</div>`:''}
+  </div>`; }).join('');
   return `<div class="mypanel" style="border-top-color:#2e5fb7"><h2>🆕 신입생 상담 (${mine.length}명)</h2>${rows}</div>`;
 }
 
@@ -4932,7 +4986,7 @@ function renderMyConsult(list){
   cls.forEach(c=>{
     const k=ckey(c); const p=classProgress(c);
     body+=`<div class="myclass">${esc(c.name)} <span style="font-weight:400">· ${AC[c.academy].label} · ${c.dept}${c.count?' · '+c.count+'명':''}${p.total?` · ${p.done}/${p.total} 완료`:''}</span></div>`;
-    if(c.students&&c.students.length) body+=c.students.map(s=>studentRow(k,s,false,c,viewingOthers)).join('');
+    if(c.students&&c.students.length) body+=consultRoster(c).map(s=>studentRow(k,s,false,c,viewingOthers)).join('');
     else { const pcm=prevConsultCmemoFor(k); body+=`<div style="padding:6px 0">
       ${pcm?`<div style="font-size:.76rem;color:#5a6478;background:#f4f6fb;border:1px solid #dde1ea;border-radius:7px;padding:5px 8px;margin-bottom:5px">🕘 ${esc(mLabel(shiftMonth(state.month,-1)))} 상담: ${esc(pcm)}</div>`:''}
       <textarea class="cmemo" data-k="${esc(k)}" ${viewingOthers?'disabled':''} style="width:100%;min-height:50px;border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:.83rem" placeholder="상담 내용 메모… (명단 자료가 없는 반)">${esc(mCmemo()[k]||'')}</textarea></div>`; }
@@ -4961,7 +5015,7 @@ function renderConsult(list){
   const cards=list.map(c=>{
     const t=teacherOf(c), k=ckey(c), p=classProgress(c);
     const opts=store.teachers[c.academy].map((tt,i)=>`<option value="${i}" ${mAssign()[k]===i?'selected':''}>${esc(tt.name)}</option>`).join('');
-    const students=(c.students&&c.students.length)?c.students.map(s=>studentRow(k,s,false,c)).join('') :
+    const students=(c.students&&c.students.length)?consultRoster(c).map(s=>studentRow(k,s,false,c)).join('') :
       (()=>{ const pcm=prevConsultCmemoFor(k); return `<div style="padding:8px 0"><div style="font-size:.78rem;color:var(--sub);margin-bottom:6px">명단 자료가 없는 반입니다 — 반 단위 메모로 기록하세요.</div>
        ${pcm?`<div style="font-size:.76rem;color:#5a6478;background:#f4f6fb;border:1px solid #dde1ea;border-radius:7px;padding:5px 8px;margin-bottom:5px">🕘 ${esc(mLabel(shiftMonth(state.month,-1)))} 상담: ${esc(pcm)}</div>`:''}
        <textarea class="cmemo" data-k="${esc(k)}" style="width:100%;min-height:50px;border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:.83rem" placeholder="상담 내용 메모…">${esc(mCmemo()[k]||'')}</textarea></div>`; })();
@@ -5044,15 +5098,15 @@ function bindConsult(){
   v.querySelectorAll('[data-nsadd]').forEach(b=>b.onclick=()=>addNewStudentAction(b.dataset.nsadd));
   v.querySelectorAll('[data-nsdel]').forEach(b=>b.onclick=()=>removeNewStudentAction(b.dataset.nsdel));
   v.querySelectorAll('[data-nsdone]').forEach(cb=>cb.onchange= async ()=>{
-    updateNewStudentField(cb.dataset.nsdone,'done',cb.checked);
+    updateNewStudentNote(cb.dataset.nsdone, cb.dataset.nswho, 'done', cb.checked);
     await saveAndSync();
   });
   v.querySelectorAll('[data-nsdate]').forEach(d=>d.onchange= async ()=>{
-    updateNewStudentField(d.dataset.nsdate,'date',d.value);
+    updateNewStudentNote(d.dataset.nsdate, d.dataset.nswho, 'date', d.value);
     await saveAndSync();
   });
   v.querySelectorAll('[data-nsmemo]').forEach(t=>t.onchange= async ()=>{
-    updateNewStudentField(t.dataset.nsmemo,'memo',t.value);
+    updateNewStudentNote(t.dataset.nsmemo, t.dataset.nswho, 'memo', t.value);
     await saveAndSync();
   });
 
@@ -8480,9 +8534,10 @@ function submitDoc(kind, who, ref){
   } else if(kind==='newstudent'){
     const ns=store.newStudents.find(x=>x.id===ref);
     if(ns){
-      payload={memo:ns.memo||'', done:!!ns.done, date:ns.date||''};
+      const nn=nsNote(ns, who);
+      payload={noteWho:who, note:{memo:nn.memo||'', done:!!nn.done, date:nn.date||''}};
       label=`신입생 상담 — ${ns.name}`;
-      summary=payload.done?'상담 완료':'상담 진행중';
+      summary=nn.done?'상담 완료':'상담 진행중';
     }
   }
   if(!payload){ alert('제출할 내용이 없습니다.'); return; }
@@ -8568,7 +8623,7 @@ function importSubmission(pack){
   }
   else if(pack.kind==='newstudent'){
     const ns=store.newStudents.find(x=>x.id===pack.ref);
-    if(ns) Object.assign(ns, pack.payload);
+    if(ns){ if(pack.payload.note){ ns.notes=ns.notes||{}; ns.notes[pack.payload.noteWho||who]=Object.assign({}, pack.payload.note, {ts:Date.now()}); ns.updatedAt=Date.now(); } else Object.assign(ns, pack.payload); }
   }
   const ex=findSubmit(pack.kind,who,pack.ref);
   if(ex){ ex.ts=pack.submittedAt; ex.received=true; ex.updatedAt=Date.now(); }
