@@ -1865,7 +1865,36 @@ function buildFilters(){
 
 /* ---------- 업무 기록 도우미 (로그인 시 첫 화면) ---------- */
 if(!store.ailog) store.ailog=[];
-const AI_TYPES={consult:'상담 기록',attend:'출결',hw:'숙제 확인',assign:'과제 공지',memo:'수업 메모'};
+const AI_TYPES={consult:'상담 기록',attend:'출결',absplan:'결석 예정',hw:'숙제 확인',assign:'과제 공지',memo:'수업 메모'};
+// "13,15 여행" · "10월 16일 제사" · "10/20~22 체험학습" 같은 문장에서 결석 예정 기간(시작~끝)과 사유를 뽑는다
+function parseAbsPeriod(text, base, stripWords){
+  let t=String(text||'');
+  (stripWords||[]).filter(w=>w&&w.length>=1).sort((a,b)=>b.length-a.length).forEach(w=>{ t=t.split(w).join(' '); });
+  const by=+base.slice(0,4); let bm=+base.slice(5,7), bd=+base.slice(8,10);
+  let curMonth=0; const days=[]; let explicitMonth=false;
+  const add=(m,d)=>{ if(d>=1&&d<=31&&m>=1&&m<=12) days.push({m,d}); };
+  // 1) "10월 16일" / "10/16" / "10.16" (뒤에 "~22일" 이 붙으면 범위)
+  t=t.replace(/(\d{1,2})\s*(?:월|\/|\.)\s*(\d{1,2})\s*일?(?:\s*[~\-–]\s*(?:(\d{1,2})\s*(?:월|\/|\.)\s*)?(\d{1,2})\s*일?)?/g,(m0,mo,d1,mo2,d2)=>{
+    explicitMonth=true; curMonth=+mo; add(+mo,+d1);
+    if(d2){ const m2=mo2?+mo2:+mo; if(m2===+mo){ for(let k=+d1+1;k<=+d2&&k-+d1<45;k++) add(+mo,k); } else add(m2,+d2); }
+    return ' ';
+  });
+  // 2) 월 없이 일자만: "13,15" · "16~18일" · "13일" (영문 바로 뒤의 숫자는 반 이름 등이라 제외)
+  t=t.replace(/(^|[^A-Za-z\d])(\d{1,2}(?:\s*[,·~\-–]\s*\d{1,2})*)\s*일?(?!\d)/g,(m0,pre,seq)=>{
+    const toks=seq.split(/(\s*[,·~\-–]\s*)/); let prev=null, op=''; const mo=curMonth||bm;
+    toks.forEach(tk=>{ if(/^\s*[,·~\-–]\s*$/.test(tk)){ op=tk.trim(); return; } const n=+tk; if(!n) return;
+      if(op==='~'||op==='-'||op==='–'){ for(let k=prev+1;k<=n&&k-prev<45;k++) add(mo,k); } else add(mo,n); prev=n; op=''; });
+    return pre+' ';
+  });
+  if(!days.length) return null;
+  // 월을 안 적었고 적은 날짜가 전부 오늘보다 앞이면 다음 달로 본다
+  if(!explicitMonth){ const mx=Math.max(...days.map(x=>x.d)); if(mx<bd) days.forEach(x=>{ x.m=bm%12+1; }); }
+  const iso=x=>{ let y=by; if(explicitMonth && x.m<bm-6) y=by+1; if(!explicitMonth && days[0].m<bm) y=by+1; return y+'-'+String(x.m).padStart(2,'0')+'-'+String(x.d).padStart(2,'0'); };
+  const list=days.map(iso).sort();
+  const reason=t.replace(/결석\s*예정|예정\s*결석|결석|예정|미리|학생|님/g,' ').replace(/[\s\-–~:,·]+/g,' ').replace(/^\s*[^\p{L}\p{N}]+|[^\p{L}\p{N})]+\s*$/gu,'').trim();
+  const nonContig = list.length>1 && (new Date(list[list.length-1]+'T00:00:00')-new Date(list[0]+'T00:00:00'))/864e5+1 > new Set(list).size;
+  return {from:list[0], to:list[list.length-1], reason, nonContig};
+}
 state.aiType='auto'; state.aiPending=null;
 function norm(s){ return String(s||'').toLowerCase().replace(/\s+/g,''); }
 function classToken(name){ // 'JM1,2' -> jm1,2 / '초등(E1)' -> e1 / '고1A' -> 고1a
@@ -2033,7 +2062,8 @@ function parseWork(text, lt){
   // 유형
   let type = state.aiType!=='auto' ? state.aiType : null;
   if(!type){
-    if(/상담/.test(t)) type='consult';
+    if(/결석\s*예정|예정\s*결석|여행|제사|불참|체험\s*학습|가족\s*행사/.test(t)) type='absplan';
+    else if(/상담/.test(t)) type='consult';
     else if(/결석|지각|조퇴|출석|출결/.test(t)) type='attend';
     else if(/숙제/.test(t)) type='hw';
     else if(/과제/.test(t)) type='assign';
@@ -2045,8 +2075,15 @@ function parseWork(text, lt){
   let hwDone=true;
   if(/안\s*했|안했|미제출|못\s*했|안\s*해|빼먹/.test(t)) hwDone=false;
   const allClass=!!(clsHit && !stuHit && /(전원|반\s*전체|모두|전부|다들|애들\s*다|학생\s*전체|전체\s*학생)/.test(t)); // "JB3 전원 …" — 그 반 학생 전부에게 적용
-  return {type, date, multi, all:allClass, cls:clsHit, student:stuHit?stuHit.s:'', status, hwDone, content:text.trim(), warn,
-          needClass:!clsHit, needStudent:!stuHit && (type==='consult'||type==='attend'||type==='hw')};
+  let dateTo='', content=text.trim();
+  if(type==='absplan'){
+    const strip=[clsHit&&clsHit.name, ...(stuCands||[]).flatMap(x=>{ const en=(x.s.split('(')[0]||'').trim(), ko=(x.s.match(/\(([^)]+)\)/)||[])[1]||''; return [x.s,en,ko]; })];
+    const pr=parseAbsPeriod(text, todayISO(), strip);
+    if(pr){ date=pr.from; dateTo=pr.to; content=pr.reason; if(pr.nonContig) warn=(warn?warn+' ':'')+'떨어진 날짜는 처음~마지막 날까지 한 기간으로 등록돼요 (사이 날도 결석 처리) — 필요하면 따로 나눠 등록하세요.'; }
+    else { dateTo=date; warn=(warn?warn+' ':'')+'날짜를 찾지 못했어요 — 아래에서 시작일·종료일을 골라주세요.'; }
+  }
+  return {type, date, dateTo, multi, all:allClass, cls:clsHit, student:stuHit?stuHit.s:'', status, hwDone, content, warn,
+          needClass:!clsHit, needStudent:!stuHit && (type==='consult'||type==='attend'||type==='hw'||type==='absplan')};
 }
 function applyNoHwAll(p, lt){
   const wd=wdOf(p.date); let nClass=0, nTag=0;
@@ -2086,6 +2123,11 @@ function applyWork(p, lt){
     store.assign[mo]=store.assign[mo]||{};
     if(store.assign[mo][k]==null) store.assign[mo][k]=lt.i;
     where='[상담 관리] 탭';
+  } else if(p.type==='absplan'){
+    const st=p.student?matchStudentByRosterName(p.cls.academy, p.student, p.cls.name):null;
+    if(!st) return '⚠ 학생 명단에서 '+(p.student||'학생')+' 님을 찾지 못해 등록하지 못했어요';
+    st.absFrom=p.date; st.absTo=(p.dateTo&&p.dateTo>=p.date)?p.dateTo:p.date; st.absReason=String(p.content||'').trim(); st.updatedAt=Date.now();
+    where='[학생 명단] 결석 예정 · '+st.absFrom+(st.absTo!==st.absFrom?' ~ '+st.absTo:'')+' (결석생 요약 특이사항에 자동 포함)';
   } else if(p.type==='attend'){
     const at=atFor(p.date); at[k]=at[k]||{};
     if(p.student) at[k][p.student]=p.status;
@@ -2164,11 +2206,12 @@ function renderAI(){
       <div class="t">이렇게 기록할까요?${p.warn?`<div class="warn" style="font-weight:400;color:var(--warn);font-size:.76rem;margin-top:3px">⚠ ${esc(p.warn)}</div>`:''}</div>
       <div class="aigrid">
         <label>업무</label><select id="aiT">${Object.entries(AI_TYPES).map(([k,v])=>`<option value="${k}" ${p.type===k?'selected':''}>${v}</option>`).join('')}</select>
-        <label>날짜</label><input type="date" id="aiD" value="${p.date}">
+        <label>${p.type==='absplan'?'시작일':'날짜'}</label><input type="date" id="aiD" value="${p.date}">
+        ${p.type==='absplan'?`<label>종료일</label><input type="date" id="aiD2" value="${esc(p.dateTo||p.date)}">`:''}
         <label>반</label><select id="aiC"><option value="">반 선택…</option>${cls.map(c=>`<option ${p.cls&&c.name===p.cls.name?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
         <label>학생</label>${p.multi?`<div style="display:flex;flex-direction:column;gap:3px">${p.multi.map((m,i)=>`<label style="font-size:.82rem;display:flex;gap:6px;align-items:center"><input type="checkbox" class="aiMulti" data-i="${i}" ${m.on!==false?'checked':''}> <b>${esc(m.s)}</b> <span style="color:var(--sub);font-size:.74rem">${esc(m.cls.name)}</span></label>`).join('')}</div>`:`<select id="aiS">${stuOpts}</select>`}
       </div>
-      <textarea id="aiM">${esc(p.content)}</textarea> 
+      ${p.type==='absplan'?'<div style="font-size:.74rem;color:#7c3aed;margin:2px 0">✈ 결석 예정 사유 (학생 명단의 결석 예정에 등록돼요)</div>':''}<textarea id="aiM">${esc(p.content)}</textarea> 
       <div style="display:flex;gap:8px">
         <button class="btn primary" id="aiSave" style="background:${lt.t.color};border-color:${lt.t.color}">저장</button>
         <button class="btn" id="aiCancel">취소</button>
@@ -2229,7 +2272,8 @@ function bindAI(){
     };
     const aiS=sel('#aiS'); if(aiS) aiS.onchange=()=>{ state.aiPending.student=aiS.value; };
     v.querySelectorAll('.aiMulti').forEach(cb=>cb.onchange=()=>{ state.aiPending.multi[Number(cb.dataset.i)].on=cb.checked; });
-    const aiT=sel('#aiT'); if(aiT) aiT.onchange=()=>{ state.aiPending.type=aiT.value; };
+    const aiT=sel('#aiT'); if(aiT) aiT.onchange=()=>{ const pp=state.aiPending; const was=pp.type; pp.type=aiT.value; if(aiT.value==='absplan' && !pp.dateTo) pp.dateTo=pp.date; if(was==='absplan'||aiT.value==='absplan'){ const m0=v.querySelector('#aiM'); if(m0) pp.content=m0.value; render(true); } };
+    const aiD2=sel('#aiD2'); if(aiD2) aiD2.onchange=()=>{ state.aiPending.dateTo=aiD2.value||state.aiPending.date; };
     const aiD=sel('#aiD'); if(aiD) aiD.onchange=()=>{ state.aiPending.date=aiD.value||todayISO(); };
     const aiM=sel('#aiM'); if(aiM) aiM.onchange=()=>{ state.aiPending.content=aiM.value; };
     const sv=sel('#aiSave');
@@ -2239,8 +2283,11 @@ function bindAI(){
       const m=v.querySelector('#aiM'); if(m) p.content=m.value;
       const s=v.querySelector('#aiS'); if(s && !p.multi) p.student=s.value;
       const d=v.querySelector('#aiD'); if(d&&d.value) p.date=d.value;
+      const d2=v.querySelector('#aiD2'); if(d2) p.dateTo=d2.value||p.date;
       const t=v.querySelector('#aiT'); if(t) p.type=t.value;
+      if(p.type==='absplan' && !p.student && !p.multi){ alert('결석 예정은 학생을 선택해야 해요.'); return; }
       const where=applyWork(p, lt);
+      if(p.type==='absplan' && /^⚠/.test(where||'')){ alert(where); return; }
       state.aiPending=null; render(true);
       const lg=document.querySelector('.ailog'); if(lg) lg.scrollTop=lg.scrollHeight;
     };
