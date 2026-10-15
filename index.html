@@ -2064,17 +2064,23 @@ function parseWork(text, lt){
   if(!type){
     if(/결석\s*예정|예정\s*결석|여행|제사|불참|체험\s*학습|가족\s*행사/.test(t)) type='absplan';
     else if(/상담/.test(t)) type='consult';
-    else if(/결석|지각|조퇴|출석|출결/.test(t)) type='attend';
+    else if(/결석|지각|조퇴|출석|출결/.test(t) || (/\d\s*시|\d\s*:\s*\d{2}/.test(t) && /하원|일찍\s*(?:가|갔|감|보내)/.test(t))) type='attend';
     else if(/숙제/.test(t)) type='hw';
     else if(/과제/.test(t)) type='assign';
     else type='memo';
   }
   // 출결 상태 / 숙제 여부
   let status='출';
-  if(/결석/.test(t)) status='결'; else if(/지각/.test(t)) status='지';
+  if(/결석/.test(t)) status='결'; else if(/지각/.test(t)) status='지'; else if(/조퇴|하원|일찍\s*(?:가|갔|감|보내)/.test(t)) status='조퇴';
+  // "5시 20분쯤 하원" · "5:20 조퇴" — 조퇴 시각(24시간제 HH:MM)
+  let leave='';
+  if(status==='조퇴'){ const tm=t.match(/(\d{1,2})\s*시\s*(?:(\d{1,2})\s*분|(반))?/)||t.match(/(\d{1,2})\s*:\s*(\d{2})/); if(tm){ let h=+tm[1], mi=tm[3]?30:+(tm[2]||0); if(h>=1&&h<=11) h+=12; if(h<=23&&mi<60) leave=String(h).padStart(2,'0')+':'+String(mi).padStart(2,'0'); } }
   let hwDone=true;
   if(/안\s*했|안했|미제출|못\s*했|안\s*해|빼먹/.test(t)) hwDone=false;
-  const allClass=!!(clsHit && !stuHit && /(전원|반\s*전체|모두|전부|다들|애들\s*다|학생\s*전체|전체\s*학생)/.test(t)); // "JB3 전원 …" — 그 반 학생 전부에게 적용
+  // "RG2 Reading 전체 출석" — 수업(과목)을 같이 적으면 그 과목 출결에만 적용한다
+  let subjOnly='';
+  if(clsHit && !stuHit){ const nm=daySubjectNames(clsHit, wdOf(date)).filter(x=>x!=='-' && norm(x).length>=2 && nt.includes(norm(x))).sort((a,b)=>b.length-a.length)[0]; if(nm) subjOnly=nm; }
+  const allClass=!!(clsHit && !stuHit && /(전원|반\s*전체|모두|전부|다들|애들\s*다|학생\s*전체|전체\s*학생|전체\s*출석|다\s*출석|다\s*왔|전부\s*왔)/.test(t)); // "JB3 전원 …" — 그 반 학생 전부에게 적용
   let dateTo='', content=text.trim();
   if(type==='absplan'){
     const strip=[clsHit&&clsHit.name, ...(stuCands||[]).flatMap(x=>{ const en=(x.s.split('(')[0]||'').trim(), ko=(x.s.match(/\(([^)]+)\)/)||[])[1]||''; return [x.s,en,ko]; })];
@@ -2082,7 +2088,8 @@ function parseWork(text, lt){
     if(pr){ date=pr.from; dateTo=pr.to; content=pr.reason; if(pr.nonContig) warn=(warn?warn+' ':'')+'떨어진 날짜는 처음~마지막 날까지 한 기간으로 등록돼요 (사이 날도 결석 처리) — 필요하면 따로 나눠 등록하세요.'; }
     else { dateTo=date; warn=(warn?warn+' ':'')+'날짜를 찾지 못했어요 — 아래에서 시작일·종료일을 골라주세요.'; }
   }
-  return {type, date, dateTo, multi, all:allClass, cls:clsHit, student:stuHit?stuHit.s:'', status, hwDone, content, warn,
+  if(allClass && subjOnly) warn=(warn?warn+' ':'')+'「'+subjOnly+'」 수업 출결에만 적용돼요.';
+  return {type, date, dateTo, leave, subj:subjOnly, multi, all:allClass, cls:clsHit, student:stuHit?stuHit.s:'', status, hwDone, content, warn,
           needClass:!clsHit, needStudent:!stuHit && (type==='consult'||type==='attend'||type==='hw'||type==='absplan')};
 }
 function applyNoHwAll(p, lt){
@@ -2130,8 +2137,20 @@ function applyWork(p, lt){
     where='[학생 명단] 결석 예정 · '+st.absFrom+(st.absTo!==st.absFrom?' ~ '+st.absTo:'')+' (결석생 요약 특이사항에 자동 포함)';
   } else if(p.type==='attend'){
     const at=atFor(p.date); at[k]=at[k]||{};
-    if(p.student) at[k][p.student]=p.status;
-    else if(p.all){ const keys=attKeysFor(p.cls, wdOf(p.date)); activeStudentsForDate(p.cls, p.date).forEach(sn=>{ (keys.length?keys:[{key:k}]).forEach(({key})=>{ at[key]=at[key]||{}; at[key][sn]=p.status; }); }); }
+    if(p.student && p.status==='조퇴' && p.leave){
+      // 하원 시각이 있으면 그 시각 이후에 끝나는 수업(과목)에만 조퇴를 넣고, 그 전에 끝난 수업은 출석으로 둔다
+      const wdL=wdOf(p.date), lv=(+p.leave.slice(0,2))+(+p.leave.slice(3,5))/60;
+      const keysL=attKeysFor(p.cls, wdL);
+      const rngOf=nm=>{ const sj=(p.cls.subjects||[]).find(x=>subjOnDay(x,wdL)&&!isWordTestSubject(x)&&(nm==null||(x.subject||'-')===nm)&&x.time); return parseRange(sj?sj.time:p.cls.time); };
+      let any=false;
+      keysL.forEach(({key,subject})=>{ const r=rngOf(subject); at[key]=at[key]||{}; if(r && r[1]<=lv+0.01){ /* 하원 전에 끝난 수업은 건드리지 않는다 */ } else { at[key][p.student]='조퇴'; any=true; } });
+      if(!any && keysL.length){ const lk=keysL[keysL.length-1].key; at[lk][p.student]='조퇴'; }
+      const hwL=hwFor(p.date); hwL[k]=hwL[k]||{}; hwL[k][p.student]=hwL[k][p.student]||{};
+      const fm=lv=>{const hh=Math.floor(lv), mm=Math.round((lv-hh)*60); return (hh>12?hh-12:hh)+':'+String(mm).padStart(2,'0');};
+      hwL[k][p.student].absReasonToday=(String(p.content||'').trim()||'조퇴')+' ('+fm(lv)+' 하원)';
+    }
+    else if(p.student) at[k][p.student]=p.status;
+    else if(p.all){ let keys=attKeysFor(p.cls, wdOf(p.date)); if(p.subj){ const kf=keys.filter(x=>x.subject===p.subj); if(kf.length) keys=kf; } activeStudentsForDate(p.cls, p.date).forEach(sn=>{ (keys.length?keys:[{key:k}]).forEach(({key})=>{ at[key]=at[key]||{}; if(p.status!=='출'||!at[key][sn]) at[key][sn]=p.status; }); }); }
     where='[오늘 수업] · [출결] 탭';
   } else if(p.type==='hw' && p.all && !p.student){
     const hw=hwFor(p.date); hw[k]=hw[k]||{};
@@ -2206,6 +2225,8 @@ function renderAI(){
       <div class="t">이렇게 기록할까요?${p.warn?`<div class="warn" style="font-weight:400;color:var(--warn);font-size:.76rem;margin-top:3px">⚠ ${esc(p.warn)}</div>`:''}</div>
       <div class="aigrid">
         <label>업무</label><select id="aiT">${Object.entries(AI_TYPES).map(([k,v])=>`<option value="${k}" ${p.type===k?'selected':''}>${v}</option>`).join('')}</select>
+        ${p.type==='attend'?`<label>상태</label><select id="aiSt">${['출','지','결','조퇴'].map(v=>`<option ${p.status===v?'selected':''}>${v}</option>`).join('')}</select>`:''}
+        ${p.type==='attend'&&p.status==='조퇴'?`<label>하원 시각</label><input type="time" id="aiLv" value="${esc(p.leave||'')}">`:''}
         <label>${p.type==='absplan'?'시작일':'날짜'}</label><input type="date" id="aiD" value="${p.date}">
         ${p.type==='absplan'?`<label>종료일</label><input type="date" id="aiD2" value="${esc(p.dateTo||p.date)}">`:''}
         <label>반</label><select id="aiC"><option value="">반 선택…</option>${cls.map(c=>`<option ${p.cls&&c.name===p.cls.name?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
@@ -2273,6 +2294,8 @@ function bindAI(){
     const aiS=sel('#aiS'); if(aiS) aiS.onchange=()=>{ state.aiPending.student=aiS.value; };
     v.querySelectorAll('.aiMulti').forEach(cb=>cb.onchange=()=>{ state.aiPending.multi[Number(cb.dataset.i)].on=cb.checked; });
     const aiT=sel('#aiT'); if(aiT) aiT.onchange=()=>{ const pp=state.aiPending; const was=pp.type; pp.type=aiT.value; if(aiT.value==='absplan' && !pp.dateTo) pp.dateTo=pp.date; if(was==='absplan'||aiT.value==='absplan'){ const m0=v.querySelector('#aiM'); if(m0) pp.content=m0.value; render(true); } };
+    const aiSt=sel('#aiSt'); if(aiSt) aiSt.onchange=()=>{ state.aiPending.status=aiSt.value; const m1=v.querySelector('#aiM'); if(m1) state.aiPending.content=m1.value; render(true); };
+    const aiLv=sel('#aiLv'); if(aiLv) aiLv.onchange=()=>{ state.aiPending.leave=aiLv.value||''; };
     const aiD2=sel('#aiD2'); if(aiD2) aiD2.onchange=()=>{ state.aiPending.dateTo=aiD2.value||state.aiPending.date; };
     const aiD=sel('#aiD'); if(aiD) aiD.onchange=()=>{ state.aiPending.date=aiD.value||todayISO(); };
     const aiM=sel('#aiM'); if(aiM) aiM.onchange=()=>{ state.aiPending.content=aiM.value; };
@@ -2284,6 +2307,8 @@ function bindAI(){
       const s=v.querySelector('#aiS'); if(s && !p.multi) p.student=s.value;
       const d=v.querySelector('#aiD'); if(d&&d.value) p.date=d.value;
       const d2=v.querySelector('#aiD2'); if(d2) p.dateTo=d2.value||p.date;
+      const sst=v.querySelector('#aiSt'); if(sst) p.status=sst.value;
+      const slv=v.querySelector('#aiLv'); if(slv) p.leave=slv.value||'';
       const t=v.querySelector('#aiT'); if(t) p.type=t.value;
       if(p.type==='absplan' && !p.student && !p.multi){ alert('결석 예정은 학생을 선택해야 해요.'); return; }
       const where=applyWork(p, lt);
@@ -5682,6 +5707,7 @@ function myTodayStartTime(c, wd, lt){
 function todayClasses(list){
   const wd=wdOf(state.date);
   let cls=list.filter(c=>{
+    if(isClosedDay(c.academy, state.date)) return false; // 휴원일
     if(!classMeets(c,wd)) return false;
     // 오늘(그 요일) 과목이 전부 "단어시험"뿐이면 오늘 기록 카드에서는 숨긴다 (단어시험은 하단 [단어시험] 섹션에서 별도 기록)
     const daySubjs=(c.subjects||[]).filter(s=>subjOnDay(s,wd));
@@ -6057,7 +6083,7 @@ function renderToday(list){
       }).join(''):'<div style="font-size:.82rem;color:#8b93a7">오늘 남는 학생이 없습니다.</div>'}
     </div></div>`:'';
 // 🚨 오늘 결석생 — 오늘 결석 처리된 학생을 한 곳에 모아 사유 입력·과목별 숙제 카톡 전송 여부를 관리 (모든 선생님에게 표시)
-  const absentHwList=[]; const seenAbsent=new Set(); const lateHwList=[]; const seenLate=new Set();
+  const absentHwList=[]; const seenAbsent=new Set(); const lateHwList=[]; const seenLate=new Set(); const earlyHwList=[]; const seenEarly=new Set();
   // borrowFrom: 이 반(cl)이 합반 상대이고 그날 자체 과목이 하나도 없어서(=메인 반에만 과목을 등록해둔 합반) 출결이
   // 메인 반(borrowFrom)의 과목 구성을 빌려 "cl의 ckey_과목명" 키로 저장돼 있을 때, 그 메인 반을 넘겨준다.
   // 실제 출석 체크 화면(studentAttRow, attKeysWithOwner)이 저장하는 키와 여기서 읽어오는 키가 반드시 같아야
@@ -6081,6 +6107,11 @@ function renderToday(list){
       if(stNow==='지'){
         const lk=k+'|'+sname; if(seenLate.has(lk)) return; seenLate.add(lk);
         lateHwList.push({dept:cl.dept||'기타', className:cl.name, academy:cl.academy, student:studentDisplayName(cl.academy, sname, cl.name), k:k, s:sname, absReasonToday:(((hw[k]||{})[sname])||{}).absReasonToday||''});
+        return;
+      }
+      if(stNow==='조퇴'){
+        const ek=k+'|'+sname; if(seenEarly.has(ek)) return; seenEarly.add(ek);
+        earlyHwList.push({dept:cl.dept||'기타', className:cl.name, academy:cl.academy, student:studentDisplayName(cl.academy, sname, cl.name), k:k, s:sname, absReasonToday:(((hw[k]||{})[sname])||{}).absReasonToday||''});
         return;
       }
       if(stNow!=='결') return;
@@ -6179,6 +6210,7 @@ function renderToday(list){
   const _nm=n=>String(n||'').replace(/\(([^)]*)\)\s*$/,' $1').trim();
   const _sumEntries=[
     ...absentHwList.map(x=>({cn:x.className, nm:_nm(x.student), txt:(x.absReasonToday||'').trim()||'결석', pre:!!x.preReg})),
+    ...earlyHwList.map(x=>({cn:x.className, nm:_nm(x.student), txt:'조퇴'+((x.absReasonToday||'').trim()?` (${x.absReasonToday.trim()})`:''), pre:false})),
     ...lateHwList.map(x=>({cn:x.className, nm:_nm(x.student), txt:'지각'+((x.absReasonToday||'').trim()?` (${x.absReasonToday.trim()})`:''), pre:false}))
   ];
   const _clsOrder=[]; _sumEntries.forEach(e=>{ if(!_clsOrder.includes(e.cn)) _clsOrder.push(e.cn); });
@@ -6212,19 +6244,21 @@ function renderToday(list){
   const absentNoteBox=`<div style="margin:0 0 10px"><div style="font-size:.76rem;font-weight:800;color:var(--sub);margin-bottom:4px">📝 특이사항 (요약 복사 맨 아래에 들어가요 · 한 줄에 하나)</div><textarea class="absentNoteInput" data-date="${esc(state.date)}" rows="2" placeholder="예: RG1 남예령 Amy - 11월복귀예정 / 과제문자발송" style="width:100%;border:1.5px solid #f1f3f8;border-radius:8px;padding:6px 10px;font-family:inherit;box-sizing:border-box">${esc(_noteFor(state.date))}</textarea>${_autoPre.length?`<div style="margin-top:4px;font-size:.74rem;color:#7c3aed;background:#f6f0ff;border:1px solid #e3d6fb;border-radius:8px;padding:5px 9px">✈ 결석 예정 자동 포함 (학생 명단에서 등록, 복사 시 같이 들어가요)<br>${_autoPre.map(esc).join('<br>')}</div>`:''}</div>`;
   const absentSummaryBtn=absentNoteBox+((_sumEntries.length||_noteText)?`<div style="margin:0 0 10px"><button type="button" class="absentSummaryCopy" data-text="${esc(absentSummaryText)}" style="border:1.5px solid #c0392b;background:#fff;color:#c0392b;font-weight:800;border-radius:8px;padding:6px 12px;cursor:pointer;font-family:inherit">📋 결석·지각 요약 복사 (${_sumEntries.length}명)</button></div>`:'');
   const lateGroupsHTML=lateHwList.length?`<details open style="margin-bottom:10px;border:1px solid #f3d9a4;border-radius:8px;padding:8px 12px;background:#fff"><summary style="cursor:pointer;font-weight:800;color:#b45309;font-size:.95rem">⏰ 지각 (${lateHwList.length}명)</summary><div style="margin-top:8px">${lateHwList.map(x=>`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0;border-bottom:1px solid #f1f3f8"><b style="color:#b45309">${esc(x.student)}</b><span style="font-size:.78rem;color:var(--sub)">[${esc(x.className)}]</span><input type="text" class="absreasoninput" data-k="${esc(x.k)}" data-s="${esc(x.s)}" placeholder="지각 사유 (선택)" value="${esc(x.absReasonToday)}" style="flex:1;min-width:140px;border:1.5px solid #f1f3f8;border-radius:8px;padding:6px 10px;font-family:inherit"></div>`).join('')}</div></details>`:'';
+  const earlyGroupsHTML=earlyHwList.length?`<details open style="margin-bottom:10px;border:1px solid #cfe0fb;border-radius:8px;padding:8px 12px;background:#fff"><summary style="cursor:pointer;font-weight:800;color:#2e5fb7;font-size:.95rem">🏃 조퇴 (${earlyHwList.length}명)</summary><div style="margin-top:8px">${earlyHwList.map(x=>`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0;border-bottom:1px solid #f1f3f8"><b style="color:#2e5fb7">${esc(x.student)}</b><span style="font-size:.78rem;color:var(--sub)">[${esc(x.className)}]</span><input type="text" class="absreasoninput" data-k="${esc(x.k)}" data-s="${esc(x.s)}" placeholder="조퇴 사유·하원 시각 (선택)" value="${esc(x.absReasonToday)}" style="flex:1;min-width:140px;border:1.5px solid #f1f3f8;border-radius:8px;padding:6px 10px;font-family:inherit"></div>`).join('')}</div></details>`:'';
   const reasonMissingCount = absentHwList.filter(x=>!x.absReasonToday).length;
   const absentSecOpen = state.absentSectionOpen===true; // 기본값: 닫힘, 마지막으로 클릭한 상태를 유지
   const absentTodaySection=`<details id="absentTodayDetails" ${absentSecOpen?'open':''} class="ysec" style="margin-top:16px;border-top:4px solid #c0392b;background:#fff8f8">
     <summary style="cursor:pointer;list-style:none">
-    <h3 style="display:inline-flex;align-items:center;flex-wrap:wrap;gap:8px;width:100%">🚨 오늘 결석생 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">${state.date} 전체 반 기준 (결석 ${absentHwList.length}명${lateHwList.length?' · 지각 '+lateHwList.length+'명':''})</span>${reasonMissingCount?` <span style="background:#c0392b;color:#fff;font-size:.68rem;font-weight:800;border-radius:6px;padding:2px 8px">⚠ 사유 미입력 ${reasonMissingCount}명</span>`:''}
+    <h3 style="display:inline-flex;align-items:center;flex-wrap:wrap;gap:8px;width:100%">🚨 오늘 결석생 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">${state.date} 전체 반 기준 (결석 ${absentHwList.length}명${earlyHwList.length?' · 조퇴 '+earlyHwList.length+'명':''}${lateHwList.length?' · 지각 '+lateHwList.length+'명':''})</span>${reasonMissingCount?` <span style="background:#c0392b;color:#fff;font-size:.68rem;font-weight:800;border-radius:6px;padding:2px 8px">⚠ 사유 미입력 ${reasonMissingCount}명</span>`:''}
       <button type="button" class="absentAsgRefresh" data-date="${esc(state.date)}" title="다른 선생님이 방금 적은 오늘의 과제 내용을 지금 바로 받아와서, 아래 카톡 전송 메모칸에 자동 입력된 내용을 최신으로 갱신합니다 (자동으로는 1분마다 확인돼요)" style="margin-left:auto;flex:none;border:1px solid var(--line);background:#fff;color:#5a6478;border-radius:6px;padding:4px 9px;font-size:.74rem;font-weight:700;cursor:pointer">🔄 과제 새로고침</button></h3>
     </summary>
     <div style="padding:0 16px 14px">
       ${absentSummaryBtn}
       ${absentGroupsHTML}
+      ${earlyGroupsHTML}
       ${lateGroupsHTML}
     </div></details>`;
-  if(!cls.length) return alertSection+h+'<div class="empty">이 요일에 수업하는 반이 없습니다.'+(lt&&state.myOnly?' ("내 수업만 보기"를 꺼보세요 — 담당 표기가 없는 반은 걸러집니다)':'')+'</div>'+staySection+absentTodaySection+wtSection;
+  if(!cls.length) return alertSection+h+(((state.ac==='all'?academies():[state.ac]).every(a=>isClosedDay(a,state.date)))?'<div class="empty" style="color:#6d28d9;font-weight:800">🏖 휴원일입니다 — 출결·숙제 기록과 자동 결석 처리를 하지 않아요.':'<div class="empty">이 요일에 수업하는 반이 없습니다.')+(lt&&state.myOnly?' ("내 수업만 보기"를 꺼보세요 — 담당 표기가 없는 반은 걸러집니다)':'')+'</div>'+staySection+absentTodaySection+wtSection;
   cls.forEach(c=>{
     const k=ckey(c);
     const mine = lt && teacherTeachesToday(c,lt,wd);
@@ -6804,7 +6838,7 @@ function monthDates(c){
   const set=new Set();
   for(let d=1;d<=days;d++){
     const iso=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    if(classMeets(c, wdOf(iso))) set.add(iso);
+    if(classMeets(c, wdOf(iso)) && !isClosedDay(c.academy, iso)) set.add(iso);
     if(store.attend[iso] && store.attend[iso][ckey(c)]) set.add(iso);
   }
   return [...set].sort();
@@ -8398,7 +8432,7 @@ function downloadMasterXlsx(aOnly){
    ['· 과목 요일 칸: 그 과목이 특정 요일에만 있으면 콤마로 적기(예: 화,목). 비우면 반이 수업하는 모든 요일에 표시됩니다.'],
    ['· 과목 시간 칸: 그 과목만 반의 기본 시간과 다르면 적기(예: 3:40-4:20). 비우면 반의 기본 시간을 사용합니다.'],
    ['· 연간 시트: 반×과목×월 교재. 빈 달을 채우거나 새 줄을 추가하면 연간 교재 탭에 반영됩니다.'],
-   ['· 학사일정 시트: 시작일(YYYY-MM-DD)·종료일·제목·구분(시험/휴강/방학/행사/기타)·학원(공통/이베스트/아이콘). 업로드 시 전체 교체됩니다.']];
+   ['· 학사일정 시트: 시작일(YYYY-MM-DD)·종료일·제목·구분(시험/휴강/휴원/방학/행사/기타)·학원(공통/이베스트/아이콘). 업로드 시 전체 교체됩니다.']];
   const wsG=XLSX.utils.aoa_to_sheet(guide); wsG['!cols']=[{wch:120}];
   XLSX.utils.book_append_sheet(wb, wsG, '사용법');
   // 월별 (학원별 최신 자료 기준)
@@ -8780,8 +8814,8 @@ function repStats(){
 }
 
 /* ---------- 학사일정 · 주간 회의록 ---------- */
-const CAL_CATS=['시험','휴강','방학','행사','기타'];
-const CAL_COLORS={'시험':'#c02b2b','휴강':'#b45309','방학':'#2e5fb7','행사':'#0e9f6e','기타':'#5a6478'};
+const CAL_CATS=['시험','휴강','휴원','방학','행사','기타'];
+const CAL_COLORS={'시험':'#c02b2b','휴강':'#b45309','휴원':'#6d28d9','방학':'#2e5fb7','행사':'#0e9f6e','기타':'#5a6478'};
 function catColor(cat){ return (store.calCatColors&&store.calCatColors[cat]) || CAL_COLORS[cat] || '#5a6478'; } // 관리자가 태그별로 직접 정한 색이 있으면 그걸 우선 사용
 function calSorted(includePast){
   const tomb=store.calendarTombstones||{};
@@ -8798,6 +8832,11 @@ function calSorted(includePast){
     if(includePast) return true;
     return (ev.end||ev.start) >= today; // 기본값: 이미 끝난(지난) 일정은 목록에서 숨김
   }).sort((x,y)=>x.start.localeCompare(y.start));
+}
+// 🏖 학원이 쉬는 날(학사일정에서 구분을 '휴원'으로 등록) — 그날은 수업·출결·자동 결석 처리를 하지 않는다
+function isClosedDay(academy, dateISO){
+  const tomb=store.calendarTombstones||{};
+  return (store.calendar||[]).some(ev=>ev && ev.cat==='휴원' && tomb[String(ev.id)]==null && (ev.a==='all'||ev.a===academy) && ev.start<=dateISO && dateISO<=(ev.end||ev.start));
 }
 function eventsOn(dateISO){
   return calSorted(true).filter(ev=>ev.start<=dateISO && dateISO<=(ev.end||ev.start));
