@@ -2745,33 +2745,29 @@ function renderTimetableGrid(list){
         const s0=sorted[i], s1=sorted[i+1];
         const hits=entries.filter(e=>e.start<=s0+1e-6 && e.end>=s1-1e-6);
         const tm=`<td class="tm">${fmtH(s0)}~${fmtH(s1)}</td>`;
-        if(!hits.length){ rows+=`<tr>${tm}<td class="rc" colspan="${classNames.length}">RECESS</td></tr>`; continue; }
+        if(!hits.length){ rows+=`<tr>${tm}<td class="rc" colspan="${groups.length}">RECESS</td></tr>`; continue; }
         const isWt=hits.some(e=>e.isWordTest);
-        // 합반으로 묶인 두 반(예: JM1·JM2)이 같은 과목·담당이면 칸을 양옆으로 하나로 합쳐 보여준다
+        // 합반으로 묶인 반(예: JM1·JM2)은 한 반처럼 가로 한 칸으로 합쳐 보여준다. 같은 시간에 과목·담당이 서로 다르면 한 칸 안에 위아래로 나눠 보여준다
         const sameHit=(h1,h2)=>h1&&h2&&h1.subject===h2.subject&&h1.teacher===h2.teacher&&h1.room===h2.room&&h1.isWordTest===h2.isWordTest;
+        const paint=(h)=>{
+          if(h.isWordTest){ const code=ttgTeacherCode(a, h.teacher); const txt=h.room?(code?`${h.room}(${code})`:h.room):(code?`단어시험(${code})`:'단어시험'); return {bg:'#d9d9d9', fg:'#000', txt}; }
+          const hex=ttgTeacherColorHex(a, h.teacher); return {bg:hex||'', fg:hex?(ttgIsDarkColor(hex)?'#fff':'#000'):'', txt:h.subject};
+        };
         let tds='';
-        for(let ci=0; ci<classNames.length; ci++){
-          const nm=classNames[ci];
-          const h=hits.find(e=>e.className===nm);
-          let span=1;
-          if(h){ while(ci+span<classNames.length && isPartner(classNames[ci+span-1], classNames[ci+span]) && sameHit(h, hits.find(e=>e.className===classNames[ci+span]))) span++; }
-          const sp=span>1?` colspan="${span}"`:'';
-          const jump=admin&&idOf[nm]?` data-ttjump="${day}|${esc(idOf[nm])}"`:'';
-          if(!h){ tds+=`<td${isWt?' style="background:#d9d9d9"':''}></td>`; continue; }
-          if(h.isWordTest){
-            const code=ttgTeacherCode(a, h.teacher);
-            const txt=h.room?(code?`${h.room}(${code})`:h.room):(code?`단어시험(${code})`:'단어시험');
-            tds+=`<td class="hit"${sp}${jump} style="background:#d9d9d9;color:#000">${esc(txt)}</td>`;
+        groups.forEach(g=>{
+          const gh=g.map(nm=>({nm, h:hits.find(e=>e.className===nm)})).filter(x=>x.h);
+          const jump=admin&&idOf[g[0]]?` data-ttjump="${day}|${esc(idOf[g[0]])}"`:'';
+          if(!gh.length){ tds+=`<td${isWt?' style="background:#d9d9d9"':''}></td>`; return; }
+          if(gh.length===1 || gh.every(x=>sameHit(gh[0].h, x.h))){
+            const h=gh[0].h, pt=paint(h);
+            tds+=`<td class="hit"${jump} style="${pt.bg?`background:${pt.bg};color:${pt.fg}`:''}" title="${esc(g.join(', '))} · ${esc(h.subject)}${h.teacher?' · '+esc(h.teacher):''}${h.room?' · '+esc(h.room):''}">${esc(pt.txt)}${(g.length>1&&gh.length===1)?`<div style="font-size:.64rem;font-weight:600;opacity:.8">${esc(gh[0].nm)}만</div>`:''}</td>`;
           } else {
-            const hex=ttgTeacherColorHex(a, h.teacher);
-            const st=hex?`background:${hex};color:${ttgIsDarkColor(hex)?'#fff':'#000'}`:'';
-            tds+=`<td class="hit"${sp}${jump} style="${st}" title="${esc(nm)} · ${esc(h.subject)}${h.teacher?' · '+esc(h.teacher):''}${h.room?' · '+esc(h.room):''}">${esc(h.subject)}${(grpOf[nm]>1&&span===1)?`<div style="font-size:.64rem;font-weight:600;opacity:.8">${esc(nm)}</div>`:''}</td>`;
+            tds+=`<td class="hit"${jump} style="padding:0"><div style="display:flex;flex-direction:column;height:100%">${gh.map(x=>{ const pt=paint(x.h); return `<div style="flex:1;padding:4px;${pt.bg?`background:${pt.bg};color:${pt.fg}`:''}">${esc(pt.txt)}<div style="font-size:.64rem;font-weight:600;opacity:.8">${esc(x.nm)}</div></div>`; }).join('')}</div></td>`;
           }
-          ci+=span-1;
-        }
+        });
         rows+=`<tr>${tm}${tds}</tr>`;
       }
-      return `<div class="ttgday"><span class="dn">${day}요일</span><div class="ttgsc"><table class="ttgt"><thead><tr><th>시간</th>${groups.map(g=>`<th${g.length>1?` colspan="${g.length}"`:''}>${esc(groupLabel(g))}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div></div>`;
+      return `<div class="ttgday"><span class="dn">${day}요일</span><div class="ttgsc"><table class="ttgt"><thead><tr><th>시간</th>${groups.map(g=>`<th>${esc(groupLabel(g))}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div></div>`;
     }).join('');
     const legend=(store.teachers[a]||[]).map(t=>{ const hex=t.ttColor||ttgDefaultTt(a,t).color; const code=t.ttCode||ttgDefaultTt(a,t).code||''; return `<span style="background:${hex||'#eee'};color:${hex&&ttgIsDarkColor(hex)?'#fff':'#000'}">${esc(t.name)}${code?' · '+esc(code):''}</span>`; }).join('');
     return `<div class="ttgw">${acs.length>1||MODE==='all'?`<h3>${bdg(a)} ${AC[a].label}</h3>`:''}<div class="ttgleg"><span style="background:#d9d9d9">단어시험</span>${legend}</div>${dayBlocks||'<div class="empty">이 요일에 시간이 입력된 수업이 없습니다.</div>'}</div>`;
