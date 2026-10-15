@@ -2713,9 +2713,9 @@ function renderTimetableGrid(list){
   const parts=acs.map(a=>{
     const cls=classes.filter(c=>c.academy===a);
     const dayBlocks=TTG_DAYS.filter(d=>gd==='all'||gd===d).map(day=>{
-      const entries=[]; const deptOf={}; const idOf={};
+      const entries=[]; const deptOf={}; const idOf={}; const objOf={};
       cls.filter(c=>cdays(c).includes(day)).forEach(c=>{
-        deptOf[c.name]=c.dept||''; idOf[c.name]=c._id;
+        deptOf[c.name]=c.dept||''; idOf[c.name]=c._id; objOf[c.name]=c;
         let subs=(c.subjects||[]).filter(s=>subjOnDay(s,day) && s.subject && s.time && parseRange(s.time));
         if(!subs.length){ // 합반 상대 반에 과목이 몰려 있으면 그 시간·담당을 따라온다
           const mp=mergedCounterpart(c);
@@ -2734,6 +2734,12 @@ function renderTimetableGrid(list){
       });
       const bounds=new Set(); entries.forEach(e=>{ bounds.add(e.start); bounds.add(e.end); });
       const sorted=[...bounds].sort((x,y)=>x-y);
+      const isPartner=(x,y)=>{ const cx=objOf[x], cy=objOf[y]; if(!cx||!cy) return false; const m=mergedCounterpart(cx); return !!(m && m.name===cy.name); };
+      // 합반으로 나란히 놓인 반들은 맨 위 반 이름 칸도 하나로 합친다 — JM1+JM2 → "JM1,2" · 안화3B+안화3B(2) → "안화3B"
+      const grpOf={}; const groups=[];
+      classNames.forEach((nm,ci)=>{ const g=groups[groups.length-1]; if(g && isPartner(g[g.length-1], nm)) g.push(nm); else groups.push([nm]); });
+      groups.forEach(g=>g.forEach(nm=>{ grpOf[nm]=g.length; }));
+      const groupLabel=g=>{ if(g.length<2) return g[0]; const base=g.map(n=>String(n).replace(/\(\d+\)\s*$/,'').trim()); if(base.every(b=>b===base[0])) return base[0]; return g.slice(1).reduce((acc,n)=>combinedMergedName({name:acc}, {name:n}), g[0]); };
       let rows='';
       for(let i=0;i<sorted.length-1;i++){
         const s0=sorted[i], s1=sorted[i+1];
@@ -2741,21 +2747,31 @@ function renderTimetableGrid(list){
         const tm=`<td class="tm">${fmtH(s0)}~${fmtH(s1)}</td>`;
         if(!hits.length){ rows+=`<tr>${tm}<td class="rc" colspan="${classNames.length}">RECESS</td></tr>`; continue; }
         const isWt=hits.some(e=>e.isWordTest);
-        rows+=`<tr>${tm}${classNames.map(nm=>{
+        // 합반으로 묶인 두 반(예: JM1·JM2)이 같은 과목·담당이면 칸을 양옆으로 하나로 합쳐 보여준다
+        const sameHit=(h1,h2)=>h1&&h2&&h1.subject===h2.subject&&h1.teacher===h2.teacher&&h1.room===h2.room&&h1.isWordTest===h2.isWordTest;
+        let tds='';
+        for(let ci=0; ci<classNames.length; ci++){
+          const nm=classNames[ci];
           const h=hits.find(e=>e.className===nm);
+          let span=1;
+          if(h){ while(ci+span<classNames.length && isPartner(classNames[ci+span-1], classNames[ci+span]) && sameHit(h, hits.find(e=>e.className===classNames[ci+span]))) span++; }
+          const sp=span>1?` colspan="${span}"`:'';
           const jump=admin&&idOf[nm]?` data-ttjump="${day}|${esc(idOf[nm])}"`:'';
-          if(!h) return `<td${isWt?' style="background:#d9d9d9"':''}></td>`;
+          if(!h){ tds+=`<td${isWt?' style="background:#d9d9d9"':''}></td>`; continue; }
           if(h.isWordTest){
             const code=ttgTeacherCode(a, h.teacher);
             const txt=h.room?(code?`${h.room}(${code})`:h.room):(code?`단어시험(${code})`:'단어시험');
-            return `<td class="hit"${jump} style="background:#d9d9d9;color:#000">${esc(txt)}</td>`;
+            tds+=`<td class="hit"${sp}${jump} style="background:#d9d9d9;color:#000">${esc(txt)}</td>`;
+          } else {
+            const hex=ttgTeacherColorHex(a, h.teacher);
+            const st=hex?`background:${hex};color:${ttgIsDarkColor(hex)?'#fff':'#000'}`:'';
+            tds+=`<td class="hit"${sp}${jump} style="${st}" title="${esc(nm)} · ${esc(h.subject)}${h.teacher?' · '+esc(h.teacher):''}${h.room?' · '+esc(h.room):''}">${esc(h.subject)}${(grpOf[nm]>1&&span===1)?`<div style="font-size:.64rem;font-weight:600;opacity:.8">${esc(nm)}</div>`:''}</td>`;
           }
-          const hex=ttgTeacherColorHex(a, h.teacher);
-          const st=hex?`background:${hex};color:${ttgIsDarkColor(hex)?'#fff':'#000'}`:'';
-          return `<td class="hit"${jump} style="${st}" title="${esc(nm)} · ${esc(h.subject)}${h.teacher?' · '+esc(h.teacher):''}${h.room?' · '+esc(h.room):''}">${esc(h.subject)}</td>`;
-        }).join('')}</tr>`;
+          ci+=span-1;
+        }
+        rows+=`<tr>${tm}${tds}</tr>`;
       }
-      return `<div class="ttgday"><span class="dn">${day}요일</span><div class="ttgsc"><table class="ttgt"><thead><tr><th>시간</th>${classNames.map(nm=>`<th>${esc(nm)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div></div>`;
+      return `<div class="ttgday"><span class="dn">${day}요일</span><div class="ttgsc"><table class="ttgt"><thead><tr><th>시간</th>${groups.map(g=>`<th${g.length>1?` colspan="${g.length}"`:''}>${esc(groupLabel(g))}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div></div>`;
     }).join('');
     const legend=(store.teachers[a]||[]).map(t=>{ const hex=t.ttColor||ttgDefaultTt(a,t).color; const code=t.ttCode||ttgDefaultTt(a,t).code||''; return `<span style="background:${hex||'#eee'};color:${hex&&ttgIsDarkColor(hex)?'#fff':'#000'}">${esc(t.name)}${code?' · '+esc(code):''}</span>`; }).join('');
     return `<div class="ttgw">${acs.length>1||MODE==='all'?`<h3>${bdg(a)} ${AC[a].label}</h3>`:''}<div class="ttgleg"><span style="background:#d9d9d9">단어시험</span>${legend}</div>${dayBlocks||'<div class="empty">이 요일에 시간이 입력된 수업이 없습니다.</div>'}</div>`;
