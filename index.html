@@ -6307,7 +6307,7 @@ function renderToday(list){
   // 📋 결석·지각 요약 복사 — "[반] 이름 영어이름 - 사유" 형태로 한 번에 복사 (과제 문자까지 보낸 학생은 맨 아래 따로)
   const _nm=n=>String(n||'').replace(/\(([^)]*)\)\s*$/,' $1').trim();
   const _sumEntries=[
-    ...absentHwList.map(x=>({cn:x.className, nm:_nm(x.student), txt:(x.absReasonToday||'').trim()||'결석', pre:!!x.preReg})),
+    ...absentHwList.map(x=>({cn:x.className, nm:_nm(x.student), txt:((x.absReasonToday||'').trim()?`결석(${x.absReasonToday.trim()})`:'결석'), pre:!!x.preReg})),
     ...earlyHwList.map(x=>({cn:x.className, nm:_nm(x.student), txt:'조퇴'+((x.absReasonToday||'').trim()?` (${x.absReasonToday.trim()})`:''), pre:false})),
     ...lateHwList.map(x=>({cn:x.className, nm:_nm(x.student), txt:'지각'+((x.absReasonToday||'').trim()?` (${x.absReasonToday.trim()})`:''), pre:false}))
   ];
