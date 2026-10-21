@@ -2748,7 +2748,7 @@ function renderTimetableGrid(list){
         if(!hits.length){ rows+=`<tr>${tm}<td class="rc" colspan="${groups.length}">RECESS</td></tr>`; continue; }
         const isWt=hits.some(e=>e.isWordTest);
         // 합반으로 묶인 반(예: JM1·JM2)은 한 반처럼 가로 한 칸으로 합쳐 보여준다. 같은 시간에 과목·담당이 서로 다르면 한 칸 안에 위아래로 나눠 보여준다
-        const sameHit=(h1,h2)=>h1&&h2&&h1.subject===h2.subject&&h1.teacher===h2.teacher&&h1.room===h2.room&&h1.isWordTest===h2.isWordTest;
+        const sameHit=(h1,h2)=>{ if(!h1||!h2) return false; const q1=paint(h1), q2=paint(h2); return q1.txt===q2.txt && q1.bg===q2.bg; }; // 화면에 똑같이 보이면 같은 칸으로 본다 (단어시험은 강의실·담당 약자만 같으면 합침)
         const paint=(h)=>{
           if(h.isWordTest){ const code=ttgTeacherCode(a, h.teacher); const txt=h.room?(code?`${h.room}(${code})`:h.room):(code?`단어시험(${code})`:'단어시험'); return {bg:'#d9d9d9', fg:'#000', txt}; }
           const hex=ttgTeacherColorHex(a, h.teacher); return {bg:hex||'', fg:hex?(ttgIsDarkColor(hex)?'#fff':'#000'):'', txt:h.subject};
@@ -5897,6 +5897,7 @@ function todoCard(list){
   // 이번 달 상담
   const cls=classesFor(state.month).filter(c=>c.academy===lt.a && (store.assign[state.month]||{})[ckey(c)]===lt.i);
   let d=0,tot=0; cls.forEach(c=>{const p=classProgress(c);d+=p.done;tot+=p.total;});
+  { const nc=nsCountFor(lt.a, lt.i); d+=nc.done; tot+=nc.total; } // 신입생 상담도 내 상담 인원에 포함
   const pct=tot?Math.round(d/tot*100):0;
   const item=(ok,txt,tab,rk)=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f1f3f8">
     <span style="font-size:1rem">${ok?'✅':'🔔'}</span>
@@ -10060,7 +10061,7 @@ function eaQuestionHTML(q){ return eaSanitizeNoteHTML(eaNoteInitialHTML(q||''));
 /* ---------- 내신 분석: 시험지 업로드(Firebase Storage) + AI 분석 ---------- */
 const EA_PAPER_MAX_BYTES=30*1024*1024; // Claude 분석 용량 한도(약 32MB)에 맞춤
 function eaAiKey(){ try{ return localStorage.getItem('ebest_ai_key')||''; }catch(e){ return ''; } }
-function eaAiModel(){ try{ return localStorage.getItem('ebest_ai_model')||'claude-sonnet-4-5'; }catch(e){ return 'claude-sonnet-4-5'; } }
+function eaAiModel(){ try{ return localStorage.getItem('ebest_ai_model')||'claude-haiku-4-5'; }catch(e){ return 'claude-haiku-4-5'; } }
 // API 키는 이 기기 브라우저에만 저장한다(DB·다른 선생님 기기와 공유되지 않음)
 function eaAiAskKey(force){
   const cur=eaAiKey();
