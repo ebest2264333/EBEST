@@ -13069,8 +13069,8 @@ function renderSet(){
   let h='';
   h+=`<div style="font-size:.7rem;color:#c7cbd6;text-align:right;margin-bottom:6px">build: MONTHFORK-2</div>`;
   const isTeacher=!!loginTeacher() && !isMgr();
-  // 💾 이 기기 저장 용량 — localStorage 한도(보통 5~10MB)에 가까워지면 저장이 실패할 수 있어 미리 확인할 수 있게 해둔다
-  if(!isTeacher){
+  // 💾 이 기기 저장 용량 — localStorage 한도(보통 5~10MB)에 가까워지면 저장이 실패할 수 있어 미리 확인할 수 있게 해둔다 (일반 선생님도 본인 기기 용량을 확인·정리할 수 있다)
+  {
     const sizes=storeFieldSizes();
     const total=sizes.reduce((s,x)=>s+x.size,0);
     const top6=sizes.slice(0,6).filter(x=>x.size>0);
