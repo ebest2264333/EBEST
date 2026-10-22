@@ -2114,12 +2114,14 @@ function aiFindStudent(cls, name){
 async function aiSmartParse(txt, lt){
   const local=parseWork(txt, lt);
   if(local && (local.type==='exam'||local.type==='nohwall')) return [local];
-  if(!eaAiKey()) return [local];
+  if(!eaAiKey()){ if(local) local.warn=((local.warn?local.warn+' ':'')+'이 기기에는 AI 키가 없어 기본 방식으로만 읽었어요 (위의 🔑 AI 키에서 입력하면 문장을 자유롭게 읽어요).'); return [local]; }
   const classes=aiClasses(lt);
   const today=todayISO(); const wd=['일','월','화','수','목','금','토'][new Date(today+'T00:00:00').getDay()];
   const clsText=classes.map(c=>`${c.name}: ${(c.students||[]).join(', ')}`).join('\n');
   const prompt=`당신은 한국 영어학원 선생님의 업무 기록을 정리하는 도우미입니다. 선생님이 적은 문장을 읽고 기록할 일을 JSON으로만 답하세요(설명·코드블록 금지).
 오늘은 ${today} (${wd}요일)입니다.
+
+[이 학원 선생님 이름] ${(store.teachers[lt.a]||[]).map(t=>t.name).join(', ')}
 
 [이 선생님 학원의 반: 학생 목록] — 학생은 "영어이름(한글이름)" 형태이고, 답할 때는 아래 목록의 표기를 그대로 쓰세요.
 ${clsText}
@@ -2131,6 +2133,14 @@ ${clsText}
 - hw: 숙제 확인 (hwDone true/false, 반 전체면 all:true)
 - assign: 오늘의 과제 공지
 - memo: 그 밖의 수업 메모
+- 아래는 반/출결과 상관없는 일입니다. 이런 일이면 type을 아래 값으로 하고 "f" 객체에 필드를 담으세요(class/students/content는 비워도 됨).
+  calendar(일정 추가): f={"title","start":"YYYY-MM-DD","end":"YYYY-MM-DD 또는 빈칸","cat":"시험|휴강|휴원|방학|행사|기타"}
+  board(게시판 공지): f={"title","body"}
+  student(학생 정보 수정): f={"student":"학생 이름","field":"note(특이사항)|preCheck(상담 전 확인)|parentPhone|school|grade|status","value":"내용"}
+  worklog(내 업무일지에 적기): f={"date":"YYYY-MM-DD","when":"today|tomorrow","title":"업무","detail":"상세"}
+  consultreq(특정 선생님에게 학생 상담 요청): f={"student","teacher":"선생님 이름","message"}
+  dropout(퇴원 상담 등록): f={"student","kind":"sign(퇴원징후)|out(퇴원)","className"}
+  newstu(신입생 상담 등록): f={"student","className"}
 
 [규칙]
 - 문장에 일이 여러 개면 actions 배열에 나눠 담으세요. 같은 내용을 학생 여러 명에게 적용하면 students 배열에 모두 담으세요.
@@ -2153,6 +2163,12 @@ ${txt}`;
   if(!acts.length){ local.warn=((local.warn?local.warn+' ':'')+'AI 답을 읽지 못해 기본 방식으로 읽었어요.'); return [local]; }
   const types=Object.keys(AI_TYPES);
   const out=acts.slice(0,12).map(a=>{
+    if(AI_GEN[a.type]){
+      const f=Object.assign({}, a.f||{});
+      if(a.type==='calendar'){ f.a=f.a||lt.a; if(!CAL_CATS.includes(f.cat)) f.cat='기타'; }
+      if(a.type==='worklog'){ f.date=f.date||today; f.when=f.when==='tomorrow'?'tomorrow':'today'; }
+      return {type:'gen', gk:a.type, f, fromAI:true, warn:''};
+    }
     const type=types.includes(a.type)?a.type:'memo';
     const okDate=x=>/^\d{4}-\d{2}-\d{2}$/.test(String(x||''))?x:'';
     const date=okDate(a.date)||today; const dateTo=okDate(a.dateTo)||'';
@@ -2177,6 +2193,94 @@ ${txt}`;
   });
   out.forEach((p,i)=>{ if(out.length>1) p.qInfo=`${i+1}/${out.length}번째 일`; });
   return out;
+}
+
+/* ---------- 업무 기록 도우미 · 그 밖의 일(일정·게시판·학생 정보·업무일지·상담 요청·퇴원/신입생 상담) ---------- */
+const AI_GEN={
+  calendar:{label:'📅 일정 추가', fields:[['title','제목','text'],['start','시작일','date'],['end','종료일(하루면 비워도 됨)','date'],['cat','분류','cat'],['a','학원','acad']]},
+  board:{label:'📌 게시판 공지', fields:[['title','제목','text'],['body','내용','area']]},
+  student:{label:'🧑‍🎓 학생 정보 수정', fields:[['student','학생','text'],['field','수정할 항목','sfield'],['value','내용','area']]},
+  worklog:{label:'📓 업무일지에 적기', fields:[['date','날짜','date'],['when','구분','when'],['title','업무','text'],['detail','상세 내용','text']]},
+  consultreq:{label:'💬 개별 상담 요청', fields:[['student','학생','text'],['teacher','담당 선생님','teacher'],['message','요청 멘트','area']]},
+  dropout:{label:'🚪 퇴원 상담 등록', fields:[['student','학생','text'],['kind','종류','dkind'],['className','반(비우면 명단의 반)','text']]},
+  newstu:{label:'🆕 신입생 상담 등록', fields:[['student','학생','text'],['className','반(비우면 명단의 반)','text']]}
+};
+const AI_SFIELDS={note:'특이사항 코멘트',preCheck:'상담 전 확인',parentPhone:'어머님 연락처',school:'학교',grade:'학년',status:'상태(재원/휴원/퇴원)'};
+function aiFindStudentRec(a, str){
+  const t=String(str||'').trim(); if(!t) return null;
+  const nt=norm(t); const list=store.students.filter(x=>x.academy===a && !x._deleted);
+  const parts=t.split(/[()\s,\/]+/).filter(x=>x.length>=2).map(norm);
+  return list.find(x=>x.nameKo===t) || list.find(x=>x.nameEn&&norm(x.nameEn)===nt) ||
+    list.find(x=>(x.nameKo&&parts.includes(norm(x.nameKo)))||(x.nameEn&&x.nameEn.length>=3&&parts.includes(norm(x.nameEn)))) || null;
+}
+function aiGenField(p, key, label, type, lt){
+  const v=String((p.f&&p.f[key])||'');
+  const st='padding:6px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.84rem;width:100%';
+  let inp='';
+  if(type==='date') inp=`<input type="date" data-gf="${key}" value="${esc(v)}" style="${st}">`;
+  else if(type==='area') inp=`<textarea data-gf="${key}" style="${st};min-height:54px">${esc(v)}</textarea>`;
+  else if(type==='cat') inp=`<select data-gf="${key}" style="${st}">${CAL_CATS.map(c=>`<option ${v===c?'selected':''}>${c}</option>`).join('')}</select>`;
+  else if(type==='acad') inp=`<select data-gf="${key}" style="${st}">${[...(MODE==='all'?['all']:[]), ...academies()].map(a=>`<option value="${a}" ${v===a?'selected':''}>${a==='all'?'전체 학원':AC[a].label}</option>`).join('')}</select>`;
+  else if(type==='sfield') inp=`<select data-gf="${key}" style="${st}">${Object.entries(AI_SFIELDS).map(([k,n])=>`<option value="${k}" ${v===k?'selected':''}>${n}</option>`).join('')}</select>`;
+  else if(type==='when') inp=`<select data-gf="${key}" style="${st}"><option value="today" ${v!=='tomorrow'?'selected':''}>오늘 한 일/업무</option><option value="tomorrow" ${v==='tomorrow'?'selected':''}>내일 할 일</option></select>`;
+  else if(type==='dkind') inp=`<select data-gf="${key}" style="${st}"><option value="sign" ${v!=='out'?'selected':''}>퇴원징후</option><option value="out" ${v==='out'?'selected':''}>퇴원</option></select>`;
+  else if(type==='teacher') inp=`<select data-gf="${key}" style="${st}"><option value="">선생님 선택</option>${(store.teachers[lt.a]||[]).map(t=>`<option ${v===t.name?'selected':''}>${esc(t.name)}</option>`).join('')}</select>`;
+  else inp=`<input type="text" data-gf="${key}" value="${esc(v)}" style="${st}">`;
+  return `<label style="font-size:.76rem;color:var(--sub);font-weight:700;padding-top:6px">${label}</label><div>${inp}</div>`;
+}
+function applyGen(p, lt){
+  const f=p.f||{}; const a=lt.a; const who=whoKey(lt);
+  const log=(txt)=>{ store.ailog.push({ts:Date.now(), who:lt.a+'|'+lt.i, type:'memo', cls:AI_GEN[p.gk].label.replace(/^\S+\s/,''), student:'', date:todayISO(), text:txt}); if(store.ailog.length>40) store.ailog=store.ailog.slice(-40); };
+  if(p.gk==='calendar'){
+    if(!f.title||!f.start) return '⚠ 제목과 시작일이 필요해요';
+    store.calendar.push({id:Date.now(), start:f.start, end:(f.end&&f.end>f.start)?f.end:'', title:f.title, cat:CAL_CATS.includes(f.cat)?f.cat:'기타', a:f.a||a});
+    log('일정: '+f.title+' '+f.start);
+  } else if(p.gk==='board'){
+    if(!f.title&&!f.body) return '⚠ 제목이나 내용이 필요해요';
+    store.boardPosts.push({id:'bp'+Date.now().toString(36)+Math.random().toString(36).slice(2,6), kind:'notice', title:f.title||'', body:f.body||'', authorName:lt.t.name, authorAcademy:a, createdAt:Date.now(), updatedAt:Date.now(), replies:[]});
+    log('게시판: '+(f.title||f.body));
+  } else if(p.gk==='student'){
+    const st=aiFindStudentRec(a, f.student);
+    if(!st) return '⚠ 학생 명단에서 '+(f.student||'학생')+' 님을 찾지 못했어요';
+    const fk=f.field; if(!AI_SFIELDS[fk]) return '⚠ 수정할 항목을 골라주세요';
+    if(fk==='status'){ if(!isAdminRole()) return '⚠ 학생 상태 변경은 관리자·실장만 할 수 있어요'; if(!['재원','휴원','퇴원'].includes(f.value)) return '⚠ 상태는 재원/휴원/퇴원 중 하나로 적어주세요'; st.status=f.value; if(f.value==='퇴원') st.className=''; }
+    else if(fk==='note'||fk==='preCheck') st[fk]=(st[fk]?st[fk]+' / ':'')+f.value;
+    else st[fk]=f.value;
+    st.updatedAt=Date.now(); log(st.nameKo+' '+AI_SFIELDS[fk]+': '+f.value);
+  } else if(p.gk==='worklog'){
+    const date=f.date||todayISO(); const e=wlGet(who,date); const arr=f.when==='tomorrow'?e.tomorrow:e.today;
+    const item={t:f.title||'', d:f.detail||'', r:''}; const slot=arr.findIndex(x=>!x.t);
+    if(slot>=0) arr[slot]=item; else arr.push(item);
+    e.updatedAt=Date.now(); log('업무일지: '+item.t);
+  } else if(p.gk==='consultreq'){
+    if(!isAdminRole()) return '⚠ 개별 상담 요청은 관리자·실장만 할 수 있어요';
+    const st=aiFindStudentRec(a,f.student); if(!st) return '⚠ 학생 명단에서 찾지 못했어요';
+    const ti=(store.teachers[a]||[]).findIndex(t=>t.name===f.teacher); if(ti<0) return '⚠ 담당 선생님을 골라주세요';
+    store.consultRequests.push({id:genClassId(), academy:a, studentId:st.id, studentName:st.nameKo, teacherA:a, teacherI:ti, message:f.message||'', consultNote:'', done:false, createdAt:todayISO(), updatedAt:Date.now()});
+    log('상담 요청: '+st.nameKo+' → '+f.teacher);
+  } else if(p.gk==='dropout'||p.gk==='newstu'){
+    if(!isAdminRole()) return '⚠ 관리자·실장만 할 수 있어요';
+    const st=aiFindStudentRec(a,f.student); if(!st) return '⚠ 학생 명단에서 찾지 못했어요';
+    const cn=(f.className||'').trim()||classNameInMonth(st,state.month)||st.className||'';
+    if(p.gk==='dropout'){
+      const kind=f.kind==='out'?'out':'sign';
+      if(store.dropouts.some(x=>!x._deleted&&x.studentId===st.id&&x.kind===kind)) return '⚠ 이미 같은 종류로 등록된 학생이에요';
+      const id=genClassId(); store.dropouts.push({id, academy:a, studentId:st.id, name:dpLabel(st), kind, className:cn, notes:{}, createdAt:todayISO(), updatedAt:Date.now()});
+      setTimeout(()=>dpAiSummarize(id,null,true),50);
+    } else {
+      if(store.newStudents.some(x=>!x._deleted&&x.studentId===st.id)) return '⚠ 이미 신입생 상담에 등록된 학생이에요';
+      store.newStudents.push({id:genClassId(), academy:a, studentId:st.id, name:st.nameKo, className:cn, notes:{}, createdAt:todayISO(), updatedAt:Date.now()});
+    }
+    log(AI_GEN[p.gk].label.replace(/^\S+\s/,'')+': '+st.nameKo);
+  }
+  save(); return '';
+}
+function aiGenCard(p, lt){
+  const g=AI_GEN[p.gk];
+  return `<div class="aiconfirm" style="border-color:${lt.t.color}">
+    <div class="t">${g.label} — 이렇게 할까요?${p.qInfo?` <span style="font-weight:400;color:var(--sub);font-size:.78rem">(${esc(p.qInfo)})</span>`:''}${p.warn?`<div class="warn" style="font-weight:400;color:var(--warn);font-size:.76rem;margin-top:3px">⚠ ${esc(p.warn)}</div>`:''}</div>
+    <div style="display:grid;grid-template-columns:90px 1fr;gap:6px 8px;margin:8px 0">${g.fields.map(([k,l,t])=>aiGenField(p,k,l,t,lt)).join('')}</div>
+    <div style="display:flex;gap:8px"><button class="btn primary" id="aiGenSave" style="background:${lt.t.color};border-color:${lt.t.color}">확인</button><button class="btn" id="aiCancel">취소</button></div></div>`;
 }
 function applyNoHwAll(p, lt){
   const wd=wdOf(p.date); let nClass=0, nTag=0;
@@ -2276,7 +2380,7 @@ function renderAI(){
   const p=state.aiPending;
   const myLog=store.ailog.filter(x=>x.who===lt.a+'|'+lt.i).slice(-8);
   let log=myLog.map(x=>`<div class="aim user">${esc(x.text)}</div>
-    <div class="aim bot"><span class="ok">✔ 저장됨</span> — ${esc(AI_TYPES[x.type])} · ${esc(x.cls)}${x.student?' · '+esc(x.student):''} · ${esc(x.date)}</div>`).join('');
+    <div class="aim bot"><span class="ok">✔ 저장됨</span> — ${esc(AI_TYPES[x.type]||'기록')} · ${esc(x.cls)}${x.student?' · '+esc(x.student):''} · ${esc(x.date)}</div>`).join('');
   let confirm='';
   if(p && p.type==='nohwall'){
     const wd0=wdOf(p.date); const cc=aiClasses(lt).filter(c=>classMeets(c, wd0));
@@ -2284,6 +2388,8 @@ function renderAI(){
       <div class="t">🚫 ${esc(p.date)} (${esc(wd0)}) 숙제 없음으로 처리할까요?<div style="font-weight:400;color:var(--sub);font-size:.78rem;margin-top:4px">그날 수업이 있는 ${esc(lt.a==='ebest'?'이베스트':'아이콘')} 전체 ${cc.length}개 반의 모든 과목에 "숙제없음"을 표시해서, 그날 숙제 체크 대상에서 빼고 숙제 체크표에도 '-'로 나오게 해요. (반·학생을 고를 필요 없이 한 번에 적용돼요)</div></div>
       <div class="aigrid"><label>날짜</label><input type="date" id="aiNHD" value="${esc(p.date)}"></div>
       <div style="display:flex;gap:8px"><button class="btn primary" id="aiNHSave" style="background:${lt.t.color};border-color:${lt.t.color}">전체 적용</button><button class="btn" id="aiCancel">취소</button></div></div>`;
+  } else if(p && p.type==='gen'){
+    confirm=aiGenCard(p, lt);
   } else if(p && p.type==='exam'){
     const e=p.entry;
     const itemsHTML=(p.items||[]).map((it,ii)=>{
@@ -2327,7 +2433,8 @@ function renderAI(){
   }
   return `<div class="aipanel" style="border-top-color:${lt.t.color}">
     <h2><span class="tdot" style="background:${lt.t.color}"></span>💬 ${esc(lt.t.name)} 선생님 업무 기록 도우미
-      <button id="aiClose" style="margin-left:auto;border:none;background:none;font-size:1.1rem;cursor:pointer;color:var(--sub)">✕</button></h2>
+      <button id="aiKey" title="AI 키 입력/변경" style="margin-left:auto;border:1px solid var(--line);background:#fff;border-radius:8px;font-size:.74rem;cursor:pointer;color:var(--sub);padding:3px 8px">🔑 AI 키${eaAiKey()?' ✔':' (없음)'}</button>
+      <button id="aiClose" style="margin-left:8px;border:none;background:none;font-size:1.1rem;cursor:pointer;color:var(--sub)">✕</button></h2>
     <div class="sub">업무를 선택하고 문장으로 적으면 반·학생·날짜를 알아서 찾아 해당 기록란에 채워 넣습니다.
     예: "오늘 JB3 Alva 학생 어머니와 상담했어. 내신 총점 199점, 고등학교 진학 고민 중"<br>📝 내신 분석 리포트를 열어둔 상태에서는 "김민준 2,3,4번 틀렸어"처럼 적으면 그 학생 채점이 자동 입력돼요.</div>
 
@@ -2340,6 +2447,7 @@ function renderAI(){
 }
 function bindAI(){
   const v=document.getElementById('aimodal'); const lt=loginTeacher(); if(!lt) return;
+  const kb=v.querySelector('#aiKey'); if(kb) kb.onclick=()=>{ eaAiAskKey(true); render(true); };
   const cx=v.querySelector('#aiClose'); if(cx) cx.onclick=()=>{state.aiOpen=false; mountAI();};
 
   const go=v.querySelector('#aiGo'), input=v.querySelector('#aiIn');
@@ -2360,6 +2468,18 @@ function bindAI(){
     const nb=sel('#aiNHSave');
     if(nb) nb.onclick=()=>{ const p=state.aiPending; const d=sel('#aiNHD'); if(d&&d.value) p.date=d.value; applyNoHwAll(p, lt); state.aiPending=null; render(true); };
     const nc=sel('#aiCancel'); if(nc) nc.onclick=()=>{ state.aiPending=null; render(true); };
+    return;
+  }
+  if(cP && cP.type==='gen'){
+    const gs=sel('#aiGenSave');
+    if(gs) gs.onclick=()=>{
+      const p=state.aiPending;
+      v.querySelectorAll('[data-gf]').forEach(el=>{ p.f[el.dataset.gf]=el.value; });
+      const msg=applyGen(p, lt);
+      if(msg){ alert(msg); return; }
+      aiNext(); render(true);
+    };
+    const gc=sel('#aiCancel'); if(gc) gc.onclick=()=>{ aiNext(); render(true); };
     return;
   }
   if(cP && cP.type==='exam'){
