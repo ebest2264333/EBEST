@@ -2094,6 +2094,90 @@ function parseWork(text, lt){
   return {type, date, dateTo, leave, subj:subjOnly, multi, all:allClass, cls:clsHit, student:stuHit?stuHit.s:'', status, hwDone, content, warn,
           needClass:!clsHit, needStudent:!stuHit && (type==='consult'||type==='attend'||type==='hw'||type==='absplan')};
 }
+
+/* ---------- 업무 기록 도우미 · Haiku 해석 ---------- */
+// 문장을 Haiku가 읽고 [반·학생·날짜·업무]로 나눠 제안하면, 기존 확인 카드(수정 가능)로 보여주고 [저장]을 눌러야만 적용된다.
+// 문장 하나에 일이 여러 개면 차례대로 확인 카드가 뜬다. AI 키가 없거나 실패하면 예전 방식(규칙 해석)으로 돌아간다.
+state.aiQueue=[]; state.aiBusy=false;
+function aiNext(){ state.aiPending=(state.aiQueue&&state.aiQueue.length)?state.aiQueue.shift():null; }
+function aiFindStudent(cls, name){
+  const nm=norm(name); if(!nm) return null;
+  const hit=(c)=>{
+    const list=c.students||[];
+    return list.find(x=>x===name) || list.find(x=>norm(x)===nm) ||
+      list.find(x=>{ const en=(x.split('(')[0]||'').trim(), ko=(x.match(/\(([^)]+)\)/)||[])[1]||''; return (en&&norm(en)===nm)||(ko&&ko===String(name).trim()); }) ||
+      list.find(x=>norm(x).includes(nm)||nm.includes(norm(x.split('(')[0]||'x')) && (x.split('(')[0]||'').length>=3);
+  };
+  let s1=cls?hit(cls):null; if(s1) return {c:cls, s:s1};
+  return null;
+}
+async function aiSmartParse(txt, lt){
+  const local=parseWork(txt, lt);
+  if(local && (local.type==='exam'||local.type==='nohwall')) return [local];
+  if(!eaAiKey()) return [local];
+  const classes=aiClasses(lt);
+  const today=todayISO(); const wd=['일','월','화','수','목','금','토'][new Date(today+'T00:00:00').getDay()];
+  const clsText=classes.map(c=>`${c.name}: ${(c.students||[]).join(', ')}`).join('\n');
+  const prompt=`당신은 한국 영어학원 선생님의 업무 기록을 정리하는 도우미입니다. 선생님이 적은 문장을 읽고 기록할 일을 JSON으로만 답하세요(설명·코드블록 금지).
+오늘은 ${today} (${wd}요일)입니다.
+
+[이 선생님 학원의 반: 학생 목록] — 학생은 "영어이름(한글이름)" 형태이고, 답할 때는 아래 목록의 표기를 그대로 쓰세요.
+${clsText}
+
+[업무 종류 type]
+- consult: 학생/학부모 상담 내용 기록
+- attend: 출결 (status: 출/지/결/조퇴, 조퇴면 하원 시각 leave를 24시간제 "HH:MM"으로)
+- absplan: 앞으로의 결석 예정 (date=시작일, dateTo=종료일, content=사유)
+- hw: 숙제 확인 (hwDone true/false, 반 전체면 all:true)
+- assign: 오늘의 과제 공지
+- memo: 그 밖의 수업 메모
+
+[규칙]
+- 문장에 일이 여러 개면 actions 배열에 나눠 담으세요. 같은 내용을 학생 여러 명에게 적용하면 students 배열에 모두 담으세요.
+- 날짜는 YYYY-MM-DD. 날짜 언급이 없으면 오늘. "어제", "다음주 월요일" 같은 표현도 계산하세요.
+- class는 위 목록의 반 이름 그대로. 학생 이름으로 반을 알 수 있으면 그 학생의 반을 쓰세요. 모르면 빈 문자열.
+- 반 전체(전원)에게 적용하는 출결/숙제는 students를 비우고 all:true.
+- content에는 선생님이 적은 내용을 빠짐없이, 선생님의 말투 그대로 정리해서 넣으세요(없는 내용은 지어내지 마세요).
+- 상담 내용·숙제·메모 외에 학원 업무로 기록할 수 없는 문장이면 type을 memo로 하세요.
+
+[출력 형식]
+{"actions":[{"type":"consult","date":"YYYY-MM-DD","dateTo":"","class":"","students":[],"all":false,"status":"","leave":"","hwDone":true,"content":""}]}
+
+[선생님이 적은 문장]
+${txt}`;
+  let r;
+  try{ r=await eaAiText([{type:'text',text:prompt}], 3000); }
+  catch(e){ local.warn=((local.warn?local.warn+' ':'')+'AI 해석에 실패해서 기본 방식으로 읽었어요 ('+(e.message||e)+')').slice(0,300); return [local]; }
+  let j=null; try{ const m=r.match(/\{[\s\S]*\}/); j=JSON.parse(m?m[0]:r); }catch(e){}
+  const acts=j&&Array.isArray(j.actions)?j.actions:[];
+  if(!acts.length){ local.warn=((local.warn?local.warn+' ':'')+'AI 답을 읽지 못해 기본 방식으로 읽었어요.'); return [local]; }
+  const types=Object.keys(AI_TYPES);
+  const out=acts.slice(0,12).map(a=>{
+    const type=types.includes(a.type)?a.type:'memo';
+    const okDate=x=>/^\d{4}-\d{2}-\d{2}$/.test(String(x||''))?x:'';
+    const date=okDate(a.date)||today; const dateTo=okDate(a.dateTo)||'';
+    const cn=String(a.class||'').trim();
+    let cls=classes.find(c=>c.name===cn)||classes.find(c=>norm(c.name)===norm(cn))||null;
+    const names=(Array.isArray(a.students)?a.students:[]).map(String).filter(Boolean);
+    let warn='';
+    const picked=[];
+    names.forEach(nm=>{
+      let f=cls?aiFindStudent(cls,nm):null;
+      if(!f){ for(const c of classes){ const g=aiFindStudent(c,nm); if(g){ f=g; break; } } }
+      if(f){ if(!cls) cls=f.c; picked.push(f); } else warn+=(warn?' ':'')+`「${nm}」 학생을 명단에서 찾지 못했어요.`;
+    });
+    const multi=picked.length>1?picked.map(x=>({cls:x.c, s:x.s, on:true})):null;
+    const stuHit=picked[0]||null;
+    if(stuHit && cls && stuHit.c.name!==cls.name) cls=stuHit.c;
+    const status=['출','지','결','조퇴'].includes(a.status)?a.status:'출';
+    const all=!!a.all && !stuHit;
+    const leave=/^\d{2}:\d{2}$/.test(String(a.leave||''))?a.leave:'';
+    return {type, date, dateTo:type==='absplan'?(dateTo>=date&&dateTo?dateTo:date):'', leave, subj:'', multi, all, cls, student:stuHit?stuHit.s:'', status, hwDone:a.hwDone!==false, content:String(a.content||txt).trim(), warn,
+      needClass:!cls, needStudent:!stuHit && (type==='consult'||type==='attend'||type==='hw'||type==='absplan') && !all, fromAI:true};
+  });
+  out.forEach((p,i)=>{ if(out.length>1) p.qInfo=`${i+1}/${out.length}번째 일`; });
+  return out;
+}
 function applyNoHwAll(p, lt){
   const wd=wdOf(p.date); let nClass=0, nTag=0;
   aiClasses(lt).forEach(c=>{
@@ -2224,7 +2308,7 @@ function renderAI(){
     const cls=aiClasses(lt);
     const stuOpts = p.cls ? ['<option value="">'+(p.all?'(반 전원에게 적용)':'(학생 없음 · 반 전체)')+'</option>'].concat((p.cls.students||[]).map(s=>`<option ${s===p.student?'selected':''}>${esc(s)}</option>`)).join('') : '<option value="">반을 먼저 선택</option>';
     confirm=`<div class="aiconfirm" style="border-color:${lt.t.color}">
-      <div class="t">이렇게 기록할까요?${p.warn?`<div class="warn" style="font-weight:400;color:var(--warn);font-size:.76rem;margin-top:3px">⚠ ${esc(p.warn)}</div>`:''}</div>
+      <div class="t">이렇게 기록할까요?${p.qInfo?` <span style="font-weight:400;color:var(--sub);font-size:.78rem">(${esc(p.qInfo)} · 저장/취소하면 다음 일이 나와요)</span>`:''}${p.warn?`<div class="warn" style="font-weight:400;color:var(--warn);font-size:.76rem;margin-top:3px">⚠ ${esc(p.warn)}</div>`:''}</div>
       <div class="aigrid">
         <label>업무</label><select id="aiT">${Object.entries(AI_TYPES).map(([k,v])=>`<option value="${k}" ${p.type===k?'selected':''}>${v}</option>`).join('')}</select>
         ${p.type==='attend'?`<label>상태</label><select id="aiSt">${['출','지','결','조퇴'].map(v=>`<option ${p.status===v?'selected':''}>${v}</option>`).join('')}</select>`:''}
@@ -2261,8 +2345,14 @@ function bindAI(){
   const go=v.querySelector('#aiGo'), input=v.querySelector('#aiIn');
   if(go) go.onclick=()=>{
     const txt=(input.value||'').trim(); if(!txt) return;
-    state.aiPending=parseWork(txt, lt); render(true);
-    const lg=document.querySelector('.ailog'); if(lg) lg.scrollTop=lg.scrollHeight;
+    if(state.aiBusy) return;
+    state.aiBusy=true; go.disabled=true; go.innerHTML='해석<br>중…';
+    aiSmartParse(txt, lt).then(list=>{
+      state.aiPending=list[0]||null; state.aiQueue=list.slice(1);
+    }).catch(e=>{ state.aiPending=parseWork(txt, lt); state.aiQueue=[]; }).then(()=>{
+      state.aiBusy=false; render(true);
+      const lg=document.querySelector('.ailog'); if(lg) lg.scrollTop=lg.scrollHeight;
+    });
   };
   const cP=state.aiPending;
   const sel=id=>v.querySelector(id);
@@ -2315,10 +2405,10 @@ function bindAI(){
       if(p.type==='absplan' && !p.student && !p.multi){ alert('결석 예정은 학생을 선택해야 해요.'); return; }
       const where=applyWork(p, lt);
       if(p.type==='absplan' && /^⚠/.test(where||'')){ alert(where); return; }
-      state.aiPending=null; render(true);
+      aiNext(); render(true);
       const lg=document.querySelector('.ailog'); if(lg) lg.scrollTop=lg.scrollHeight;
     };
-    const cc=sel('#aiCancel'); if(cc) cc.onclick=()=>{ state.aiPending=null; render(true); };
+    const cc=sel('#aiCancel'); if(cc) cc.onclick=()=>{ aiNext(); render(true); };
   }
 }
 
