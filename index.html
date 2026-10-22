@@ -5100,9 +5100,11 @@ function addDropoutAction(a){
   const kind=(kindSel&&kindSel.value)==='out'?'out':'sign';
   if(store.dropouts.some(x=>!x._deleted && x.studentId===hit.st.id && x.kind===kind)){ alert('이미 같은 종류로 등록된 학생이에요.'); return; }
   const className=(clsInp&&clsInp.value||'').trim()||classNameInMonth(hit.st,state.month)||hit.st.className||'';
-  store.dropouts.push({id:genClassId(), academy:a, studentId:hit.st.id, name:dpLabel(hit.st), kind, className, notes:{}, createdAt:todayISO(), updatedAt:Date.now()});
+  const newId=genClassId();
+  store.dropouts.push({id:newId, academy:a, studentId:hit.st.id, name:dpLabel(hit.st), kind, className, notes:{}, createdAt:todayISO(), updatedAt:Date.now()});
   if(nameInp) nameInp.value=''; if(clsInp) clsInp.value='';
   save(); render(true);
+  dpAiSummarize(newId, null, true); // 등록되면 최근 3개월 상담을 자동으로 요약(이 기기에 AI 키가 있을 때)
 }
 function updateDropoutNote(id,who,field,value){
   const d=store.dropouts.find(x=>x.id===id); if(!d) return;
@@ -5116,6 +5118,51 @@ function removeDropoutAction(id){
   const d=store.dropouts.find(x=>x.id===id); if(!d) return;
   if(!confirm('이 퇴원 상담 기록을 삭제할까요?')) return;
   d._deleted=true; d.updatedAt=Date.now(); save(); render(true);
+}
+
+// 최근 3개월(이번 달 포함) 상담 기록 모으기 — 반 이름이 바뀌어도 학생 이름(한글·영어)으로 찾는다
+function dpHistory(d){
+  const st=d.studentId?store.students.find(x=>x.id===d.studentId&&!x._deleted):null;
+  const out=[];
+  for(let k=0;k<3;k++){
+    const m=shiftMonth(state.month,-k);
+    const recs=store.records[m]||{};
+    for(const key in recs){
+      if(!key.startsWith(d.academy+'|')) continue;
+      const bucket=recs[key];
+      for(const sname in bucket){
+        const same=st?rosterNameMatchesStudent(sname, st.nameKo, st.nameEn):(sname===d.name||sname===d.name.replace(/\(.*\)$/,''));
+        if(!same) continue;
+        const r=bucket[sname]; if(!r||!String(r.memo||'').trim()) continue;
+        out.push({month:m, date:r.date||'', cls:key.slice(d.academy.length+1).replace(/␟exam$/,''), memo:String(r.memo).trim()});
+      }
+    }
+  }
+  return out.sort((a,b)=>(a.date||a.month).localeCompare(b.date||b.month));
+}
+function dpHistoryText(h){ return h.map(x=>`[${x.date||mLabel(x.month)} · ${x.cls}] ${x.memo}`).join('\n'); }
+async function dpAiSummarize(id, btn, auto){
+  const d=store.dropouts.find(x=>x.id===id); if(!d) return;
+  const h=dpHistory(d);
+  if(!h.length){ d.aiSummary={text:'최근 3개월 동안 기록된 상담 내역이 없습니다.', at:Date.now(), empty:true}; d.updatedAt=Date.now(); save(); render(true); return; }
+  if(!eaAiKey()){ if(auto) return; if(!eaAiAskKey()) return; }
+  if(btn){ btn.disabled=true; btn.textContent='요약 중…'; }
+  try{
+    const st=d.studentId?store.students.find(x=>x.id===d.studentId):null;
+    const txt=await eaAiText(`다음은 영어학원 학생 "${d.name}"의 최근 3개월 상담 기록입니다. 학생 특이사항: ${(st&&st.note)||'없음'}\n\n${dpHistoryText(h)}\n\n퇴원 상담을 앞둔 선생님이 한눈에 볼 수 있게 한국어로 요약해주세요. 반드시 ~습니다 체로, 3~5문장 이내로, 학습 태도·성적·학부모 반응·불만이나 퇴원 관련 언급을 중심으로 적고 기록에 없는 내용은 지어내지 마세요.`, 1000);
+    d.aiSummary={text:txt, at:Date.now()}; d.updatedAt=Date.now(); save();
+  }catch(e){ if(!auto) alert('AI 요약 실패: '+(e.message||e)); }
+  render(true);
+}
+function dpHistoryBlock(d){
+  const h=dpHistory(d); const sm=d.aiSummary;
+  return `<div style="margin:6px 0;border:1px solid #e3d5f7;background:#faf6ff;border-radius:8px;padding:6px 9px">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="font-size:.78rem;color:#7c3aed">🤖 최근 3개월 상담 요약</b>
+      <button class="btn small" data-dpai="${d.id}">${sm?'다시 요약':'AI로 요약'}</button>
+      <span style="font-size:.72rem;color:var(--sub)">상담 기록 ${h.length}건${sm?` · ${new Date(sm.at).toLocaleDateString('ko-KR')} 요약`:''}</span></div>
+    ${sm?`<div style="font-size:.8rem;margin-top:5px;white-space:pre-wrap">${esc(sm.text)}</div>`:''}
+    ${h.length?`<details style="margin-top:5px"><summary style="cursor:pointer;font-size:.74rem;color:var(--sub)">원본 상담 기록 보기</summary>${h.map(x=>`<div style="font-size:.76rem;border-top:1px dashed var(--line);padding:4px 0"><b>${esc(x.date||mLabel(x.month))}</b> <span style="color:var(--sub)">${esc(x.cls)}</span><br>${esc(x.memo)}</div>`).join('')}</details>`:''}
+  </div>`;
 }
 function dpKindBadge(d){ return d.kind==='sign'?'<span style="background:#fff1e0;color:#b45309;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:800">퇴원징후</span>':'<span style="background:#fde8e8;color:#c0392b;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:800">퇴원</span>'; }
 function renderDropoutAdmin(){
@@ -5131,6 +5178,7 @@ function renderDropoutAdmin(){
       <span class="val" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         ${warn?`<span style="font-size:.78rem;color:#b45309">⚠ ${warn}</span>`:''}
         <button class="del" data-dpdel="${d.id}">삭제</button></span>
+      <div style="flex-basis:100%">${dpHistoryBlock(d)}</div>
       ${roles.length?`<div style="flex-basis:100%;display:flex;flex-direction:column;gap:4px;margin-top:6px">${roles.map(r=>{ const n=dpNote(d,d.academy+'|'+r.i); const t=t0[r.i]; return `<div style="font-size:.78rem;border:1px solid var(--line);border-radius:8px;padding:5px 9px;background:#fafbfd"><b style="color:${t.color||'var(--ink)'}">${esc(t.name)}</b> <span style="color:var(--sub)">(${r.label})</span> <span style="color:${n.done?'var(--ok)':'var(--sub)'}">${n.done?'✔ 완료'+(n.date?' '+esc(n.date):''):'대기중'}</span>${n.memo?`<br><span style="color:var(--sub)">📝 ${esc(n.memo)}</span>`:''}</div>`; }).join('')}</div>`:''}
     </div>`;
   }).join('');
@@ -5164,6 +5212,7 @@ function renderDropoutMine(a,i){
       <span style="font-size:.74rem;color:var(--sub)">🗓 등록 ${esc(d.createdAt||'')}</span>
     </div>
     ${st&&st.note?`<div style="font-size:.76rem;color:#2e5fb7;background:#eef4ff;border:1px solid #cfe0fb;border-radius:7px;padding:5px 8px;margin-bottom:5px">📝 특이사항: ${esc(st.note)}</div>`:''}
+    ${dpHistoryBlock(d)}
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
       <span style="font-size:.78rem;font-weight:800;color:#c0392b">내 담당: ${esc(r.label)}</span>
       <label style="font-size:.8rem;color:var(--sub)"><input type="checkbox" data-dpdone="${d.id}" data-dpwho="${esc(who)}" ${n.done?'checked':''}> 상담 완료</label>
@@ -5396,6 +5445,7 @@ function bindConsult(){
   });
 
   v.querySelectorAll('details[data-fold]').forEach(d=>d.addEventListener('toggle',()=>{ state.fold[d.dataset.fold]=d.open; }));
+  v.querySelectorAll('[data-dpai]').forEach(b=>b.onclick=()=>dpAiSummarize(b.dataset.dpai,b));
   v.querySelectorAll('[data-dpadd]').forEach(b=>b.onclick=()=>addDropoutAction(b.dataset.dpadd));
   v.querySelectorAll('[data-dpdel]').forEach(b=>b.onclick=()=>removeDropoutAction(b.dataset.dpdel));
   v.querySelectorAll('[data-dpdone]').forEach(cb=>cb.onchange=()=>{ updateDropoutNote(cb.dataset.dpdone, cb.dataset.dpwho, 'done', cb.checked); });
