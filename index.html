@@ -1561,7 +1561,7 @@ function monthForDate(date){
 function kstTimestamp(){ const kst=new Date(Date.now()+9*60*60*1000); return kst.toISOString().slice(0,16).replace('T',' '); } // "YYYY-MM-DD HH:MM" 형태, 항상 KST 기준
 function ymd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); } // Date 객체를 (그 객체가 나타내는 지역 날짜 그대로) "YYYY-MM-DD"로 — toISOString()은 UTC로 변환하면서 하루가 밀릴 수 있어 쓰지 않는다
 const LASTTAB_KEY='academy-dash-lasttab-'+MODE;
-let state = {tab:(localStorage.getItem(LASTTAB_KEY)||'today'), sub:'class', todayOpen:{}, ac: MODE==='all'?'all':MODE, dept:'all', q:'', month:effectiveCurrentMonth() /* [수정] 예전엔 "자료가 있는 가장 최근 달"을 기본값으로 써서, 이번 달 자료가 아직 안 올라와 있으면 화면을 열 때마다 지난달로 돌아가버렸다 — 이제 실제 오늘 날짜의 달(또는 관리자가 강제 지정한 달)을 기본으로 연다 */, tf:null, date:todayISO(), myOnly:true, classOpen:{}, ttDay:null, ttView:null, rosterOpen:{}, rosterView:null, rosterClass:null, rosterStatus:null, fold:{}};
+let state = {tab:(localStorage.getItem(LASTTAB_KEY)||'today'), sub:'class', todayOpen:{}, ac: MODE==='all'?'all':MODE, dept:'all', q:'', month:effectiveCurrentMonth() /* [수정] 예전엔 "자료가 있는 가장 최근 달"을 기본값으로 써서, 이번 달 자료가 아직 안 올라와 있으면 화면을 열 때마다 지난달로 돌아가버렸다 — 이제 실제 오늘 날짜의 달(또는 관리자가 강제 지정한 달)을 기본으로 연다 */, tf:null, date:todayISO(), myOnly:true, classOpen:{}, ttDay:null, ttView:null, rosterOpen:{}, rosterView:null, rosterClass:null, rosterStatus:null, fold:(function(){ try{ return JSON.parse(localStorage.getItem('ebest_fold')||'{}')||{}; }catch(e){ return {}; } })()};
 
 /* ---------- 로그인 ---------- */
 function isMgr(){ const lt=loginTeacher(); return !!(lt && lt.t.role==='실장'); }
@@ -5141,24 +5141,34 @@ function dpHistory(d){
   return out.sort((a,b)=>(a.date||a.month).localeCompare(b.date||b.month));
 }
 function dpHistoryText(h){ return h.map(x=>`[${x.date||mLabel(x.month)} · ${x.cls}] ${x.memo}`).join('\n'); }
+const dpAiTried=new Set();
+function dpAutoQueue(d){
+  // 요약이 없거나, 요약한 뒤 상담 기록 건수가 바뀌었으면 AI 키가 있는 기기에서 자동으로 (한 번만) 요약한다 — 요약은 동기화돼서 키 없는 기기에도 보인다
+  if(!eaAiKey() || dpAiTried.has(d.id)) return;
+  const h=dpHistory(d);
+  if(d.aiSummary && d.aiSummary.n===h.length) return;
+  dpAiTried.add(d.id);
+  setTimeout(()=>dpAiSummarize(d.id,null,true),50);
+}
 async function dpAiSummarize(id, btn, auto){
   const d=store.dropouts.find(x=>x.id===id); if(!d) return;
   const h=dpHistory(d);
-  if(!h.length){ d.aiSummary={text:'최근 3개월 동안 기록된 상담 내역이 없습니다.', at:Date.now(), empty:true}; d.updatedAt=Date.now(); save(); render(true); return; }
+  if(!h.length){ d.aiSummary={text:'최근 3개월 동안 기록된 상담 내역이 없습니다.', at:Date.now(), empty:true, n:0}; d.updatedAt=Date.now(); save(); render(true); return; }
   if(!eaAiKey()){ if(auto) return; if(!eaAiAskKey()) return; }
   if(btn){ btn.disabled=true; btn.textContent='요약 중…'; }
   try{
     const st=d.studentId?store.students.find(x=>x.id===d.studentId):null;
     const txt=await eaAiText(`다음은 영어학원 학생 "${d.name}"의 최근 3개월 상담 기록입니다. 학생 특이사항: ${(st&&st.note)||'없음'}\n\n${dpHistoryText(h)}\n\n퇴원 상담을 앞둔 선생님이 한눈에 볼 수 있게 한국어로 요약해주세요. 반드시 ~습니다 체로, 3~5문장 이내로, 학습 태도·성적·학부모 반응·불만이나 퇴원 관련 언급을 중심으로 적고 기록에 없는 내용은 지어내지 마세요.`, 1000);
-    d.aiSummary={text:txt, at:Date.now()}; d.updatedAt=Date.now(); save();
+    d.aiSummary={text:txt, at:Date.now(), n:h.length}; d.updatedAt=Date.now(); save();
   }catch(e){ if(!auto) alert('AI 요약 실패: '+(e.message||e)); }
   render(true);
 }
 function dpHistoryBlock(d){
+  dpAutoQueue(d);
   const h=dpHistory(d); const sm=d.aiSummary;
   return `<div style="margin:6px 0;border:1px solid #e3d5f7;background:#faf6ff;border-radius:8px;padding:6px 9px">
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="font-size:.78rem;color:#7c3aed">🤖 최근 3개월 상담 요약</b>
-      <button class="btn small" data-dpai="${d.id}">${sm?'다시 요약':'AI로 요약'}</button>
+      <button class="btn small" data-dpai="${d.id}">${sm?'다시 요약':'요약 만들기'}</button>
       <span style="font-size:.72rem;color:var(--sub)">상담 기록 ${h.length}건${sm?` · ${new Date(sm.at).toLocaleDateString('ko-KR')} 요약`:''}</span></div>
     ${sm?`<div style="font-size:.8rem;margin-top:5px;white-space:pre-wrap">${esc(sm.text)}</div>`:''}
     ${h.length?`<details style="margin-top:5px"><summary style="cursor:pointer;font-size:.74rem;color:var(--sub)">원본 상담 기록 보기</summary>${h.map(x=>`<div style="font-size:.76rem;border-top:1px dashed var(--line);padding:4px 0"><b>${esc(x.date||mLabel(x.month))}</b> <span style="color:var(--sub)">${esc(x.cls)}</span><br>${esc(x.memo)}</div>`).join('')}</details>`:''}
@@ -5182,7 +5192,7 @@ function renderDropoutAdmin(){
       ${roles.length?`<div style="flex-basis:100%;display:flex;flex-direction:column;gap:4px;margin-top:6px">${roles.map(r=>{ const n=dpNote(d,d.academy+'|'+r.i); const t=t0[r.i]; return `<div style="font-size:.78rem;border:1px solid var(--line);border-radius:8px;padding:5px 9px;background:#fafbfd"><b style="color:${t.color||'var(--ink)'}">${esc(t.name)}</b> <span style="color:var(--sub)">(${r.label})</span> <span style="color:${n.done?'var(--ok)':'var(--sub)'}">${n.done?'✔ 완료'+(n.date?' '+esc(n.date):''):'대기중'}</span>${n.memo?`<br><span style="color:var(--sub)">📝 ${esc(n.memo)}</span>`:''}</div>`; }).join('')}</div>`:''}
     </div>`;
   }).join('');
-  return `<details class="setsec" data-fold="dpAdmin" ${state.fold.dpAdmin===false?'':'open'} style="border:2px solid #c0392b">
+  return `<details class="setsec" data-fold="dpAdmin" ${state.fold.dpAdmin===true?'open':''} style="border:2px solid #c0392b">
     <summary style="cursor:pointer;font-weight:800;font-size:1rem;margin-bottom:8px">🚪 퇴원생 상담 관리 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">(${items.length}명 · 눌러서 접기/펴기)</span></summary>
     <div class="desc"><b>퇴원징후</b> 학생은 데스크(인포) 선생님에게 <b>학생 상담</b>, 원장님께 <b>학부모 상담</b>이 자동으로 들어가고, <b>퇴원</b> 학생은 그 달 그 반의 상담 담당 선생님께 <b>퇴원 상담</b>이 들어갑니다. 데스크·원장님은 [설정]에서 지정하세요. 이름을 치면 학생 명단에서 "한글이름(영어이름)"으로 검색됩니다.</div>
     <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px">
@@ -5220,7 +5230,7 @@ function renderDropoutMine(a,i){
     </div>
     <textarea data-dpmemo="${d.id}" data-dpwho="${esc(who)}" placeholder="${esc(r.label)} 내용 메모…" style="width:100%;min-height:50px;border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:.83rem">${esc(n.memo||'')}</textarea>
   </div>`; }).join('');
-  return `<details class="mypanel" data-fold="dpMine" ${state.fold.dpMine===false?'':'open'} style="border-top-color:#c0392b"><summary style="cursor:pointer;font-weight:800;font-size:1.05rem;margin-bottom:8px">🚪 퇴원생 상담 (${mine.length}명)</summary>${rows}</details>`;
+  return `<details class="mypanel" data-fold="dpMine" ${state.fold.dpMine===true?'open':''} style="border-top-color:#c0392b"><summary style="cursor:pointer;font-weight:800;font-size:1.05rem;margin-bottom:8px">🚪 퇴원생 상담 (${mine.length}명)</summary>${rows}</details>`;
 }
 function renderConsultRequestAdmin(){
   const rows=store.consultRequests.filter(r=>!r._deleted).map(r=>{
@@ -5274,7 +5284,7 @@ function renderNewStudentAdmin(){
       ${ts.length?`<div style="flex-basis:100%;display:flex;flex-direction:column;gap:4px;margin-top:6px">${ts.map(x=>{ const n=nsNote(ns, ns.academy+'|'+x.i); return `<div style="font-size:.78rem;border:1px solid var(--line);border-radius:8px;padding:5px 9px;background:${n.done?'#f1faf4':'#fafbfd'}"><b style="color:${x.t.color||'var(--ink)'}">${esc(x.t.name)}</b> <span style="color:${n.done?'var(--ok)':'var(--sub)'}">${n.done?'✔ 완료':'대기'}${n.date?' · '+esc(n.date):''}</span>${n.memo?`<div style="margin-top:2px;white-space:pre-wrap">${esc(n.memo)}</div>`:'<span style="color:#b5bbc8"> · 작성 전</span>'}</div>`; }).join('')}</div>`:''}
     </div>`;
   }).join('');
-  return `<details class="setsec" data-fold="nsAdmin" ${state.fold.nsAdmin===false?'':'open'} style="border:2px solid var(--ebest)">
+  return `<details class="setsec" data-fold="nsAdmin" ${state.fold.nsAdmin===true?'open':''} style="border:2px solid var(--ebest)">
     <summary style="cursor:pointer;font-weight:800;font-size:1rem;margin-bottom:8px">🆕 신입생 상담 관리 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">(${store.newStudents.filter(n=>!n._deleted).length}명 · 눌러서 접기/펴기)</span></summary>
     <div class="desc">학생 명단에 먼저 등록한 신입생을 골라 추가하면, 그 반 수업을 담당하는 모든 선생님(단어시험 담당 선생님 제외)과, 고등부를 뺀 반은 시간표에 적힌 IBT 담당 선생님도 함께 어머님 번호와 같이 신입생 상담 항목이 나타나요. 선생님마다 상담 내용을 따로 작성하고, 여기서 한눈에 볼 수 있어요.</div>
     <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px">
@@ -5319,7 +5329,7 @@ function renderNewStudentMine(a,i){
     <textarea data-nsmemo="${ns.id}" data-nswho="${esc(who)}" placeholder="신입생 상담 내용 메모… (선생님마다 따로 기록돼요)" style="width:100%;min-height:50px;border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:.83rem">${esc(n.memo||'')}</textarea>
     ${others.length?`<div style="margin-top:6px;display:flex;flex-direction:column;gap:4px">${others.map(x=>`<div style="font-size:.76rem;border:1px solid var(--line);border-radius:8px;padding:5px 9px;background:#fafbfd"><b style="color:${x.t.color||'var(--ink)'}">${esc(x.t.name)} 선생님</b> <span style="color:${x.n.done?'var(--ok)':'var(--sub)'}">${x.n.done?'✔ 완료':'대기'}${x.n.date?' · '+esc(x.n.date):''}</span>${x.n.memo?`<div style="margin-top:2px;white-space:pre-wrap">${esc(x.n.memo)}</div>`:''}</div>`).join('')}</div>`:''}
   </div>`; }).join('');
-  return `<details class="mypanel" data-fold="nsMine" ${state.fold.nsMine===false?'':'open'} style="border-top-color:#2e5fb7"><summary style="cursor:pointer;font-weight:800;font-size:1.05rem;margin-bottom:8px">🆕 신입생 상담 (${mine.length}명)</summary>${rows}</details>`;
+  return `<details class="mypanel" data-fold="nsMine" ${state.fold.nsMine===true?'open':''} style="border-top-color:#2e5fb7"><summary style="cursor:pointer;font-weight:800;font-size:1.05rem;margin-bottom:8px">🆕 신입생 상담 (${mine.length}명)</summary>${rows}</details>`;
 }
 
 function renderMyConsult(list){
@@ -5444,7 +5454,7 @@ function bindConsult(){
     await saveAndSync(); 
   });
 
-  v.querySelectorAll('details[data-fold]').forEach(d=>d.addEventListener('toggle',()=>{ state.fold[d.dataset.fold]=d.open; }));
+  v.querySelectorAll('details[data-fold]').forEach(d=>d.addEventListener('toggle',()=>{ state.fold[d.dataset.fold]=d.open; try{ localStorage.setItem('ebest_fold',JSON.stringify(state.fold)); }catch(e){} }));
   v.querySelectorAll('[data-dpai]').forEach(b=>b.onclick=()=>dpAiSummarize(b.dataset.dpai,b));
   v.querySelectorAll('[data-dpadd]').forEach(b=>b.onclick=()=>addDropoutAction(b.dataset.dpadd));
   v.querySelectorAll('[data-dpdel]').forEach(b=>b.onclick=()=>removeDropoutAction(b.dataset.dpdel));
