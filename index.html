@@ -381,6 +381,7 @@ function persistStoreLocal(){
     if(now-lastStorageQuotaWarnAt>120000){ // 계속 반복해서 뜨면 방해가 되니 2분에 한 번만 알려준다
       lastStorageQuotaWarnAt=now;
       console.error('이 기기 저장 실패(용량 초과로 추정)', e);
+      try{ setTimeout(()=>sylAutoMigrate(),0); }catch(e2){}
       try{ toast('⚠ 이 기기의 저장 공간이 가득 찼어요 — 서버 동기화는 계속 시도되지만, 이 브라우저에는 오프라인 백업이 안 될 수 있어요. [설정]에서 용량을 확인해주세요.'); }catch(e2){}
     }
     return false;
@@ -5087,6 +5088,19 @@ function classProgress(c){
   const done=ros.filter(s=>rec[s]&&rec[s].done).length;
   return {done,total};
 }
+function gradeTag(g, st){
+  g=String(g||'').trim(); if(!g) return '';
+  if(/^[초중고]\s*\d$/.test(g)) return g.replace(/\s+/g,'');
+  const n=(g.match(/\d+/)||[''])[0]; if(!n) return g;
+  let lv='';
+  const m0=g.match(/초|중|고/); if(m0) lv=m0[0];
+  if(!lv && st){
+    const sc=String(st.school||'');
+    if(/초등|초$|초\s/.test(sc)) lv='초'; else if(/중학|중$|중\s/.test(sc)) lv='중'; else if(/고등|고$|고\s/.test(sc)) lv='고';
+    if(!lv){ const cn=(typeof classNameInMonth==='function'?classNameInMonth(st,state.month):'')||st.className||''; const c=classesFor(state.month).find(x=>x.academy===st.academy&&x.name===cn); const d=c&&c.dept; if(d==='초등') lv='초'; else if(d==='중등') lv='중'; else if(d==='고등') lv='고'; }
+  }
+  return lv?lv+n:n+'학년';
+}
 function studentRow(k, s, showClass, c, readOnly){
   const rec=mRecords()[k]||{}; const r=rec[s]||{};
   const stRec=matchStudentByRosterName(c.academy, s, c.name);
@@ -5096,7 +5110,7 @@ function studentRow(k, s, showClass, c, readOnly){
   return `<div class="srow">
     <input type="checkbox" data-k="${esc(k)}" data-s="${esc(s)}" ${r.done?'checked':''} ${dis}>
     <span class="sn ${r.done?'done':''}" style="display:flex;flex-direction:column;gap:2px">
-      <span>${hl(studentDisplayName(c.academy,s,c.name))}${showClass?`<span class="cls">${esc(c.name)} · ${AC[c.academy].label}</span>`:''}</span>
+      <span>${hl(studentDisplayName(c.academy,s,c.name))}${stRec&&stRec.grade?` <span style="font-size:.72rem;font-weight:700;color:#2e5fb7;background:#eef4ff;border-radius:6px;padding:1px 6px">${esc(gradeTag(stRec.grade,stRec))}</span>`:''}${showClass?`<span class="cls">${esc(c.name)} · ${AC[c.academy].label}</span>`:''}</span>
       ${stRec&&stRec.parentPhone?`<span style="font-size:.74rem;color:var(--sub);font-weight:400">📞 ${esc(stRec.parentPhone)}</span>`:''}
       ${sibs.length?`<span style="font-size:.74rem;color:var(--sub);font-weight:400">👨‍👩‍👧‍👦 ${sibs.map(x=>`<span data-rsgoto="${x.id}" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px;color:#2e5fb7">${esc(x.name)}</span>`).join(', ')}</span>`:''}
     </span>
@@ -5392,7 +5406,7 @@ function renderDropoutAdmin(){
     const st=d.studentId?store.students.find(x=>x.id===d.studentId&&!x._deleted):null;
     const warn=!roles.length?(d.kind==='sign'?'데스크/원장님을 관리자 설정에서 지정해주세요':(d.className?'이 달 '+esc(d.className)+' 반에 상담 담당이 배정돼 있지 않아요':'반 미지정')):'';
     return `<div class="rowitem" style="align-items:flex-start;flex-wrap:wrap">
-      <span class="key" style="display:flex;flex-direction:column;gap:2px"><span>${esc(d.name)} ${MODE==='all'?bdg(d.academy):''} ${dpKindBadge(d)} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(d.className||'')}</span></span>
+      <span class="key" style="display:flex;flex-direction:column;gap:2px"><span>${esc(d.name)} ${MODE==='all'?bdg(d.academy):''} ${dpKindBadge(d)} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(d.className||'')}${st&&st.grade?' · '+esc(gradeTag(st.grade,st)):''}</span></span>
         <span style="font-size:.72rem;color:var(--sub);font-weight:400">🗓 등록 ${esc(d.createdAt||'')}</span>
         ${st&&st.parentPhone?`<span style="font-size:.74rem;color:var(--sub);font-weight:400">📞 ${esc(st.parentPhone)}</span>`:''}</span>
       <span class="val" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
@@ -5427,7 +5441,7 @@ function renderDropoutMine(a,i){
     const r=dpRoles(d).find(x=>x.i===i); const n=dpNote(d,who);
     return `<div class="myclass" style="display:block">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
-      <b>${esc(d.name)}</b>${dpKindBadge(d)}<span style="font-size:.78rem;color:var(--sub)">${esc(d.className||'')}${st&&st.grade?' · '+esc(st.grade):''}${st&&st.school?' · '+esc(st.school):''}</span>
+      <b>${esc(d.name)}</b>${dpKindBadge(d)}<span style="font-size:.78rem;color:var(--sub)">${esc(d.className||'')}${st&&st.grade?' · '+esc(gradeTag(st.grade,st)):''}${st&&st.school?' · '+esc(st.school):''}</span>
       ${st&&st.parentPhone?`<span style="font-size:.8rem;color:var(--sub)">📞 ${esc(st.parentPhone)}</span>`:''}
       <span style="font-size:.74rem;color:var(--sub)">🗓 등록 ${esc(d.createdAt||'')}</span>
     </div>
@@ -5484,7 +5498,7 @@ function renderNewStudentAdmin(){
     const allDone=ts.length>0&&doneN===ts.length;
     const teacherLabel=ts.length?'':(ns.className?'담당 선생님을 찾을 수 없음 (반 이름 확인)':'반 미지정');
     return `<div class="rowitem" style="align-items:flex-start;flex-wrap:wrap">
-      <span class="key" style="display:flex;flex-direction:column;gap:2px"><span>${esc(ns.name)} ${MODE==='all'?bdg(ns.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(ns.className||'반 미지정')}</span></span>
+      <span class="key" style="display:flex;flex-direction:column;gap:2px"><span>${esc(ns.name)} ${MODE==='all'?bdg(ns.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(ns.className||'반 미지정')}${st&&st.grade?' · '+esc(gradeTag(st.grade,st)):''}</span></span>
         <span style="font-size:.72rem;color:var(--sub);font-weight:400">🗓 등록 ${esc(ns.createdAt||'')}</span>
         ${st&&st.parentPhone?`<span style="font-size:.74rem;color:var(--sub);font-weight:400">📞 ${esc(st.parentPhone)}</span>`:(st?'':'<span style="font-size:.72rem;color:#b45309;font-weight:400">⚠ 학생 명단에서 찾을 수 없음</span>')}</span>
       <span class="val" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
@@ -5524,7 +5538,7 @@ function renderNewStudentMine(a,i){
     const others=subjectTeachersForClass(a, ns.className).filter(j=>j!==i).map(j=>({t:(store.teachers[a]||[])[j], n:nsNote(ns, a+'|'+j)})).filter(x=>x.t);
     return `<div class="myclass" style="display:block">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
-      <b>${esc(ns.name)}</b><span style="font-size:.78rem;color:var(--sub)">${esc(ns.className||'')}${st&&st.grade?' · '+esc(st.grade):''}${st&&st.school?' · '+esc(st.school):''}</span>
+      <b>${esc(ns.name)}</b><span style="font-size:.78rem;color:var(--sub)">${esc(ns.className||'')}${st&&st.grade?' · '+esc(gradeTag(st.grade,st)):''}${st&&st.school?' · '+esc(st.school):''}</span>
       ${st&&st.parentPhone?`<span style="font-size:.8rem;color:var(--sub)">📞 ${esc(st.parentPhone)}</span>`:''}
       <span style="font-size:.74rem;color:var(--sub)">🗓 등록 ${esc(ns.createdAt||'')}</span>
     </div>
@@ -9745,6 +9759,35 @@ function sylXlsxSheetsOf(en){
   }
   return null;
 }
+
+/* 이 기기에 통째로 저장돼 있는 Syllabus 자료(엑셀 표·PDF·파일)는 전부 서버로 옮기고 이 기기에서는 지운다 — 동기화가 켜져 있고 실장 이상 기기에서만 */
+var __sylMigrating=false;
+function sylMigratable(){ return store.syllabus.filter(s=>!s._deleted && !s.remote && (((s.kind==='pdf'||s.kind==='file') && s.fileData) || (s.kind==='xlsx' && s.sheets))); }
+async function sylMigrateAll(onProg, manual){
+  if(__sylMigrating || !syncOn() || (!manual && !isAdminRole())) return {done:0, failed:[], skipped:true};
+  const targets=sylMigratable(); if(!targets.length) return {done:0, failed:[], skipped:true};
+  __sylMigrating=true;
+  let done=0; const failed=[];
+  try{
+    for(const en of targets){
+      if(onProg) onProg(done+1, targets.length);
+      try{
+        const size=sylEntrySize(en);
+        if(en.kind==='xlsx'){ await sylChunkPut(en.id, en.fileName||en.title, 'sylxlsx:,'+JSON.stringify(en.sheets)); delete en.sheets; }
+        else { await sylChunkPut(en.id, en.fileName||en.title, en.fileData); delete en.fileData; }
+        en.remote=true; en.size=size; en.updatedAt=Date.now(); done++;
+      }catch(e){ failed.push(en.title||en.fileName); }
+    }
+    let saveErr=null;
+    try{ save(); schedulePushSyllabus(); }catch(e){ saveErr=e; }
+    if(saveErr) sylErrAlert(saveErr, '서버로 옮긴 자료 정보');
+  } finally { __sylMigrating=false; }
+  return {done, failed};
+}
+async function sylAutoMigrate(){
+  const r=await sylMigrateAll();
+  if(r.done){ try{ toast('☁️ 이 기기에 저장돼 있던 Syllabus 자료 '+r.done+'개를 서버로 옮겼어요'); }catch(e){} render(true); }
+}
 function sylIsQuotaErr(e){ return !!(e && (e.name==='QuotaExceededError' || e.code===22 || e.code===1014 || /quota/i.test(e.message||''))); }
 function sylErrAlert(e, what){
   if(sylIsQuotaErr(e)) alert('저장 공간이 부족해 '+what+'이 저장되지 못했습니다. 안 쓰는 자료를 삭제하거나 "🔗 링크로 추가"를 이용해주세요.\n('+(e&&e.message||e)+')');
@@ -10266,33 +10309,11 @@ function bindSyllabus(){
   });
   const migrateBtn=v.querySelector('#sylMigrateBtn');
   if(migrateBtn) migrateBtn.onclick=async()=>{
-    if(!isAdminRole()) return;
-    const targets=store.syllabus.filter(s=>!s._deleted && !s.remote && (((s.kind==='pdf'||s.kind==='file') && s.fileData) || (s.kind==='xlsx' && s.sheets)));
-    if(!targets.length) return;
-    if(!confirm(`${targets.length}개 자료를 서버로 옮겨서 이 기기의 저장 공간을 확보할까요? (내용은 그대로 유지되고, 다른 기기에서도 그대로 볼 수 있어요)`)) return;
     migrateBtn.disabled=true;
-    let done=0, failed=[];
-    for(const en of targets){
-      migrateBtn.textContent=`⏳ 옮기는 중... (${done+1}/${targets.length})`;
-      try{
-        const size=sylEntrySize(en);
-        if(en.kind==='xlsx'){
-          await sylChunkPut(en.id, en.fileName||en.title, 'sylxlsx:,'+JSON.stringify(en.sheets));
-          delete en.sheets;
-        } else {
-          await sylChunkPut(en.id, en.fileName||en.title, en.fileData);
-          delete en.fileData;
-        }
-        en.remote=true; en.size=size; en.updatedAt=Date.now();
-        done++;
-      }catch(e){ failed.push(en.title||en.fileName); }
-    }
-    let saveErr=null;
-    try{ save(); schedulePushSyllabus(); }catch(e){ saveErr=e; }
+    const r=await sylMigrateAll((i,n)=>{ migrateBtn.textContent=`⏳ 옮기는 중... (${i}/${n})`; }, true);
     render(true);
-    if(saveErr) sylErrAlert(saveErr, '서버로 옮긴 자료 정보');
-    if(failed.length) alert(`다음 파일은 옮기지 못했습니다(네트워크 확인 후 다시 시도해주세요):\n${failed.join('\n')}`);
-    if(done) alert(`${done}개 파일을 서버로 옮겼습니다. 이 기기의 저장 공간이 확보됐어요.`);
+    if(r.failed.length) alert(`다음 파일은 옮기지 못했습니다(네트워크 확인 후 다시 시도해주세요):\n${r.failed.join('\n')}`);
+    if(r.done) alert(`${r.done}개 파일을 서버로 옮겼습니다. 이 기기의 저장 공간이 확보됐어요.`);
   };
   v.querySelectorAll('.sylAttOpen').forEach(b=>b.onclick=async()=>{
     if(b.disabled) return;
@@ -14512,6 +14533,7 @@ function render(keepOpen){
   renderBell();
 }
 startSyncLoop();
+setTimeout(()=>{ try{ sylAutoMigrate(); }catch(e){} }, 6000); // 열 때마다 이 기기에 남아있는 큰 Syllabus 자료는 자동으로 서버로 옮긴다
 let qRenderTimer=null;
 try{ document.getElementById('q').value=''; state.q=''; }catch(e){}
 document.getElementById('q').addEventListener('input',e=>{
