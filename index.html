@@ -5900,7 +5900,7 @@ function renderSeat(){
     ${(can&&!state.csEdit)?csOkPanel(g,d):''}
     ${state.csEdit?'':`<div style="margin-top:8px"><b style="font-size:.84rem">미배치 학생 ${unplaced.length}명</b> <span style="font-size:.74rem;color:var(--sub)">${can?'(학생을 눌러 고른 뒤 자리를 누르면 그 자리에 앉고, 다른 학생을 누르면 서로 자리를 바꿔요)':''}</span>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${unplaced.map(s=>`<span data-csun="${s.id}" style="cursor:pointer;border:2px solid ${sel&&sel.t==='stu'&&sel.id===s.id?'#7c3aed':'#d5d9e4'};border-radius:8px;padding:3px 8px;font-size:.78rem;background:#fff">${esc(s.nameKo)} <span style="color:var(--sub);font-size:.7rem">${esc(csGradeKey(s))} ${esc(csClassOf(s))}</span></span>`).join('')||'<span style="font-size:.78rem;color:#8b93a7">없음</span>'}</div></div>`}
-    <details style="margin-top:12px"><summary style="cursor:pointer;font-size:.84rem;font-weight:800;color:var(--sub)">배치 대상 학생 선택 (컴퓨터를 안 쓰는 학생은 체크 해제 · 오래 남는 학생은 🔒단독으로 체크하면 혼자 한 자리를 써요)</summary>
+    <details data-csdet ${state.csDetOpen?'open':''} style="margin-top:12px"><summary style="cursor:pointer;font-size:.84rem;font-weight:800;color:var(--sub)">배치 대상 학생 선택 (컴퓨터를 안 쓰는 학생은 체크 해제 · 오래 남는 학생은 🔒단독으로 체크하면 혼자 한 자리를 써요)</summary>
       ${Object.keys(grades).sort((x,y)=>x.localeCompare(y,'ko')).map(k=>`<div style="margin:8px 0 2px;font-size:.78rem;font-weight:800">${esc(k)} (${grades[k].length}명)</div><div style="display:flex;gap:4px 12px;flex-wrap:wrap">${grades[k].map(s=>`<span style="font-size:.78rem;white-space:nowrap"><label><input type="checkbox" data-csex="${s.id}" ${can?'':'disabled'} ${(d.excluded||[]).includes(s.id)?'':'checked'}> ${esc(s.nameKo)}${s.nameEn?'('+esc(s.nameEn)+')':''} <span style="color:var(--sub)">${esc(csClassOf(s))}</span></label> <label title="이 학생은 다른 학생과 같은 자리를 나눠 쓰지 않아요" style="color:#7c3aed;font-size:.72rem"><input type="checkbox" data-cssolo="${s.id}" ${can?'':'disabled'} ${(d.solo||{})[s.id]?'checked':''}>🔒단독</label></span>`).join('')}</div>`).join('')}
       ${noLevel?`<div style="margin-top:8px;font-size:.74rem;color:#b45309">※ 학년·반 정보로 초/중을 알 수 없는 재원생 ${noLevel}명은 제외돼 있어요(학생 명단에서 학년을 "초3"처럼 적어주세요).</div>`:''}
     </details></div>`;
@@ -5910,6 +5910,7 @@ function bindSeat(){
   const q=(sel,fn)=>v.querySelectorAll(sel).forEach(fn);
   q('[data-csa]',el=>el.onchange=()=>{ state.csA=el.value; state.csSel=null; render(true); });
   q('[data-csperiod]',el=>el.onchange=()=>{ state.csP=state.csP||{}; state.csP[a]=el.value; state.csSel=null; render(true); });
+  q('[data-csdet]',el=>el.addEventListener('toggle',()=>{ state.csDetOpen=el.open; }));
   q('[data-cswarn]',b=>b.onclick=()=>{ csSetWarnOff(!csWarnOff()); csRender(); });
   q('[data-csunlock]',b=>b.onclick=()=>{ state.csUnlock=!state.csUnlock; if(!state.csUnlock) state.csEdit=false; state.csSel=null; csRender(); });
   q('[data-csprint]',b=>b.onclick=()=>document.getElementById('printBtn').click());
