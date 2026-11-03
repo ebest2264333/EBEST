@@ -5655,27 +5655,35 @@ function csTouch(d){ d.updatedAt=Date.now(); save(); }
 function csLevelOf(st){
   const g=gradeTag(st.grade, st); const m=g.match(/^[초중고]/); if(m) return m[0];
   const cn=classNameInMonth(st,state.month)||st.className||'';
-  const c=classesFor(state.month).find(x=>x.academy===st.academy && x.name===cn);
+  const cv=csNameVariants(cn); const c=classesFor(state.month).find(x=>x.academy===st.academy && x.name===cn) || classesFor(state.month).find(x=>x.academy===st.academy && csNameVariants(x.name).some(v=>cv.includes(v)));
   if(c && c.dept==='초등') return '초'; if(c && c.dept==='중등') return '중';
   return '';
 }
 function csGradeKey(st){ const g=gradeTag(st.grade, st); return /^[초중고]\d/.test(g)?g:''; }
 function csClassOf(st){ return classNameInMonth(st,state.month)||st.className||''; }
 // 컴퓨터를 쓰는 수업은 강의실이 '어학실'인 수업뿐 — 시간표(과목표)에 어학실 수업이 있는 반의 학생만 대상이 된다
+// 합반 이름의 여러 표기를 같은 반으로 본다: "안화3B(2)" → "안화3B", "JM1,2" → "JM1","JM2"
+function csNameVariants(n){
+  const out=new Set(); const t=String(n||'').trim(); if(!t) return [];
+  out.add(t); const base=t.replace(/\(\d+\)\s*$/,'').trim(); out.add(base);
+  const m=base.match(/^(.*?)(\d+(?:\s*[,·ㆍ]\s*\d+)+)$/);
+  if(m) m[2].split(/\s*[,·ㆍ]\s*/).forEach(x=>out.add(m[1]+x));
+  return [...out];
+}
 function csLabClassNames(a){
   const set=new Set();
   const isLab=c=>(c.subjects||[]).some(x=>String(x.room||'').includes('어학실') || isLabSubject(x.subject));
   classesFor(state.month).forEach(c=>{
     if(c.academy!==a || c._deleted) return;
-    if(isLab(c)){ set.add(c.name); }
+    if(isLab(c)){ csNameVariants(c.name).forEach(x=>set.add(x)); }
     // 합반(같이 수업하는 두 반): 한쪽에만 수업 시간이 적혀 있어도 상대 반 학생까지 같이 대상이 된다
-    try{ const m=mergedCounterpart(c); if(m && !m._deleted && (isLab(c)||isLab(m))){ set.add(c.name); set.add(m.name); } }catch(e){}
+    try{ const m=mergedCounterpart(c); if(m && !m._deleted && (isLab(c)||isLab(m))){ csNameVariants(c.name).concat(csNameVariants(m.name)).forEach(x=>set.add(x)); } }catch(e){}
   });
   return set;
 }
 function csCandidates(a){
   const order={'초':0,'중':1}; const lab=csLabClassNames(a);
-  return store.students.filter(st=>st.academy===a && !st._deleted && (st.status||'재원')==='재원' && order[csLevelOf(st)]!=null && lab.has(csClassOf(st)))
+  return store.students.filter(st=>st.academy===a && !st._deleted && (st.status||'재원')==='재원' && order[csLevelOf(st)]!=null && csNameVariants(csClassOf(st)).some(x=>lab.has(x)))
     .sort((x,y)=>{ const gx=csGradeKey(x), gy=csGradeKey(y); return (order[csLevelOf(x)]-order[csLevelOf(y)]) || gx.localeCompare(gy,'ko') || csClassOf(x).localeCompare(csClassOf(y),'ko') || x.nameKo.localeCompare(y.nameKo,'ko'); });
 }
 function csNeighbors(d, i){
@@ -5694,7 +5702,7 @@ let csClsCache=null;
 function csSlots(st){
   if(!csClsCache) csClsCache={list:classesFor(state.month), slots:{}};
   const ck=st.id; if(csClsCache.slots[ck]) return csClsCache.slots[ck];
-  const cn=csClassOf(st); const c=csClsCache.list.find(x=>x.academy===st.academy && x.name===cn);
+  const cn=csClassOf(st); const cv=csNameVariants(cn); const c=csClsCache.list.find(x=>x.academy===st.academy && x.name===cn) || csClsCache.list.find(x=>x.academy===st.academy && csNameVariants(x.name).some(v=>cv.includes(v)));
   let out=[];
   if(c){
     const labOf=cc=>(cc.subjects||[]).filter(x=>String(x.room||'').includes('어학실')||isLabSubject(x.subject));
