@@ -5675,54 +5675,100 @@ function csNeighbors(d, i){
   });
   return out;
 }
+// 학생이 어학실을 쓰는 시간대(요일+시간). 시간이 안 겹치는 학생끼리는 같은 학년·같은 반이어도 옆자리에 앉을 수 있고, 같은 자리(같은 컴퓨터)를 나눠 써도 된다
+let csClsCache=null;
+function csSlots(st){
+  if(!csClsCache) csClsCache={list:classesFor(state.month), slots:{}};
+  const ck=st.id; if(csClsCache.slots[ck]) return csClsCache.slots[ck];
+  const cn=csClassOf(st); const c=csClsCache.list.find(x=>x.academy===st.academy && x.name===cn);
+  let out=[];
+  if(c){
+    const labs=(c.subjects||[]).filter(x=>String(x.room||'').includes('어학실')||isLabSubject(x.subject));
+    const main=labs.filter(x=>!isWordTestSubject(x)); const use=main.length?main:labs;
+    use.forEach(x=>{
+      const dm=String(x.day||'').match(/[월화수목금토일]/g) || String(cdays(c)||'').match(/[월화수목금토일]/g) || ['*'];
+      const r=parseRange(x.time)||parseRange(c.time)||[0,24];
+      dm.forEach(d=>out.push({d, s:r[0], e:r[1]}));
+    });
+  }
+  if(!out.length) out=[{d:'*',s:0,e:24}];
+  csClsCache.slots[ck]=out; return out;
+}
+function csOverlap(sa,sb){
+  const A=csSlots(sa), B=csSlots(sb);
+  return A.some(x=>B.some(y=>(x.d===y.d||x.d==='*'||y.d==='*') && x.s<y.e-1e-9 && y.s<x.e-1e-9));
+}
+function csFmtH(h){ const hh=Math.floor(h+1e-9), mm=Math.round((h-hh)*60); return (hh>12?hh-12:hh)+(mm?':'+String(mm).padStart(2,'0'):''); }
+function csTimeText(st){
+  const sl=csSlots(st); const f=sl[0]; if(!f||f.d==='*'&&f.s===0&&f.e===24) return '';
+  const days=sl.filter(x=>x.s===f.s&&x.e===f.e&&x.d!=='*').map(x=>x.d).join('');
+  return (days?days+' ':'')+csFmtH(f.s)+'~'+csFmtH(f.e);
+}
 function csConflict(sa, sb){
   const out=[];
+  if(!csOverlap(sa,sb)) return out; // 시간이 안 겹치면 규칙 대상 아님
   const ga=csGradeKey(sa), gb=csGradeKey(sb); if(ga && ga===gb) out.push('같은 학년('+ga+')');
   const ca=csClassOf(sa), cb=csClassOf(sb); if(ca && ca===cb) out.push('같은 반('+ca+')');
   return out;
 }
-// 현재 배치에서 유효한 {studentId→cell}만 추려서 돌려준다(없어진 자리·제외된 학생 등은 무시)
+// 현재 배치에서 유효한 {studentId→cell}만 추려서 돌려준다(없어진 자리·제외된 학생 등은 무시). 한 자리에 여러 학생(시간이 다른)이 있을 수 있다.
 function csValidAssign(a){
-  const d=csGet(a); const cand=new Map(csCandidates(a).map(s=>[s.id,s])); const out={}; const used=new Set();
-  Object.keys(d.assign||{}).forEach(id=>{ const cell=d.assign[id]; if(cand.has(id) && !(d.excluded||[]).includes(id) && d.cells[cell] && !used.has(cell)){ out[id]=cell; used.add(cell); } });
+  csClsCache=null;
+  const d=csGet(a); const cand=new Map(csCandidates(a).map(s=>[s.id,s])); const out={};
+  Object.keys(d.assign||{}).forEach(id=>{ const cell=d.assign[id]; if(cand.has(id) && !(d.excluded||[]).includes(id) && d.cells[cell]){ out[id]=cell; } });
   return {assign:out, cand};
 }
 function csAuto(a){
   if(!csEditing()) return;
+  csClsCache=null;
   const d=csGet(a);
   const cand=csCandidates(a).filter(s=>!(d.excluded||[]).includes(s.id));
   const seats=[]; d.cells.forEach((v,i)=>{ if(v) seats.push(i); });
   if(!seats.length){ alert('자리가 없어요. [자리 모양 편집]에서 자리를 먼저 만들어주세요.'); return; }
   if(!cand.length){ alert('배치할 초·중등 재원생이 없어요.'); return; }
-  if(cand.length>seats.length){ alert(`배치할 학생 ${cand.length}명이 자리 ${seats.length}개보다 많아요. 자리를 더 만들거나 일부 학생을 제외해주세요.`); return; }
   const n=cand.length;
-  const conf=(x,y)=>{ if(x<0||y<0) return 0; return ((cand[x]._g&&cand[x]._g===cand[y]._g)?1:0)+((cand[x]._c&&cand[x]._c===cand[y]._c)?1:0); };
   cand.forEach(s=>{ s._g=csGradeKey(s); s._c=csClassOf(s); });
+  const ov=[]; for(let x=0;x<n;x++){ ov[x]=[]; for(let y=0;y<n;y++) ov[x][y]=x===y?false:csOverlap(cand[x],cand[y]); }
+  const W_SAME=10, W_SHARE=0.05;
+  const conf=(x,y)=>{ if(!ov[x][y]) return 0; return ((cand[x]._g&&cand[x]._g===cand[y]._g)?1:0)+((cand[x]._c&&cand[x]._c===cand[y]._c)?1:0); };
   const nb={}; seats.forEach(i=>{ nb[i]=csNeighbors(d,i); });
   let best=null, bestCost=Infinity;
-  for(let rs=0; rs<8 && bestCost>0; rs++){
-    const occ=Array(d.cells.length).fill(-1);
-    const pos=[...seats].sort(()=>Math.random()-0.5);
-    for(let k=0;k<n;k++) occ[pos[k]]=k;
-    const costAt=cell=>{ let c=0; const o=occ[cell]; if(o<0) return 0; nb[cell].forEach(j=>{ c+=conf(o,occ[j]); }); return c; };
-    let total=0; seats.forEach(i=>{ total+=costAt(i); }); total/=2;
-    const N=40000;
-    for(let it=0; it<N && total>0; it++){
-      const p=seats[(Math.random()*seats.length)|0], q=seats[(Math.random()*seats.length)|0];
-      if(p===q || (occ[p]<0 && occ[q]<0)) continue;
-      const before=costAt(p)+costAt(q);
-      const t=occ[p]; occ[p]=occ[q]; occ[q]=t;
-      const after=costAt(p)+costAt(q);
-      const delta=after-before;
+  for(let rs=0; rs<6 && bestCost>0.5; rs++){
+    const at=Array(n); const occ={}; seats.forEach(i=>occ[i]=[]);
+    const place=(k,p)=>{ at[k]=p; occ[p].push(k); };
+    const unplace=(k)=>{ const arr=occ[at[k]]; arr.splice(arr.indexOf(k),1); };
+    // 시작: 자리마다 한 명씩 흩뿌리고, 남는 학생은 아무 자리에
+    const order=[...Array(n).keys()].sort(()=>Math.random()-0.5); const pos=[...seats].sort(()=>Math.random()-0.5);
+    order.forEach((k,idx)=>place(k, pos[idx%pos.length]));
+    // k가 자리 p에 있을 때 드는 비용(자기 제외)
+    const costOf=(k,p)=>{ let c=0; occ[p].forEach(o=>{ if(o===k) return; c+= ov[k][o]?W_SAME:W_SHARE; }); nb[p].forEach(j=>{ occ[j].forEach(o=>{ c+=conf(k,o); }); }); return c; };
+    let total=0; for(let k=0;k<n;k++) total+=costOf(k,at[k]); total/=2;
+    const N=60000;
+    for(let it=0; it<N && total>=0.5; it++){
       const T=1.2*(1-it/N)+0.03;
-      if(delta<=0 || Math.random()<Math.exp(-delta/T)) total+=delta; else { const t2=occ[p]; occ[p]=occ[q]; occ[q]=t2; }
+      if(Math.random()<0.35 && n>1){ // 두 학생 자리 맞바꾸기
+        const k=(Math.random()*n)|0, m=(Math.random()*n)|0; if(k===m||at[k]===at[m]) continue;
+        const pk=at[k], pm=at[m];
+        const before=costOf(k,pk)+costOf(m,pm) - (nb[pk].includes(pm)?conf(k,m):0);
+        unplace(k); unplace(m); place(k,pm); place(m,pk);
+        const after=costOf(k,pm)+costOf(m,pk) - (nb[pm].includes(pk)?conf(k,m):0);
+        const delta=after-before;
+        if(delta<=0 || Math.random()<Math.exp(-delta/T)) total+=delta; else { unplace(k); unplace(m); place(k,pk); place(m,pm); }
+      } else { // 한 학생을 다른 자리로 옮기기
+        const k=(Math.random()*n)|0, q=seats[(Math.random()*seats.length)|0]; const p=at[k]; if(p===q) continue;
+        const before=costOf(k,p); unplace(k); place(k,q); const after=costOf(k,q);
+        const delta=after-before;
+        if(delta<=0 || Math.random()<Math.exp(-delta/T)) total+=delta; else { unplace(k); place(k,p); }
+      }
     }
-    if(total<bestCost){ bestCost=total; best=occ.slice(); }
+    let ex=0; for(let k=0;k<n;k++) ex+=costOf(k,at[k]); ex/=2;
+    if(ex<bestCost){ bestCost=ex; best=at.slice(); }
   }
-  d.assign={}; best.forEach((k,cell)=>{ if(k>=0) d.assign[cand[k].id]=cell; });
+  d.assign={}; best.forEach((cell,k)=>{ d.assign[cand[k].id]=cell; });
   state.csSel=null; csTouch(d);
   render(true);
-  setTimeout(()=>{ try{ toast(bestCost? `⚠ 자리 배치 완료 — 규칙에 걸리는 이웃이 ${bestCost}쌍 남았어요(자리가 부족하거나 한 학년·반이 많아서일 수 있어요)` : '✔ 자리 배치 완료 — 규칙 위반 없음'); }catch(e){} },50);
+  const shared=new Set(Object.values(d.assign)).size<n;
+  setTimeout(()=>{ try{ toast(bestCost>=1? `⚠ 자리 배치 완료 — 규칙에 걸리는 곳이 남았어요(자리가 부족하거나 시간이 겹치는 학생이 많아서일 수 있어요)` : (shared?'✔ 자리 배치 완료 — 시간이 다른 학생은 같은 자리를 나눠 앉았어요':'✔ 자리 배치 완료 — 규칙 위반 없음')); }catch(e){} },50);
 }
 function csResize(d, rows, cols){
   rows=Math.max(1,Math.min(20,rows|0)); cols=Math.max(1,Math.min(20,cols|0));
@@ -5737,9 +5783,15 @@ function csSeatNumbers(d){ const m={}; let n=0; const cu=d.nums||{}; d.cells.for
 function csLabel(st){ return esc(st.nameKo)+(st.nameEn?`<br><span style="font-size:.7rem;font-weight:400">${esc(st.nameEn)}</span>`:''); }
 function csGrid(a, editable, printMode){
   const d=csGet(a); const {assign,cand}=csValidAssign(a); const nums=csSeatNumbers(d);
-  const occ={}; Object.keys(assign).forEach(id=>{ occ[assign[id]]=cand.get(id); });
-  const bad={}; // 규칙에 걸린 자리
-  d.cells.forEach((v,i)=>{ if(!v||!occ[i]) return; csNeighbors(d,i).forEach(j=>{ if(occ[j] && j>i){ const why=csConflict(occ[i],occ[j]); if(why.length){ (bad[i]=bad[i]||[]).push(why.join('·')+' - '+occ[j].nameKo); (bad[j]=bad[j]||[]).push(why.join('·')+' - '+occ[i].nameKo); } } }); });
+  const occ={}; Object.keys(assign).forEach(id=>{ (occ[assign[id]]=occ[assign[id]]||[]).push(cand.get(id)); });
+  Object.keys(occ).forEach(k=>occ[k].sort((x,y)=>(csSlots(x)[0].s-csSlots(y)[0].s)||x.nameKo.localeCompare(y.nameKo,'ko')));
+  const bad={}; const badId=new Set(); // 규칙에 걸린 자리 / 학생
+  const flag=(i,msg,x,y)=>{ (bad[i]=bad[i]||[]).push(msg); badId.add(x.id); badId.add(y.id); };
+  d.cells.forEach((v,i)=>{ if(!v||!occ[i]) return;
+    const L=occ[i];
+    for(let x=0;x<L.length;x++) for(let y=x+1;y<L.length;y++) if(csOverlap(L[x],L[y])) flag(i,'같은 자리 시간 겹침 - '+L[x].nameKo+'·'+L[y].nameKo,L[x],L[y]);
+    csNeighbors(d,i).forEach(j=>{ if(j>i && occ[j]) L.forEach(sa=>occ[j].forEach(sb=>{ const why=csConflict(sa,sb); if(why.length){ flag(i,why.join('·')+' - '+sa.nameKo+'↔'+sb.nameKo,sa,sb); (bad[j]=bad[j]||[]).push(why.join('·')+' - '+sa.nameKo+'↔'+sb.nameKo); } })); });
+  });
   const sel=state.csSel;
   const lvBg={'초':'#eaf3ff','중':'#e9f8ee'};
   let h=`<div style="display:grid;grid-template-columns:repeat(${d.cols},minmax(${printMode?70:84}px,1fr));gap:${printMode?4:6}px">`;
@@ -5748,10 +5800,11 @@ function csGrid(a, editable, printMode){
       h+=`<div data-cscell="${i}" style="cursor:pointer;min-height:44px;border:2px ${v?'solid #2e5fb7':'dashed #c7cbd6'};border-radius:8px;background:${v?'#eef4ff':'#fafbfd'};display:flex;align-items:center;justify-content:center;font-size:.8rem;color:${v?'#2e5fb7':'#aab'};font-weight:800">${v?'💻 '+nums[i]:'—'}</div>`; return;
     }
     if(!v){ h+=`<div style="min-height:${printMode?58:64}px"></div>`; return; }
-    const st=occ[i]; const isSel=sel&&sel.t==='seat'&&sel.i===i; const b=bad[i];
-    h+=`<div ${printMode?'':`data-csseat="${i}"`} title="${b?esc(b.join(' / ')):''}" style="${printMode?'':'cursor:pointer;'}min-height:${printMode?58:64}px;border:2px solid ${b?'#c0392b':(isSel?'#7c3aed':'#d5d9e4')};${isSel?'box-shadow:0 0 0 3px #e3d5f7;':''}border-radius:8px;padding:4px 6px;background:${st?(lvBg[csLevelOf(st)]||'#fff'):'#fff'};font-size:.8rem;font-weight:800;text-align:center;position:relative">
+    const L=occ[i]||[]; const b=bad[i];
+    h+=`<div ${printMode?'':`data-csseat="${i}"`} title="${b?esc(b.join(' / ')):''}" style="${printMode?'':'cursor:pointer;'}min-height:${printMode?58:64}px;border:2px solid ${b?'#c0392b':'#d5d9e4'};border-radius:8px;padding:${L.length?'14px 4px 3px':'4px 6px'};background:#fff;font-size:.8rem;font-weight:800;text-align:center;position:relative">
       <span style="position:absolute;left:5px;top:2px;font-size:.62rem;color:#8b93a7;font-weight:700">${nums[i]}</span>
-      ${st?`${csLabel(st)}<div style="font-size:.66rem;color:#5a6478;font-weight:600">${esc(csGradeKey(st)||'')} ${esc(csClassOf(st))}</div>`:'<span style="color:#c7cbd6;font-weight:400">빈 자리</span>'}
+      ${L.length?L.map((st,ix)=>{ const isSel=sel&&sel.id===st.id; const t=csTimeText(st);
+        return `<div ${printMode?'':`data-csst="${st.id}"`} style="${ix?'border-top:1px dashed #d5d9e4;margin-top:2px;':''}padding:3px 4px;border-radius:6px;background:${isSel?'#e3d5f7':(lvBg[csLevelOf(st)]||'#fff')};${isSel?'outline:2px solid #7c3aed;':''}${badId.has(st.id)?'color:#c0392b;':''}">${csLabel(st)}<div style="font-size:.66rem;color:#5a6478;font-weight:600">${esc(csGradeKey(st)||'')} ${esc(csClassOf(st))}</div>${t?`<div style="font-size:.62rem;color:#8b93a7;font-weight:600">${esc(t)}</div>`:''}</div>`; }).join(''):'<span style="color:#c7cbd6;font-weight:400">빈 자리</span>'}
       ${b?'<span style="position:absolute;right:4px;top:1px;color:#c0392b;font-size:.7rem">⚠</span>':''}</div>`;
   });
   h+='</div>';
@@ -5761,6 +5814,7 @@ function renderSeat(){
   const lt=loginTeacher(); const acs=academies();
   if(!state.csA || !acs.includes(state.csA)) state.csA=lt?lt.a:acs[0];
   const a=state.csA; const d=csGet(a); const perm=csCanEdit(); const can=perm&&!!state.csUnlock; if(!can) state.csEdit=false; const periods=csPeriods(a); const pkey=csKey(a);
+  csClsCache=null;
   const g=csGrid(a, !!state.csEdit, false);
   const cand=csCandidates(a);
   const placedIds=new Set(Object.keys(g.assign));
@@ -5772,7 +5826,7 @@ function renderSeat(){
   const labNone=csLabClassNames(a).size===0;
   return `<div class="setsec" style="border:2px solid #2e5fb7">
     <h3>💻 컴퓨터 자리 배치표 ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
-    <div class="desc">학원 전체 <b>초·중등 재원생 중 강의실이 '어학실'인 수업을 듣는 학생</b>(${cand.length}명, 어학실 수업이 있는 반 ${csLabClassNames(a).size}개)을 자리 ${seatCount}개에 자동으로 배치합니다. <b>같은 학년끼리</b>, <b>같은 반끼리</b>는 옆·앞뒤 자리에 앉지 않게 짜고, 학년·반은 학생 명단과 시간표(반)를 그대로 따릅니다. 자동 배치 뒤에는 학생 칸을 눌러 다른 칸을 누르면 자리를 서로 바꿀 수 있어요. 빨간 테두리(⚠)는 규칙에 걸린 이웃입니다.</div>
+    <div class="desc">학원 전체 <b>초·중등 재원생 중 강의실이 '어학실'인 수업을 듣는 학생</b>(${cand.length}명, 어학실 수업이 있는 반 ${csLabClassNames(a).size}개)을 자리 ${seatCount}개에 자동으로 배치합니다. <b>같은 학년끼리</b>, <b>같은 반끼리</b>는 옆·앞뒤 자리에 앉지 않게 짜고, 학년·반은 학생 명단과 시간표(반)를 그대로 따릅니다. <b>어학실 이용 시간이 겹치지 않는 학생</b>은 같은 학년·같은 반이어도 옆자리에 앉을 수 있고, 한 자리(컴퓨터)를 시간대별로 나눠 써도 돼요(자리 칸 안에 학생이 여러 명 보여요). 수동으로는 학생을 눌러 고른 뒤 자리나 다른 학생을 누르면 옮기거나 서로 바꿔요. 빨간 테두리(⚠)는 규칙에 걸린 곳입니다.</div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:10px 0 0;font-size:.84rem"><b>📅 기간</b>
       <select data-csperiod style="padding:5px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${periods.map(x=>`<option value="${esc(x[0])}" ${x[0]===pkey?'selected':''}>${esc(x[1])}</option>`).join('')}</select>
       ${can?`<button class="btn small" data-csperadd>+ 기간 추가</button>${pkey!==a?'<button class="btn small" data-csperren>이름 변경</button><button class="btn small" data-csperdel style="color:#c0392b;border-color:#e7b3ab">삭제</button>':''}`:''}
@@ -5784,7 +5838,7 @@ function renderSeat(){
       <button class="btn" data-csclear>🧹 배치 비우기</button>`:''}
       ${!can?`<span style="font-size:.8rem;color:var(--sub);align-self:center">👀 보기 전용 — ${perm?'고치려면 [수정하기]를 눌러주세요':'자리 수정은 IBT 선생님만 할 수 있어요'}</span>`:''}
       <button class="btn" data-csprint>🖨 인쇄 · PDF</button>
-      ${(can&&!state.csEdit&&sel&&sel.t==='seat')?'<button class="btn small" data-csfree style="color:#c0392b;border-color:#e7b3ab">선택한 자리 비우기</button>':''}
+      ${(can&&!state.csEdit&&sel&&sel.t==='stu'&&placedIds.has(sel.id))?'<button class="btn small" data-csfree style="color:#c0392b;border-color:#e7b3ab">선택한 학생 자리 비우기</button>':''}
     </div>
     ${state.csEdit?`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;font-size:.84rem">세로 <input type="number" min="1" max="20" value="${d.rows}" data-csrows style="width:62px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px"> 줄 × 가로 <input type="number" min="1" max="20" value="${d.cols}" data-cscols style="width:62px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px"> 칸
       <span style="display:flex;gap:6px;flex-wrap:wrap;width:100%">
@@ -5796,7 +5850,7 @@ function renderSeat(){
     <div style="font-size:.78rem;color:${g.bad?'#c0392b':'#0e9f6e'};font-weight:800;margin-bottom:6px">${state.csEdit?'':(g.bad?`⚠ 규칙에 걸린 자리 ${g.bad}곳`:(Object.keys(g.assign).length?'✔ 규칙 위반 없음':''))}</div>
     ${labNone?'<div style="font-size:.8rem;color:#b45309;margin-bottom:6px">⚠ 이번 달 시간표(반·교재의 과목표)에 강의실이 <b>어학실</b>로 적힌 수업이 없어서 배치할 학생이 없어요. 과목표의 "호실" 칸에 "어학실"을 적어주세요.</div>':''}
     <div data-csscroll style="overflow-x:auto;padding:4px 2px 10px">${g.html}</div>
-    ${state.csEdit?'':`<div style="margin-top:8px"><b style="font-size:.84rem">미배치 학생 ${unplaced.length}명</b> <span style="font-size:.74rem;color:var(--sub)">${can?'(눌러서 고른 뒤 자리를 누르면 그 자리에 앉아요)':''}</span>
+    ${state.csEdit?'':`<div style="margin-top:8px"><b style="font-size:.84rem">미배치 학생 ${unplaced.length}명</b> <span style="font-size:.74rem;color:var(--sub)">${can?'(학생을 눌러 고른 뒤 자리를 누르면 그 자리에 앉고, 다른 학생을 누르면 서로 자리를 바꿔요)':''}</span>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${unplaced.map(s=>`<span data-csun="${s.id}" style="cursor:pointer;border:2px solid ${sel&&sel.t==='stu'&&sel.id===s.id?'#7c3aed':'#d5d9e4'};border-radius:8px;padding:3px 8px;font-size:.78rem;background:#fff">${esc(s.nameKo)} <span style="color:var(--sub);font-size:.7rem">${esc(csGradeKey(s))} ${esc(csClassOf(s))}</span></span>`).join('')||'<span style="font-size:.78rem;color:#8b93a7">없음</span>'}</div></div>`}
     <details style="margin-top:12px"><summary style="cursor:pointer;font-size:.84rem;font-weight:800;color:var(--sub)">배치 대상 학생 선택 (컴퓨터를 안 쓰는 학생은 체크 해제)</summary>
       ${Object.keys(grades).sort((x,y)=>x.localeCompare(y,'ko')).map(k=>`<div style="margin:8px 0 2px;font-size:.78rem;font-weight:800">${esc(k)} (${grades[k].length}명)</div><div style="display:flex;gap:4px 12px;flex-wrap:wrap">${grades[k].map(s=>`<label style="font-size:.78rem"><input type="checkbox" data-csex="${s.id}" ${can?'':'disabled'} ${(d.excluded||[]).includes(s.id)?'':'checked'}> ${esc(s.nameKo)}${s.nameEn?'('+esc(s.nameEn)+')':''} <span style="color:var(--sub)">${esc(csClassOf(s))}</span></label>`).join('')}</div>`).join('')}
@@ -5817,7 +5871,7 @@ function bindSeat(){
   });
   q('[data-csedit]',b=>b.onclick=()=>{ state.csNum=''; state.csEdit=!state.csEdit; state.csSel=null; csRender(); });
   q('[data-csclear]',b=>b.onclick=()=>{ if(!confirm('배치를 모두 비울까요? (자리 모양은 그대로 둡니다)')) return; d.assign={}; state.csSel=null; csTouch(d); csRender(); });
-  q('[data-csfree]',b=>b.onclick=()=>{ const s=state.csSel; if(!s||s.t!=='seat') return; const {assign}=csValidAssign(a); const id=Object.keys(assign).find(k=>assign[k]===s.i); if(id) delete d.assign[id]; state.csSel=null; csTouch(d); csRender(); });
+  q('[data-csfree]',b=>b.onclick=()=>{ const sl=state.csSel; if(!sl||sl.t!=='stu') return; delete d.assign[sl.id]; state.csSel=null; csTouch(d); csRender(); });
   q('[data-csperadd]',b=>b.onclick=()=>{
     const name=(prompt('새 기간 이름 (예: 11월 3-4주)','')||'').trim(); if(!name) return;
     const nk=a+'@'+Date.now(); const cur=csGet(a);
@@ -5856,21 +5910,18 @@ function bindSeat(){
     csTouch(d); csRender();
   });
   q('[data-csun]',el=>el.onclick=()=>{ const id=el.dataset.csun; state.csSel=(state.csSel&&state.csSel.t==='stu'&&state.csSel.id===id)?null:{t:'stu',id}; csRender(); });
+  q('[data-csst]',el=>el.onclick=(ev)=>{
+    ev.stopPropagation(); const id=el.dataset.csst; const sel=state.csSel;
+    if(!sel){ state.csSel={t:'stu',id}; csRender(); return; }
+    if(sel.id===id){ state.csSel=null; csRender(); return; }
+    // 선택한 학생과 이 학생의 자리를 서로 바꾼다 (선택한 학생이 미배치면 이 학생 자리에 앉고 이 학생은 미배치가 된다)
+    const cellB=d.assign[id], cellA=d.assign[sel.id];
+    if(cellA!=null) d.assign[id]=cellA; else delete d.assign[id];
+    d.assign[sel.id]=cellB; state.csSel=null; csTouch(d); csRender();
+  });
   q('[data-csseat]',el=>el.onclick=()=>{
-    const i=+el.dataset.csseat; const {assign}=csValidAssign(a);
-    const idAt=cell=>Object.keys(assign).find(k=>assign[k]===cell);
-    const sel=state.csSel;
-    if(!sel){ if(idAt(i)) state.csSel={t:'seat',i}; csRender(); return; }
-    if(sel.t==='seat'){
-      if(sel.i===i){ state.csSel=null; csRender(); return; }
-      const idA=idAt(sel.i), idB=idAt(i);
-      if(idA) d.assign[idA]=i; if(idB) d.assign[idB]=sel.i;
-      state.csSel=null; csTouch(d); csRender(); return;
-    }
-    if(sel.t==='stu'){
-      const idB=idAt(i); if(idB) delete d.assign[idB];
-      d.assign[sel.id]=i; state.csSel=null; csTouch(d); csRender();
-    }
+    const i=+el.dataset.csseat; const sel=state.csSel; if(!sel) return;
+    d.assign[sel.id]=i; state.csSel=null; csTouch(d); csRender();
   });
 }
 function seatPrintHTML(){
