@@ -5664,7 +5664,13 @@ function csClassOf(st){ return classNameInMonth(st,state.month)||st.className||'
 // 컴퓨터를 쓰는 수업은 강의실이 '어학실'인 수업뿐 — 시간표(과목표)에 어학실 수업이 있는 반의 학생만 대상이 된다
 function csLabClassNames(a){
   const set=new Set();
-  classesFor(state.month).forEach(c=>{ if(c.academy===a && !c._deleted && (c.subjects||[]).some(x=>String(x.room||'').includes('어학실') || isLabSubject(x.subject))) set.add(c.name); });
+  const isLab=c=>(c.subjects||[]).some(x=>String(x.room||'').includes('어학실') || isLabSubject(x.subject));
+  classesFor(state.month).forEach(c=>{
+    if(c.academy!==a || c._deleted) return;
+    if(isLab(c)){ set.add(c.name); }
+    // 합반(같이 수업하는 두 반): 한쪽에만 수업 시간이 적혀 있어도 상대 반 학생까지 같이 대상이 된다
+    try{ const m=mergedCounterpart(c); if(m && !m._deleted && (isLab(c)||isLab(m))){ set.add(c.name); set.add(m.name); } }catch(e){}
+  });
   return set;
 }
 function csCandidates(a){
@@ -5691,7 +5697,9 @@ function csSlots(st){
   const cn=csClassOf(st); const c=csClsCache.list.find(x=>x.academy===st.academy && x.name===cn);
   let out=[];
   if(c){
-    const labs=(c.subjects||[]).filter(x=>String(x.room||'').includes('어학실')||isLabSubject(x.subject));
+    const labOf=cc=>(cc.subjects||[]).filter(x=>String(x.room||'').includes('어학실')||isLabSubject(x.subject));
+    let labs=labOf(c);
+    if(!labs.length){ try{ const m=mergedCounterpart(c); if(m) labs=labOf(m); }catch(e){} } // 합반 상대 반의 수업 시간을 쓴다
     const main=labs.filter(x=>!isWordTestSubject(x)); const use=main.length?main:labs;
     use.forEach(x=>{
       const dm=String(x.day||'').match(/[월화수목금토일]/g) || String(cdays(c)||'').match(/[월화수목금토일]/g) || ['*'];
