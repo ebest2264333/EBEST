@@ -5784,7 +5784,8 @@ function csResize(d, rows, cols){
   for(let r=0;r<Math.min(rows,d.rows);r++) for(let c=0;c<Math.min(cols,d.cols);c++){ cells[r*cols+c]=d.cells[r*d.cols+c]?1:0; map[r*d.cols+c]=r*cols+c; }
   const na={}; Object.keys(d.assign||{}).forEach(id=>{ const m=map[d.assign[id]]; if(m!=null && cells[m]) na[id]=m; });
   const nn={}; Object.keys(d.nums||{}).forEach(k=>{ const m=map[k]; if(m!=null && cells[m]) nn[m]=d.nums[k]; });
-  d.rows=rows; d.cols=cols; d.cells=cells; d.assign=na; d.nums=nn;
+  const nl={}; Object.keys(d.labels||{}).forEach(k=>{ const m=map[k]; if(m!=null && !cells[m]) nl[m]=d.labels[k]; });
+  d.rows=rows; d.cols=cols; d.cells=cells; d.assign=na; d.nums=nn; d.labels=nl;
 }
 function csSeatNumbers(d){ const m={}; let n=0; const cu=d.nums||{}; d.cells.forEach((v,i)=>{ if(v){ n++; m[i]=(cu[i]!=null&&cu[i]!=='')?cu[i]:n; } }); return m; }
 function csLabel(st){ return esc(st.nameKo)+(st.nameEn?`<br><span style="font-size:.7rem;font-weight:400">${esc(st.nameEn)}</span>`:''); }
@@ -5812,8 +5813,17 @@ function csGrid(a, editable, printMode){
   const sel=state.csSel; const ccol=csClassColors(a);
   let h=`<div style="display:grid;grid-template-columns:repeat(${d.cols},minmax(${printMode?60:76}px,1fr));gap:${printMode?3:5}px">`;
   d.cells.forEach((v,i)=>{
+    const lab=(d.labels||{})[i];
+    if(editable && lab && !v){
+      h+=`<div data-cscell="${i}" style="cursor:pointer;min-height:44px;border:2px solid #333;border-radius:6px;background:#fff8e1;display:flex;align-items:center;justify-content:center;font-size:.74rem;color:#333;font-weight:800;text-align:center">${esc(lab)}</div>`; return;
+    }
     if(editable){
       h+=`<div data-cscell="${i}" style="cursor:pointer;min-height:44px;border:2px ${v?'solid #2e5fb7':'dashed #c7cbd6'};border-radius:8px;background:${v?'#eef4ff':'#fafbfd'};display:flex;align-items:center;justify-content:center;font-size:.8rem;color:${v?'#2e5fb7':'#aab'};font-weight:800">${v?'💻 '+nums[i]:'—'}</div>`; return;
+    }
+    if(!v && lab){ // 선생님 자리 등 메모 칸 — 가로로 이어진 같은 이름은 한 칸으로 합쳐 보여준다
+      const c=i%d.cols; if(c>0 && !d.cells[i-1] && (d.labels||{})[i-1]===lab) return;
+      let span=1; while(c+span<d.cols && !d.cells[i+span] && (d.labels||{})[i+span]===lab) span++;
+      h+=`<div style="grid-column:span ${span};min-height:${printMode?34:42}px;border:2px solid #333;border-radius:6px;background:#fff8e1;display:flex;align-items:center;justify-content:center;font-size:${printMode?'.78rem':'.84rem'};font-weight:800;color:#333">${esc(lab)}</div>`; return;
     }
     if(!v){ h+=`<div style="min-height:${printMode?34:42}px"></div>`; return; }
     const L=occ[i]||[]; const b=bad[i];
@@ -5877,8 +5887,9 @@ function renderSeat(){
         <button class="btn small ${!state.csNum?'primary':''}" data-csnum="off">🧩 자리 만들기/없애기</button>
         <button class="btn small ${state.csNum==='one'?'primary':''}" data-csnum="one">🔢 번호 하나씩 수정</button>
         <button class="btn small ${state.csNum==='seq'?'primary':''}" data-csnum="seq">🔢 클릭 순서대로 번호 매기기</button>
+        <button class="btn small ${state.csNum==='label'?'primary':''}" data-csnum="label">🏷 선생님 자리·메모 칸</button>
         <button class="btn small" data-csnumreset>번호 처음으로 되돌리기</button></span>
-      <span style="color:var(--sub);font-size:.78rem;width:100%">${state.csNum==='one'?'— 번호를 바꿀 자리를 누르면 새 번호를 물어봐요 (비우면 기본 번호).':state.csNum==='seq'?`— 자리를 원하는 순서대로 누르면 <b>${state.csSeqN||1}번</b>부터 차례로 번호가 붙어요.`:'— 칸을 눌러 자리를 만들거나(💻) 없앨 수 있어요. 실제 교실 모양대로 만들어주세요.'}</span></div>`:''}
+      <span style="color:var(--sub);font-size:.78rem;width:100%">${state.csNum==='label'?'— 칸을 누르면 글자를 물어봐요 (예: 선생님 자리, 고장, 컴퓨터 없음). 옆으로 같은 글자를 이어서 넣으면 한 칸으로 합쳐 보여요. 글자를 비우면 지워져요.':state.csNum==='one'?'— 번호를 바꿀 자리를 누르면 새 번호를 물어봐요 (비우면 기본 번호).':state.csNum==='seq'?`— 자리를 원하는 순서대로 누르면 <b>${state.csSeqN||1}번</b>부터 차례로 번호가 붙어요.`:'— 칸을 눌러 자리를 만들거나(💻) 없앨 수 있어요. 실제 교실 모양대로 만들어주세요.'}</span></div>`:''}
     <div style="font-size:.78rem;color:${g.bad?'#c0392b':'#0e9f6e'};font-weight:800;margin-bottom:6px">${(state.csEdit||csWarnOff())?'':(g.bad?`⚠ 규칙에 걸린 자리 ${g.bad}곳`:(Object.keys(g.assign).length?'✔ 규칙 위반 없음':''))}</div>
     ${labNone?'<div style="font-size:.8rem;color:#b45309;margin-bottom:6px">⚠ 이번 달 시간표(반·교재의 과목표)에 강의실이 <b>어학실</b>로 적힌 수업이 없어서 배치할 학생이 없어요. 과목표의 "호실" 칸에 "어학실"을 적어주세요.</div>':''}
     ${state.csEdit?'':csLegend(a, can)}
@@ -5910,7 +5921,7 @@ function bindSeat(){
   q('[data-csperadd]',b=>b.onclick=()=>{
     const name=(prompt('새 기간 이름 (예: 11월 3-4주)','')||'').trim(); if(!name) return;
     const nk=a+'@'+Date.now(); const cur=csGet(a);
-    store.compSeats[nk]={rows:cur.rows,cols:cur.cols,cells:cur.cells.slice(),assign:Object.assign({},cur.assign),excluded:(cur.excluded||[]).slice(),okPairs:Object.assign({},cur.okPairs||{}),solo:Object.assign({},cur.solo||{}),clsColors:Object.assign({},cur.clsColors||{}),name,createdAt:Date.now(),updatedAt:Date.now()};
+    store.compSeats[nk]={rows:cur.rows,cols:cur.cols,cells:cur.cells.slice(),assign:Object.assign({},cur.assign),excluded:(cur.excluded||[]).slice(),okPairs:Object.assign({},cur.okPairs||{}),solo:Object.assign({},cur.solo||{}),clsColors:Object.assign({},cur.clsColors||{}),labels:Object.assign({},cur.labels||{}),name,createdAt:Date.now(),updatedAt:Date.now()};
     state.csP=state.csP||{}; state.csP[a]=nk; state.csSel=null; save(); render(true);
     toast('✔ 현재 자리 모양·배치를 복사해서 새 기간을 만들었어요');
   });
@@ -5926,6 +5937,14 @@ function bindSeat(){
   q('[data-csnumreset]',b=>b.onclick=()=>{ if(!confirm('바꾼 번호를 모두 지우고 기본 번호(왼쪽 위부터 차례로)로 되돌릴까요?')) return; d.nums={}; state.csSeqN=1; csTouch(d); csRender(); });
   q('[data-cscell]',el=>el.onclick=()=>{
     const i=+el.dataset.cscell;
+    if(state.csNum==='label'){
+      d.labels=d.labels||{}; const cur=d.labels[i]||'';
+      const v=prompt('이 칸에 적을 글자 (예: 선생님 자리 / 고장 / 컴퓨터 없음) — 비우면 지워요', cur||'선생님 자리'); if(v==null) return;
+      const t=v.trim();
+      if(t===''){ delete d.labels[i]; }
+      else { d.labels[i]=t; if(d.cells[i]){ d.cells[i]=0; Object.keys(d.assign||{}).forEach(id=>{ if(d.assign[id]===i) delete d.assign[id]; }); if(d.nums) delete d.nums[i]; } }
+      csTouch(d); csRender(); return;
+    }
     if(state.csNum){
       if(!d.cells[i]) return;
       d.nums=d.nums||{};
@@ -5934,7 +5953,7 @@ function bindSeat(){
       const t=v.trim(); if(t===''||t===String(cur)&&d.nums[i]==null) delete d.nums[i]; else d.nums[i]=/^\d+$/.test(t)?Number(t):t;
       csTouch(d); csRender(); return;
     }
-    d.cells[i]=d.cells[i]?0:1;
+    d.cells[i]=d.cells[i]?0:1; if(d.cells[i] && d.labels) delete d.labels[i];
     if(!d.cells[i] && d.nums) delete d.nums[i];
     if(!d.cells[i]){ Object.keys(d.assign||{}).forEach(id=>{ if(d.assign[id]===i) delete d.assign[id]; }); }
     csTouch(d); csRender();
