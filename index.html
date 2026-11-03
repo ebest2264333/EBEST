@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>이베스트 (본관) — 선생님용 대시보드 · v1103-h</title>
+<title>이베스트 (본관) — 선생님용 대시보드 · v1103-k</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%96%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">
@@ -397,6 +397,7 @@ for(const k in store.bookdone){ if(store.bookdone[k]===true) store.bookdone[k]='
 if(!store.bookedit) store.bookedit={};
 if(!store.bookGiven) store.bookGiven={};
 if(!store.bookCatalog) store.bookCatalog=[]; // 교재 마스터 목록(이름+금액) — 관리자/실장이 목록을 만들어두고 학생에게 배정
+if(!store.wordBooks) store.wordBooks=[]; // 단어 시험지용 단어장 — 서버로 공유
 if(!store.tuitionCatalog) store.tuitionCatalog=[]; // 수강료 항목 마스터 목록 — 교재와 동일한 방식
 if(!store.uploadTombstones) store.uploadTombstones={};
 if(!store.uploadStamps) store.uploadStamps={};
@@ -647,11 +648,11 @@ store.syllabusSeeded=true; // 예전에 기본으로 들어있던 'Spider Phonic
 if(!store.examAnalysis) store.examAnalysis=[]; // 내신 분석 — {id, academy, school, grade, examTitle, examRange, examDate, prepStart, prepEnd, teacherLecture, teacherIBT, note, categories:[{name,count,questions:[{id,no,question,points,difficulty}]}], updatedAt, updatedBy} · 월 상관없이 항상 보임, 모든 선생님 열람·수정 가능(Syllabus처럼 보관용)
 if(!store.absentNotes) store.absentNotes={}; // 날짜별 결석생 요약의 '특이사항' 자유 메모 {YYYY-MM-DD: text}
 if(!store.examTrends) store.examTrends=[]; // 동향 분석 리포트 — {id, academy, school, grade, title, memo, source:'ai'|'upload', entryIds, snaps, files, report:{headline,strategy,metrics,changes,teaching}, aiModel, createdAt, updatedAt, createdBy, _deleted} · 내신 분석 탭 안의 두 번째 탭, AI로 만든 리포트는 자동 저장
-const SHARE_FIELDS=['uploads','bookedit','bookdone','daysedit','timeedit','calendar','calendarTombstones','calCatColors','meetings','teachers','adminEmail','enrollment','newStudents','dropouts','compSeats','classOrder','consultRoles','students','admissionConsults','wordTests','attend','homework','stayback','bookGiven','uploadTombstones','uploadStamps','wordbookOptions','testPaperOptions','giveSel','consultRequests','records','assign','cmemo','worklog','weekplan','submits','handover','boardPosts','handoverGrid','monthOverride','examAnalysis','examTrends','absentNotes','bookCatalog','tuitionCatalog','papercheckEnabled','papercheckCols','papercheckData','worklogMonthly','worklogWeekly'];
+const SHARE_FIELDS=['wordBooks','uploads','bookedit','bookdone','daysedit','timeedit','calendar','calendarTombstones','calCatColors','meetings','teachers','adminEmail','enrollment','newStudents','dropouts','compSeats','classOrder','consultRoles','students','admissionConsults','wordTests','attend','homework','stayback','bookGiven','uploadTombstones','uploadStamps','wordbookOptions','testPaperOptions','giveSel','consultRequests','records','assign','cmemo','worklog','weekplan','submits','handover','boardPosts','handoverGrid','monthOverride','examAnalysis','examTrends','absentNotes','bookCatalog','tuitionCatalog','papercheckEnabled','papercheckCols','papercheckData','worklogMonthly','worklogWeekly'];
 // syllabus(실러버스)는 PDF/한글/워드 첨부가 커서 별도 경로(/syllabus)로, 낮은 빈도로만 동기화합니다 — 그래야 매 5초/매 입력마다 전체를 전송하지 않습니다.
 // 반 자료·학생 명단처럼 "삭제"가 중요한 항목은 병합하지 않고 통째로 교체한다(마지막 저장이 우선).
 // 병합 방식(mergeById)에는 삭제라는 개념이 없어서, 지운 반·학생이 다른 기기 자료와 합쳐지며 계속 되살아나기 때문.
-const REPLACE_FIELDS=['compSeats','classOrder','uploads','students','teachers','bookedit','bookdone','daysedit','timeedit','wordbookOptions','testPaperOptions','handoverGrid'];
+const REPLACE_FIELDS=['wordBooks','papercheckEnabled','papercheckCols','papercheckData','compSeats','classOrder','uploads','students','teachers','bookedit','bookdone','daysedit','timeedit','wordbookOptions','testPaperOptions','handoverGrid'];
 // 출결·숙제 등은 여러 선생님이 동시에 서로 다른 학생을 입력하므로 기존처럼 병합해야 안전하다.
 function isReplaceField(f){ return REPLACE_FIELDS.includes(f); }
 // 각 항목을 마지막으로 편집한 시각 — 교체 방식에서 "누가 더 최신인지" 판단에 사용
@@ -1850,14 +1851,14 @@ function tabDefsBase(){
   const lt=loginTeacher();
   if(lt && !isMgr()){
     return {main:[['today','🏠 홈'],['consult','상담'],['report','업무일지'],['dash','반 · 교재']],
-            more:[['bookgive','📦 교재배부'],['wordrange','📝 단어 범위'],['hwrange','✅ 숙제 체크표'],['papercheck','📋 과제검사표'],['syllabus','📘 Syllabus'],['examrpt','📊 내신분석'],['roster','학생 명단'],['timetable','🕒 시간표'],['yearly','연간 교재'],['cal','일정 · 회의'],['board','📋 게시판'],['archive','전체 기록'],['set','설정']]};
+            more:[['bookgive','📦 교재배부'],['wordrange','📝 단어'],['hwrange','✅ 숙제·과제검사'],['syllabus','📘 Syllabus'],['examrpt','📊 내신분석'],['roster','학생 명단'],['timetable','🕒 시간표'],['yearly','연간 교재'],['cal','일정 · 회의'],['board','📋 게시판'],['archive','전체 기록'],['set','설정']]};
   }
   if(isMgr()){
     return {main:[['today','🏠 홈'],['consult','상담'],['report','업무보고'],['dash','반 · 교재']],
-            more:[['bookgive','📦 교재배부'],['wordrange','📝 단어 범위'],['hwrange','✅ 숙제 체크표'],['papercheck','📋 과제검사표'],['syllabus','📘 Syllabus'],['examrpt','📊 내신분석'],['roster','학생 명단'],['timetable','🕒 시간표'],['attend','출결 (월별)'],['yearly','연간 교재'],['cal','일정 · 회의'],['board','📋 게시판'],['archive','전체 기록'],['set','설정']]};
+            more:[['bookgive','📦 교재배부'],['wordrange','📝 단어'],['hwrange','✅ 숙제·과제검사'],['syllabus','📘 Syllabus'],['examrpt','📊 내신분석'],['roster','학생 명단'],['timetable','🕒 시간표'],['attend','출결 (월별)'],['yearly','연간 교재'],['cal','일정 · 회의'],['board','📋 게시판'],['archive','전체 기록'],['set','설정']]};
   }
   return {main:[['today','오늘 수업'],['consult','상담 관리'],['report','업무보고'],['dash','반 · 교재']],
-          more:[['bookgive','📦 교재배부'],['wordrange','📝 단어 범위'],['hwrange','✅ 숙제 체크표'],['papercheck','📋 과제검사표'],['syllabus','📘 Syllabus'],['examrpt','📊 내신분석'],['roster','학생 명단'],['timetable','🕒 시간표'],['attend','출결 (월별)'],['yearly','연간 교재'],['cal','일정 · 회의'],['board','📋 게시판'],['archive','전체 기록'],['set','설정 · 업로드']]};
+          more:[['bookgive','📦 교재배부'],['wordrange','📝 단어'],['hwrange','✅ 숙제·과제검사'],['syllabus','📘 Syllabus'],['examrpt','📊 내신분석'],['roster','학생 명단'],['timetable','🕒 시간표'],['attend','출결 (월별)'],['yearly','연간 교재'],['cal','일정 · 회의'],['board','📋 게시판'],['archive','전체 기록'],['set','설정 · 업로드']]};
 }
 function goTab(t){
   state.tab=t;
@@ -3669,6 +3670,7 @@ function assignedItemsBlockHTML(s, list, itemsKey, icon, label){
   return h;
 }
 function assignedItemsHTML(s, admin){
+  return ''; // 교재 가격·수강료 배정 표시 제거
   const books=s.assignedBooks||[], tuitions=s.assignedTuitions||[];
   let h='';
   if(books.length || (admin && catList('bookCatalog').length)){
@@ -3697,7 +3699,7 @@ function studentCard(s, admin){
       ${s.preCheck?`<div class="rnote">🔎 상담 전 확인: ${esc(s.preCheck)}</div>`:''}
       ${s.status!=='재원'&&s.statusReason?`<div class="rnote">${esc(s.status)} 사유: ${esc(s.statusReason)}</div>`:''}
       ${sibs.length?`<div style="font-size:.78rem;color:var(--sub);margin-top:4px">👨‍👩‍👧‍👦 형제자매: ${sibLinks}</div>`:''}
-      ${admin && studentUnpaidCount(s)>0?`<div style="font-size:.76rem;color:#c0392b;font-weight:800;margin-top:4px">💰 미납 ${studentUnpaidCount(s)}건</div>`:''}
+      ${false?`<div style="font-size:.76rem;color:#c0392b;font-weight:800;margin-top:4px">💰 미납 ${studentUnpaidCount(s)}건</div>`:''}
       ${canNote?`<textarea data-rsnote="${s.id}" placeholder="특이사항 코멘트…" style="width:100%;min-height:44px;margin-top:8px;border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-family:inherit;font-size:.83rem">${esc(s.note||'')}</textarea>`
         :(s.note?`<div class="note">${esc(s.note)}</div>`:'')}
     </article>`;
@@ -4721,10 +4723,9 @@ function renderBookGive(list){
   if(lt && state.myOnly) cls=cls.filter(c=>teacherTeaches(c,lt));
   let h=`<div class="todaybar"><span class="wd">📦 교재 배부</span>
     ${lt?`<span class="mytag" style="background:${lt.t.color}">👤 ${esc(lt.t.name)}</span><label class="hwlab"><input type="checkbox" id="bgMyOnly" ${state.myOnly?'checked':''}> 내 수업만 보기</label>`:''}
-    <span style="font-size:.76rem;color:var(--sub)">과목별 교재명은 직접 입력하면 반교재·연간교재·업무일지에도 실시간으로 반영됩니다. 실제 배부(누구에게 줬는지)와 결제 여부는 위쪽 [📚 교재 목록 관리 & 배정] · [💰 수강료 항목 관리 & 배정]에서 학생 개인 또는 반 전체 단위로 처리하고, 학생 명단에서 확인할 수 있어요.</span></div>`;
+    <span style="font-size:.76rem;color:var(--sub)">과목별 교재명은 직접 입력하면 반교재·연간교재·업무일지에도 실시간으로 반영됩니다. IBT는 배부할 교재가 없어 목록에서 제외돼요.</span></div>`;
   if(isAdminRole()){
-    h+=renderCatalogSection('bookCatalog','assignedBooks','📚 교재 목록 관리 & 배정 (금액 포함 · 관리자·실장 전용)');
-    h+=renderCatalogSection('tuitionCatalog','assignedTuitions','💰 수강료 항목 관리 & 배정 (관리자·실장 전용)');
+    // (교재 가격·수강료 항목 관리/배정 입력란은 제거됨 — 기존 저장 자료는 그대로 보존)
   }
   if(!cls.length) return h+'<div class="empty">학생이 등록된 반이 없습니다.</div>';
   const wbOpts=wbOptionsFor(MODE);
@@ -4736,6 +4737,7 @@ function renderBookGive(list){
     const subjSeen=new Set();
     const subs=(c.subjects||[]).filter(s=>{
       if(!s.subject) return false;
+      if(String(s.subject).trim().toUpperCase()==='IBT' || normalizeLCtoIBT(String(s.subject).trim()).toUpperCase()==='IBT') return false; // IBT는 배부할 교재 없음
       if(isWordTestSubject(s)) return false; // 단어시험은 아래 '단어장' 칸에서 이미 배부 처리하므로 중복 표시하지 않음
       if(subjSeen.has(s.subject)) return false;
       subjSeen.add(s.subject);
@@ -4750,7 +4752,7 @@ function renderBookGive(list){
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <b style="font-size:.86rem">${esc(subj)}</b>
           <input type="text" class="bgbook" data-k="${esc(k)}" data-subj="${esc(subj)}" value="${esc(s.book||'')}" placeholder="교재명 직접 입력 (진도 기록용)" style="flex:1;min-width:120px;max-width:260px;border:1px solid var(--line);border-radius:7px;padding:5px 8px;font-family:inherit;font-size:.82rem">
-          <span style="font-size:.72rem;color:#8b93a7">※ 실제 배부·결제 처리는 위 [📚 교재 목록 관리 & 배정]에서 해주세요</span>
+          <span style="font-size:.72rem;color:#8b93a7"></span>
         </div>
       </div>`;
     });
@@ -4783,8 +4785,7 @@ function logBookGiveToJournal(k, subjLabel, bookTitle, count){
 }
 function bindBookGive(){
   const v=document.getElementById('view');
-  if(isAdminRole()){ bindCatalogSection('bookCatalog','assignedBooks'); bindCatalogSection('tuitionCatalog','assignedTuitions'); }
-  const mo=v.querySelector('#bgMyOnly'); if(mo) mo.onchange=()=>{state.myOnly=mo.checked; render();};
+    const mo=v.querySelector('#bgMyOnly'); if(mo) mo.onchange=()=>{state.myOnly=mo.checked; render();};
   v.querySelectorAll('.givesel').forEach(sel=>sel.onchange=()=>{
     const k=sel.dataset.k, type=sel.dataset.type;
     store.giveSel[k]=store.giveSel[k]||{};
@@ -4799,7 +4800,326 @@ function bindBookGive(){
 }
 /* ---------- 단어 범위 (월별, 학생×날짜 그리드) ---------- */
 function wbShort(wb){ return String(wb||'').replace(/^(초등|중등|고등)\s*/,''); }
+function wordModeBarHTML(){
+  const m=state.wrMode==='make';
+  const b=(on,v,t)=>`<button type="button" class="btn small wrModeBtn" data-m="${v}" style="padding:6px 16px;font-size:.84rem;font-weight:800;${on?'background:var(--ink);color:#fff':'background:#eef0f6;color:var(--sub)'}">${t}</button>`;
+  return `<div style="display:flex;gap:6px;margin-bottom:10px">${b(!m,'range','📅 범위')}${b(m,'make','📝 시험지 만들기')}</div>`;
+}
+/* ---------- 단어 시험지 만들기 (단어장 불러오기 → Day/단어 선택 → 시험지·답안지 한꺼번에 인쇄) ---------- */
+// 단어장은 store.wordBooks에 저장되어 서버로 공유된다(통째 교체 방식이라 삭제도 다른 기기에 반영).
+const WM_CSS=`
+.wmgrid{display:grid;grid-template-columns:340px 1fr;gap:16px;align-items:start}
+@media(max-width:900px){.wmgrid{grid-template-columns:1fr}}
+.wmside,.wmpanel{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.wmside h4{font-size:.74rem;letter-spacing:.08em;color:var(--sub);margin:14px 0 6px}.wmside h4:first-child{margin-top:0}
+.wmside select,.wmside input[type=text],.wmside textarea,.wmpanel input[type=text]{width:100%;padding:7px 9px;border:1.5px solid var(--line);border-radius:7px;font:inherit;font-size:.84rem;background:#fff}
+.wmchips{display:flex;flex-wrap:wrap;gap:5px;max-height:150px;overflow:auto}
+.wmchip{padding:4px 10px;border:1.5px solid var(--line);border-radius:999px;cursor:pointer;font-size:.78rem;user-select:none;background:#fff}
+.wmchip.on{background:#c2410c;border-color:#c2410c;color:#fff;font-weight:700}
+.wmopt{display:flex;gap:8px;align-items:flex-start;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;margin-bottom:5px;cursor:pointer;font-size:.82rem}
+.wmopt.on{border-color:#c2410c;background:#fff1e8}.wmopt small{display:block;color:var(--sub);font-size:.7rem}
+.wmbtn{border:1px solid var(--line);background:#fff;border-radius:7px;padding:5px 10px;font:inherit;font-size:.78rem;cursor:pointer}
+.wmbtn.p{background:#c2410c;color:#fff;border-color:#c2410c;font-weight:800;width:100%;padding:10px;margin-top:8px;font-size:.9rem}
+.wmbtn.g{background:#1c1b19;color:#fff;border-color:#1c1b19;font-weight:800;width:100%;padding:10px;margin-top:6px;font-size:.9rem}
+.wmbtn.d{color:#c0392b}
+.wmbtn:disabled{opacity:.4;cursor:not-allowed}
+.wmwl{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:3px 12px;max-height:320px;overflow:auto}
+.wmw{display:flex;gap:7px;align-items:baseline;padding:3px 5px;border-radius:5px;cursor:pointer;font-size:.8rem;border-bottom:1px dashed #eee}
+.wmw.on{background:#fff1e8}.wmw .en{font-weight:700;min-width:80px}.wmw .ko{color:var(--sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wmdh{grid-column:1/-1;font-size:.72rem;font-weight:800;color:var(--sub);margin-top:6px}
+.wmprev{display:flex;flex-direction:column;gap:14px;align-items:center;margin-top:12px;overflow:auto}
+.wmed table{width:100%;border-collapse:collapse}.wmed td,.wmed th{border-bottom:1px solid #eee;padding:2px 3px;font-size:.8rem;text-align:left}
+`;
+const WM_SHEET_CSS=`
+*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Noto Sans KR','Malgun Gothic',sans-serif;color:#000;font-size:14px;background:#fff}
+.sheet{width:190mm;background:#fff;border:1px solid #d9d5ca;padding:0 0 3mm;color:#000}
+.sh{border-bottom:2px solid #000;padding:7px 10px 6px;display:flex;justify-content:space-between;align-items:flex-end;gap:10px}
+.sh .t{font-size:1.02rem;font-weight:700}.sh .i{font-size:.72rem;color:#444;margin-top:2px}.sh .nm{font-size:.82rem;white-space:nowrap}
+.sh .nm span{display:inline-block;border-bottom:1px solid #000;width:24mm;margin:0 6px 0 4px}
+.sheet.ans .sh{border-bottom-color:#166534}.sheet.ans .t{color:#166534}
+.grid{display:grid;grid-template-columns:1fr 1fr}
+.q{display:flex;align-items:center;gap:6px;padding:5px 10px;border-bottom:1px dashed #ddd;border-right:1px solid #e5e5e5;font-size:.84rem;line-height:1.35;break-inside:avoid;min-height:9mm}
+.q:nth-child(even){border-right:none}.q .n{color:#666;min-width:1.7em;text-align:right;font-size:.78rem;flex:none}.q .tx{font-weight:500;flex:none;max-width:48%}.q .an{flex:1;color:#b91c1c;font-weight:700;font-size:.82rem}
+.mcq{padding:6px 10px;border-bottom:1px dashed #ddd;border-right:1px solid #e5e5e5;break-inside:avoid;font-size:.83rem}.mcq:nth-child(even){border-right:none}
+.mcq .st{font-weight:700;margin-bottom:3px}.mcq .st .n{color:#666;font-weight:400;margin-right:4px}.mcq .ch{display:grid;gap:1px;padding-left:1.5em;font-size:.78rem}
+.sheet.tb{padding:0 0 3mm}.hd{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;padding:2mm 0 2.5mm}
+.hd .ti{font-size:.95rem;font-weight:700}.hd .in{font-size:.7rem;color:#555;margin-top:1px}.hd .fl{display:flex;gap:6px;align-items:flex-end;font-size:.8rem;white-space:nowrap}
+.hd .fl span.l{font-weight:700}.hd .fl span.b{display:inline-block;min-width:22mm;border-bottom:1px solid #000;text-align:center;padding:0 3px;height:1.5em;line-height:1.5em}
+table.wt{width:100%;border-collapse:collapse;table-layout:fixed;font-size:.8rem;color:#000}
+table.wt th,table.wt td{border:1px solid #000;text-align:center;padding:0 4px;height:6.7mm;line-height:1.1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+table.wt td.x{border:none}table.wt td.k{text-align:left;font-size:.74rem;padding-left:6px}table.wt td.hn{text-align:left;font-weight:700;padding-left:8px}
+table.wt td.an{color:#b91c1c;font-weight:700;text-align:left;font-size:.74rem;padding-left:6px}.sheet.tb.ans .ti{color:#166534}
+@page{size:A4 portrait;margin:9mm 10mm}
+@media print{.sheet{width:100%;border:none;break-before:page;page-break-before:always;padding:0}.sheet:first-child{break-before:auto;page-break-before:auto}.sheet.tb{break-inside:avoid}table.wt th,table.wt td{height:6.6mm}.q{padding:3px 8px;min-height:0}}
+`;
+const wmS={cur:null,days:new Set(),checked:new Set(),scope:'all',types:new Set(['korean']),dist:'all',order:'random',content:'both',title:'',klass:'',student:'',html:'',edit:false,editDay:null,msg:''};
+function wmBooks(){ return store.wordBooks=store.wordBooks||[]; }
+function wmSave(){ save(); }
+// 예전에 이 기기에만 저장해 둔 단어장이 있으면, 서버 공유 목록이 비어 있을 때 한 번 옮겨 담는다
+function wmMigrate(){ try{ if(wmBooks().length) return; const old=JSON.parse(localStorage.getItem('wm_books')||'[]'); if(old.length){ store.wordBooks=old; save(); } }catch(e){} }
+function wmBook(){ return wmBooks().find(b=>b.id===wmS.cur); }
+const wmShuffle=a=>{a=[...a];for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a};
+function wmDayName(n){ return 'Day '+String(n).padStart(2,'0'); }
+function wmDaySort(a,b){ return (parseInt(a.replace(/\D/g,''))||0)-(parseInt(b.replace(/\D/g,''))||0)||a.localeCompare(b); }
+const WM_DAY_RE=/^[\s\[\(【▪■●◆\-•*]*(?:day|unit|lesson)\s*\.?\s*0*(\d+)\b[^가-힣]*$/i;
+const WM_DAY_RE2=/^[\s\[\(【▪■●◆\-•*]*(?:day|unit|lesson)\s*\.?\s*0*(\d+)\b/i;
+function wmCleanEn(s){ return s.replace(/^[\s\d.)\]\-•·▪■●◆*]+/,'').replace(/[\s:;,\-–—=|/]+$/,'').trim(); }
+function wmParseLine(line){
+  line=String(line).replace(/ /g,' ').trim(); if(!line) return null;
+  for(const sp of ['\t',' - ',' – ',' — ',' : ',' | ',' = ']){
+    if(line.includes(sp)){ const i=line.indexOf(sp); const en=wmCleanEn(line.slice(0,i)), ko=line.slice(i+sp.length).trim(); if(/[A-Za-z]/.test(en)&&ko) return {en,ko}; }
+  }
+  const h=line.search(/[가-힣]/);
+  if(h>0){ const en=wmCleanEn(line.slice(0,h)), ko=line.slice(h).trim(); if(/[A-Za-z]/.test(en)&&ko&&en.length<60) return {en,ko}; }
+  if(line.includes(',')){ const i=line.indexOf(','); const en=wmCleanEn(line.slice(0,i)), ko=line.slice(i+1).trim().replace(/^"|"$/g,''); if(/^[A-Za-z][A-Za-z\s'’.\-\/()~]*$/.test(en)&&ko) return {en,ko}; }
+  return null;
+}
+function wmParseLines(lines){
+  const days={}; let cur=null;
+  for(const raw of lines){
+    const line=String(raw).trim(); if(!line) continue;
+    let dm=line.match(WM_DAY_RE);
+    if(dm){ cur=wmDayName(dm[1]); days[cur]=days[cur]||[]; continue; }
+    const w=wmParseLine(line);
+    if(w){ if(!cur){ cur='Day 01'; days[cur]=days[cur]||[]; } days[cur].push(w); continue; }
+    dm=line.match(WM_DAY_RE2);
+    if(dm&&!/[A-Za-z]{3,}\s+[가-힣]/.test(line)){ cur=wmDayName(dm[1]); days[cur]=days[cur]||[]; }
+  }
+  Object.keys(days).forEach(k=>{ if(!days[k].length) delete days[k]; });
+  return days;
+}
+function wmParseRows(rows,sheetName){
+  const days={}; let cur=null;
+  const sm=sheetName&&sheetName.match(/(?:day|unit|lesson)?\s*0*(\d+)/i);
+  const sheetDay=sm&&/day|unit|lesson|^\s*\d+\s*$/i.test(sheetName)?wmDayName(sm[1]):null;
+  for(const r of rows){
+    const c=r.map(x=>String(x==null?'':x).trim()); const nz=c.filter(Boolean); if(!nz.length) continue;
+    if(nz.length===1){ const dm=nz[0].match(WM_DAY_RE); if(dm){ cur=wmDayName(dm[1]); days[cur]=days[cur]||[]; continue; } }
+    const d0=c[0].match(/^(?:day|unit|lesson)?\s*0*(\d+)$/i);
+    if(d0&&c[1]&&c[2]&&/[A-Za-z]/.test(c[1])){ const k=wmDayName(d0[1]); (days[k]=days[k]||[]).push({en:c[1],ko:c[2]}); continue; }
+    let en=null,ko=null;
+    for(let i=0;i<c.length-1;i++){ if(/[A-Za-z]/.test(c[i])&&!/[가-힣]/.test(c[i])&&c[i+1]&&/[가-힣]/.test(c[i+1])){ en=c[i]; ko=c[i+1]; break; } }
+    if(!en&&c.length>=2&&c[0]&&c[1]&&/[A-Za-z]/.test(c[0])){ en=c[0]; ko=c[1]; }
+    if(en&&ko){ const k=cur||sheetDay||'Day 01'; (days[k]=days[k]||[]).push({en:wmCleanEn(en),ko}); }
+    else if(nz.length===1){ const w=wmParseLine(nz[0]); if(w){ const k=cur||sheetDay||'Day 01'; (days[k]=days[k]||[]).push(w); } }
+  }
+  return days;
+}
+function wmLoadScript(src){ return new Promise((res,rej)=>{ const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=()=>rej(new Error('라이브러리를 불러오지 못했어요(인터넷 필요)')); document.head.appendChild(s); }); }
+async function wmReadFile(f){
+  const ext=f.name.split('.').pop().toLowerCase();
+  if(ext==='txt') return wmParseLines((await f.text()).split(/\r?\n/));
+  if(ext==='csv'){ const wb=XLSX.read(await f.text(),{type:'string'}); return wmParseRows(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''}),''); }
+  if(ext==='xlsx'||ext==='xls'){
+    const wb=XLSX.read(await f.arrayBuffer(),{type:'array'}); const days={};
+    wb.SheetNames.forEach(sn=>{ const d=wmParseRows(XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:''}),wb.SheetNames.length>1?sn:''); for(const k in d) days[k]=(days[k]||[]).concat(d[k]); });
+    return days;
+  }
+  if(ext==='docx'){ if(!window.mammoth) await wmLoadScript('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js'); return wmParseLines((await mammoth.extractRawText({arrayBuffer:await f.arrayBuffer()})).value.split(/\r?\n/)); }
+  if(ext==='pdf'){
+    if(!window.pdfjsLib){ await wmLoadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'); pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; }
+    const pdf=await pdfjsLib.getDocument({data:await f.arrayBuffer()}).promise; const lines=[];
+    for(let p=1;p<=pdf.numPages;p++){
+      const tc=await (await pdf.getPage(p)).getTextContent(); const rows=[];
+      tc.items.forEach(it=>{ if(!it.str.trim()) return; const y=Math.round(it.transform[5]/3); let r=rows.find(r=>Math.abs(r.y-y)<=1); if(!r){ r={y,items:[]}; rows.push(r); } r.items.push({x:it.transform[4],s:it.str}); });
+      rows.sort((a,b)=>b.y-a.y).forEach(r=>{ r.items.sort((a,b)=>a.x-b.x); lines.push(r.items.map(i=>i.s).join(' ')); });
+    }
+    return wmParseLines(lines);
+  }
+  throw new Error('지원하지 않는 형식');
+}
+function wmAddBook(name,days){
+  const keys=Object.keys(days).sort(wmDaySort); const sorted={}; keys.forEach(k=>sorted[k]=days[k]);
+  const id=Date.now()+Math.floor(Math.random()*1000);
+  wmBooks().push({id,name,days:sorted}); wmS.cur=id; wmS.days=new Set(); wmS.checked.clear(); wmS.editDay=null; wmSave();
+  return keys.reduce((s,k)=>s+days[k].length,0);
+}
+function wmSelWords(){
+  const b=wmBook(); const pool=[]; if(!b) return pool;
+  [...wmS.days].filter(d=>b.days[d]).sort(wmDaySort).forEach(d=>b.days[d].forEach(w=>{ if(w.en&&w.ko&&(wmS.scope==='all'||wmS.checked.has(d+'|'+w.en))) pool.push({...w,day:d}); }));
+  return pool;
+}
+/* ----- 시험지 만들기 ----- */
+function wmHeader(title,info,ans,total){
+  return '<div class="sh"><div><div class="t">'+esc(title)+(ans?' — 답안지':'')+'</div><div class="i">'+esc(info)+'</div></div><div class="nm">반'+(wmS.klass?' <b>'+esc(wmS.klass)+'</b>':'<span></span>')+' 이름'+(wmS.student?' <b>'+esc(wmS.student)+'</b>':'<span></span>')+' 점수<span style="width:16mm"></span>/ <b>'+total+'</b></div></div>';
+}
+function wmFieldHd(title,info,total,ans){
+  return '<div class="hd"><div><div class="ti">'+esc(title)+(ans?' — 답안지':'')+'</div><div class="in">'+esc(info)+'</div></div><div class="fl"><span class="l">반</span><span class="b">'+esc(wmS.klass)+'</span><span class="l">이름</span><span class="b">'+esc(wmS.student)+'</span><span class="l">점수</span><span class="b" style="min-width:12mm"></span><span>/ '+total+'</span></div></div>';
+}
+const WM_MAXROWS=36;
+function wmSheetWriting(type,words,info,ans){
+  const t=(wmS.title||'단어 시험')+(type==='korean'?' · 영어 → 한글':type==='english'?' · 한글 → 영어':' · 믹스');
+  const g={}; words.forEach(w=>{ (g[w.day||'Day']=g[w.day||'Day']||[]).push(w); });
+  const chunks=[];
+  Object.keys(g).sort(wmDaySort).forEach(d=>{ const arr=g[d]; for(let i=0;i<arr.length;i+=WM_MAXROWS) chunks.push({label:d+(arr.length>WM_MAXROWS?' ('+(i/WM_MAXROWS+1)+')':''),words:arr.slice(i,i+WM_MAXROWS)}); });
+  const pages=[]; for(let i=0;i<chunks.length;i+=2) pages.push(chunks.slice(i,i+2));
+  return pages.map(pg=>{
+    const rows=Math.max(...pg.map(c=>c.words.length)); const total=pg.reduce((s,c)=>s+c.words.length,0);
+    const pad=pg.length<2?'<td class="x" colspan="2"></td>':'';
+    let h='<table class="wt"><colgroup>'+pg.map(()=>'<col style="width:25%"><col style="width:25%">').join('')+(pg.length<2?'<col style="width:25%"><col style="width:25%">':'')+'</colgroup>';
+    h+='<tr>'+pg.map(c=>'<th colspan="2">'+esc(c.label)+'</th>').join('')+pad+'</tr><tr>'+pg.map(()=>'<th>English</th><th>Korean</th>').join('')+pad+'</tr>';
+    for(let r=0;r<rows;r++){
+      h+='<tr>'+pg.map(c=>{
+        const w=c.words[r]; if(!w) return '<td class="x"></td><td class="x"></td>';
+        const koBlank=(type==='korean')||(type==='mixed'&&w.dir==='ko');
+        if(koBlank) return '<td>'+esc(w.en)+'</td>'+(ans?'<td class="an">'+esc(w.ko)+'</td>':'<td></td>');
+        return (ans?'<td class="an">'+esc(w.en)+'</td>':'<td class="hn"></td>')+'<td class="k">'+esc(w.ko)+'</td>';
+      }).join('')+pad+'</tr>';
+    }
+    return '<div class="sheet tb'+(ans?' ans':'')+'">'+wmFieldHd(t,info,total,ans)+h+'</table></div>';
+  }).join('');
+}
+function wmGenerate(){
+  const b=wmBook(); if(!b){ toast('단어장을 먼저 불러오세요'); return; }
+  if(!wmS.days.size){ toast('Day를 선택하세요'); return; }
+  if(!wmS.types.size){ toast('시험 유형을 하나 이상 선택하세요'); return; }
+  const pool=wmSelWords(); if(!pool.length){ toast('체크한 단어가 없어요'); return; }
+  const all=[]; Object.values(b.days).forEach(a=>a.forEach(w=>{ if(w.en&&w.ko) all.push(w); }));
+  const mcPool=all.length>=4?all:pool;
+  const seq=wmS.order==='seq';
+  const info=b.name+' | '+[...wmS.days].sort(wmDaySort).join(', ')+(wmS.scope==='checked'?' | 재시험 '+pool.length+'단어':'');
+  const ordered=()=>seq?[...pool]:wmShuffle(pool);
+  const types=['korean','english','mixed','mc'].filter(t=>wmS.types.has(t));
+  const sets=[];
+  if(wmS.dist==='split'){ const a=ordered(),per=Math.ceil(a.length/types.length); types.forEach((t,i)=>sets.push([t,a.slice(i*per,(i+1)*per)])); }
+  else types.forEach(t=>sets.push([t,ordered()]));
+  const tests=[],answers=[];
+  sets.forEach(([t,ws])=>{
+    if(!ws.length) return;
+    if(t==='mixed'){ const dirs=wmShuffle(ws.map((_,i)=>i%2?'en':'ko')); ws=ws.map((w,i)=>({...w,dir:dirs[i]})); }
+    if(t==='mc'){
+      const built=ws.map(w=>({w,ch:wmShuffle([w,...wmShuffle(mcPool.filter(x=>x.en!==w.en&&x.ko!==w.ko)).slice(0,3)])}));
+      const tt=(wmS.title||'단어 시험')+' · 객관식';
+      const mk=ans=>'<div class="sheet'+(ans?' ans':'')+'">'+wmHeader(tt,info,ans,built.length)+'<div class="grid">'+built.map(({w,ch},i)=>{
+        const ai=ch.indexOf(w)+1;
+        return ans?'<div class="q"><span class="n">'+(i+1)+'.</span><span class="tx">'+esc(w.en)+'</span><span class="an">→ '+ai+'번 '+esc(w.ko)+'</span></div>'
+          :'<div class="mcq"><div class="st"><span class="n">'+(i+1)+'.</span>'+esc(w.en)+'</div><div class="ch">'+ch.map((c,k)=>'<div>'+'①②③④'[k]+' '+esc(c.ko)+'</div>').join('')+'</div></div>';
+      }).join('')+'</div></div>';
+      tests.push(mk(false)); answers.push(mk(true));
+    } else { tests.push(wmSheetWriting(t,ws,info,false)); answers.push(wmSheetWriting(t,ws,info,true)); }
+  });
+  wmS.html=(wmS.content==='ans'?'':tests.join(''))+(wmS.content==='test'?'':answers.join(''));
+  toast('총 '+(wmS.html.match(/class="sheet/g)||[]).length+'장 만들었어요');
+}
+function wmPrint(){
+  if(!wmS.html){ toast('먼저 시험지를 만들어주세요'); return; }
+  const f=document.createElement('iframe'); f.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0';
+  document.body.appendChild(f);
+  const d=f.contentWindow.document; d.open(); d.write('<!doctype html><html><head><meta charset="utf-8"><title>단어 시험지</title><style>'+WM_SHEET_CSS+'</style></head><body>'+wmS.html+'</body></html>'); d.close();
+  setTimeout(()=>{ try{ f.contentWindow.focus(); f.contentWindow.print(); }catch(e){} setTimeout(()=>f.remove(),60000); },400);
+}
+/* ----- 화면 ----- */
+function wmEditorHTML(b){
+  const keys=Object.keys(b.days); if(!wmS.editDay||!b.days[wmS.editDay]) wmS.editDay=keys[0]||null;
+  let h=`<div class="wmed" style="margin-top:8px;padding:8px;background:#f6f8fc;border-radius:8px">
+    <div style="display:flex;gap:6px;flex-wrap:wrap"><input type="text" data-wm="bname" value="${esc(b.name)}" style="flex:1;min-width:120px;font-weight:700"><button class="wmbtn d" data-wm="delbook">단어장 삭제</button></div>
+    <div class="wmchips" style="margin-top:8px">${keys.map(k=>`<div class="wmchip ${k===wmS.editDay?'on':''}" data-wm="editday" data-v="${esc(k)}">${esc(k)} (${b.days[k].length})</div>`).join('')}<div class="wmchip" data-wm="addday">+ Day</div></div>`;
+  if(wmS.editDay){
+    const ws=b.days[wmS.editDay];
+    h+=`<div style="display:flex;gap:6px;margin-top:8px;align-items:center"><input type="text" data-wm="dayname" value="${esc(wmS.editDay)}" style="width:110px"><button class="wmbtn" data-wm="renday">이름 변경</button><button class="wmbtn d" data-wm="delday">이 Day 삭제</button></div>
+    <div style="max-height:260px;overflow:auto;margin-top:6px"><table>${ws.map((w,i)=>`<tr><td style="width:24px;color:#999">${i+1}</td><td><input type="text" data-wm="en" data-i="${i}" value="${esc(w.en)}"></td><td><input type="text" data-wm="ko" data-i="${i}" value="${esc(w.ko)}"></td><td style="width:28px"><button class="wmbtn d" data-wm="delw" data-i="${i}">✕</button></td></tr>`).join('')}</table></div>
+    <button class="wmbtn" data-wm="addw" style="margin-top:6px">+ 단어 추가</button>
+    <details style="margin-top:6px"><summary style="font-size:.76rem;cursor:pointer;color:#1d4ed8">텍스트로 한꺼번에 추가 (영어 - 한글)</summary><textarea data-wm="bulk" rows="4" placeholder="apple - 사과"></textarea><button class="wmbtn" data-wm="bulkgo" style="margin-top:4px">이 Day에 추가</button></details>`;
+  }
+  return h+'</div>';
+}
+function wmHTML(){
+  const b=wmBook(); const days=b?Object.keys(b.days).sort(wmDaySort):[];
+  const T=[['korean','🇰🇷 한글 뜻 쓰기','영어단어 → 한글 뜻'],['english','🇺🇸 영어단어 쓰기','한글 뜻 → 영어단어'],['mixed','🔀 믹스','한 장에 한/영 섞어서'],['mc','🎯 객관식 (4지선다)','영어단어 → 뜻 고르기']];
+  let words='';
+  if(b&&wmS.days.size){
+    words=`<div class="wmpanel" style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px"><b style="font-size:.9rem">단어 선택 <span style="font-size:.72rem;background:#fff1e8;color:#c2410c;padding:2px 9px;border-radius:999px">${wmSelWords().length}단어 출제</span></b>
+      <span style="font-size:.78rem"><label style="cursor:pointer"><input type="radio" name="wmscope" data-wm="scope" value="all" ${wmS.scope==='all'?'checked':''}> 선택한 Day 전체</label> <label style="cursor:pointer;margin-left:8px"><input type="radio" name="wmscope" data-wm="scope" value="checked" ${wmS.scope==='checked'?'checked':''}> 체크한 단어만 (재시험)</label></span></div>
+      <div style="margin-bottom:6px"><button class="wmbtn" data-wm="chkall">전체 체크</button> <button class="wmbtn" data-wm="chkclr">전체 해제</button> <span style="font-size:.72rem;color:var(--sub)">틀린 단어를 체크하면 자동으로 「체크한 단어만」이 돼요.</span></div>
+      <div class="wmwl">${[...wmS.days].filter(d=>b.days[d]).sort(wmDaySort).map(d=>`<div class="wmdh">${esc(d)} · ${b.days[d].length}단어</div>`+b.days[d].map(w=>{const k=d+'|'+w.en,on=wmS.checked.has(k);return `<label class="wmw ${on?'on':''}"><input type="checkbox" data-wm="wchk" data-k="${esc(k)}" ${on?'checked':''}><span class="en">${esc(w.en)}</span><span class="ko">${esc(w.ko)}</span></label>`;}).join('')).join('')}</div></div>`;
+  }
+  const sc=WM_SHEET_CSS.replace(/@page\{[^}]*\}/,'').replace(/@media print\{.*$/s,'').replace(/\*\{[^}]*\}body\{[^}]*\}/,'').replace(/(^|\})\s*([^{}@][^{}]*)\{/g,(m,a,sel)=>a+sel.split(',').map(x=>'.wmprev '+x.trim()).join(',')+'{');
+  return `<style>${WM_CSS}${sc}</style>
+  <div class="wmgrid"><div class="wmside">
+    <h4>1. 단어장</h4>
+    <select data-wm="book">${wmBooks().length?'':'<option value="">-- 불러온 단어장 없음 --</option>'}${wmBooks().map(x=>`<option value="${x.id}" ${x.id===wmS.cur?'selected':''}>${esc(x.name)}</option>`).join('')}</select>
+    <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap"><button class="wmbtn" data-wm="upload">📂 파일 불러오기</button><button class="wmbtn" data-wm="newbook">+ 새 단어장</button>${b?`<button class="wmbtn" data-wm="toggleedit">${wmS.edit?'편집 닫기':'✎ 편집'}</button>`:''}</div>
+    <input type="file" id="wmFile" accept=".xlsx,.xls,.csv,.txt,.pdf,.docx" multiple style="display:none">
+    <div style="font-size:.72rem;color:var(--sub);margin-top:4px">.xlsx · .csv · .txt · .pdf · .docx · 서버에 저장돼 모든 선생님이 같이 써요 ${wmS.msg?'<br><b>'+esc(wmS.msg)+'</b>':''}</div>
+    <details style="margin-top:6px"><summary style="font-size:.76rem;color:#1d4ed8;cursor:pointer">텍스트 직접 붙여넣기</summary><textarea data-wm="paste" rows="4" placeholder="[Day 1]&#10;apple - 사과"></textarea><button class="wmbtn" data-wm="pastego" style="margin-top:4px">붙여넣은 내용 불러오기</button></details>
+    ${wmS.edit&&b?wmEditorHTML(b):''}
+    <h4>2. Day 선택</h4>
+    <div style="margin-bottom:5px"><button class="wmbtn" data-wm="dayall">전체</button> <button class="wmbtn" data-wm="dayclr">해제</button></div>
+    <div class="wmchips">${days.map(d=>`<div class="wmchip ${wmS.days.has(d)?'on':''}" data-wm="day" data-v="${esc(d)}">${esc(d)}</div>`).join('')}</div>
+    <h4>3. 시험 유형 (여러 개 선택)</h4>
+    ${T.map(([k,n,s])=>`<label class="wmopt ${wmS.types.has(k)?'on':''}"><input type="checkbox" data-wm="type" data-v="${k}" ${wmS.types.has(k)?'checked':''}><div><b>${n}</b><small>${s}</small></div></label>`).join('')}
+    <label style="font-size:.76rem;color:var(--sub)">단어 배분</label>
+    <select data-wm="dist"><option value="all" ${wmS.dist==='all'?'selected':''}>모든 유형에 같은 단어</option><option value="split" ${wmS.dist==='split'?'selected':''}>유형별로 단어 나누기</option></select>
+    <h4>4. 옵션</h4>
+    <div style="display:flex;gap:6px"><select data-wm="order"><option value="random" ${wmS.order==='random'?'selected':''}>랜덤</option><option value="seq" ${wmS.order==='seq'?'selected':''}>순차</option></select>
+    <select data-wm="content"><option value="both" ${wmS.content==='both'?'selected':''}>시험지+답안지</option><option value="test" ${wmS.content==='test'?'selected':''}>시험지만</option><option value="ans" ${wmS.content==='ans'?'selected':''}>답안지만</option></select></div>
+    <input type="text" data-wm="title" value="${esc(wmS.title)}" placeholder="제목 (예: 단어 재시험)" style="margin-top:6px">
+    <div style="display:flex;gap:6px;margin-top:6px"><input type="text" data-wm="klass" value="${esc(wmS.klass)}" placeholder="반"><input type="text" data-wm="student" value="${esc(wmS.student)}" placeholder="이름"></div>
+    <button class="wmbtn p" data-wm="gen">✨ 시험지 만들기</button>
+    <button class="wmbtn g" data-wm="print" ${wmS.html?'':'disabled'}>🖨 한꺼번에 인쇄</button>
+  </div><div style="min-width:0">${words}${wmS.html?`<div class="wmprev">${wmS.html}</div>`:`<div class="empty">왼쪽에서 단어장 · Day · 유형을 고르고 <b>시험지 만들기</b>를 누르세요.<br>틀린 단어만 체크해서 재시험지도 만들 수 있어요.</div>`}</div></div>`;
+}
+function wmRefresh(){
+  const root=document.getElementById('wmRoot'); if(!root) return;
+  const y=window.scrollY; root.innerHTML=wmHTML(); window.scrollTo(0,y);
+}
+function wmBind(){
+  const root=document.getElementById('wmRoot'); if(!root) return;
+  wmMigrate(); wmRefresh();
+  root.addEventListener('click',e=>{
+    const el=e.target.closest('[data-wm]'); if(!el) return; const a=el.dataset.wm, b=wmBook();
+    if(['book','dist','order','content','title','klass','student','paste','bulk','bname','dayname','en','ko','scope','type','wchk'].includes(a)) return; // change/input에서 처리
+    if(a==='upload'){ document.getElementById('wmFile').click(); return; }
+    if(a==='newbook'){ const id=Date.now(); wmBooks().push({id,name:'새 단어장',days:{'Day 01':[{en:'',ko:''}]}}); wmS.cur=id; wmS.days=new Set(); wmS.checked.clear(); wmS.edit=true; wmS.editDay='Day 01'; wmSave(); }
+    else if(a==='toggleedit') wmS.edit=!wmS.edit;
+    else if(a==='pastego'){ const d=wmParseLines(root.querySelector('[data-wm=paste]').value.split(/\r?\n/)); if(!Object.keys(d).length){ wmS.msg='인식 실패: "영어 - 한글" 형식과 [Day 1] 표제를 확인하세요'; } else { const n=wmAddBook('붙여넣기 '+new Date().toLocaleDateString('ko-KR'),d); wmS.msg=Object.keys(d).length+'개 Day · '+n+'단어 불러옴'; } }
+    else if(a==='delbook'){ if(!confirm('이 단어장을 삭제할까요?')) return; store.wordBooks=wmBooks().filter(x=>x.id!==wmS.cur); syncAllowEmptyNow(); wmS.cur=wmBooks()[0]?wmBooks()[0].id:null; wmS.days=new Set(); wmS.checked.clear(); wmS.html=''; wmSave(); }
+    else if(a==='editday') wmS.editDay=el.dataset.v;
+    else if(a==='addday'&&b){ const n=Math.max(0,...Object.keys(b.days).map(k=>parseInt(k.replace(/\D/g,''))||0))+1, nm=wmDayName(n); b.days[nm]=[{en:'',ko:''}]; const o={}; Object.keys(b.days).sort(wmDaySort).forEach(k=>o[k]=b.days[k]); b.days=o; wmS.editDay=nm; wmSave(); }
+    else if(a==='renday'&&b){ const nn=root.querySelector('[data-wm=dayname]').value.trim().replace(/[.$#\[\]\/]/g,'-'); if(!nn||(nn!==wmS.editDay&&b.days[nn])){ toast('이름이 비었거나 이미 있어요'); return; } const o={}; Object.keys(b.days).forEach(k=>o[k===wmS.editDay?nn:k]=b.days[k]); const o2={}; Object.keys(o).sort(wmDaySort).forEach(k=>o2[k]=o[k]); b.days=o2; wmS.days.delete(wmS.editDay); wmS.editDay=nn; wmSave(); }
+    else if(a==='delday'&&b){ if(!confirm('이 Day를 삭제할까요?')) return; delete b.days[wmS.editDay]; syncAllowEmptyNow(); wmS.days.delete(wmS.editDay); wmS.editDay=null; wmSave(); }
+    else if(a==='delw'&&b){ b.days[wmS.editDay].splice(+el.dataset.i,1); wmSave(); }
+    else if(a==='addw'&&b){ b.days[wmS.editDay].push({en:'',ko:''}); wmSave(); }
+    else if(a==='bulkgo'&&b){ const add=root.querySelector('[data-wm=bulk]').value.split(/\r?\n/).map(wmParseLine).filter(Boolean); const ws=b.days[wmS.editDay]; if(ws.length===1&&!ws[0].en&&!ws[0].ko) ws.length=0; add.forEach(w=>ws.push(w)); wmSave(); }
+    else if(a==='day'){ const v=el.dataset.v; wmS.days.has(v)?wmS.days.delete(v):wmS.days.add(v); }
+    else if(a==='dayall'&&b) wmS.days=new Set(Object.keys(b.days));
+    else if(a==='dayclr') wmS.days=new Set();
+    else if(a==='chkall'&&b){ wmS.days.forEach(d=>(b.days[d]||[]).forEach(w=>wmS.checked.add(d+'|'+w.en))); wmS.scope='checked'; }
+    else if(a==='chkclr'){ wmS.checked.clear(); wmS.scope='all'; }
+    else if(a==='gen'){ wmGenerate(); }
+    else if(a==='print'){ wmPrint(); return; }
+    else return;
+    wmRefresh();
+  });
+  root.addEventListener('change',e=>{
+    const el=e.target.closest('[data-wm]'); if(!el) return; const a=el.dataset.wm, b=wmBook();
+    if(a==='wmFile') return;
+    if(a==='book'){ wmS.cur=+el.value||null; wmS.days=new Set(); wmS.checked.clear(); wmS.html=''; wmS.editDay=null; }
+    else if(a==='type'){ el.checked?wmS.types.add(el.dataset.v):wmS.types.delete(el.dataset.v); }
+    else if(a==='scope') wmS.scope=el.value;
+    else if(a==='wchk'){ el.checked?wmS.checked.add(el.dataset.k):wmS.checked.delete(el.dataset.k); if(wmS.checked.size) wmS.scope='checked'; }
+    else if(['dist','order','content'].includes(a)){ wmS[a]=el.value; return; }
+    else if(['title','klass','student'].includes(a)){ wmS[a]=el.value; return; }
+    else if(a==='bname'&&b){ b.name=el.value; wmSave(); const o=root.querySelector('[data-wm=book] option:checked'); if(o) o.textContent=b.name; return; }
+    else if((a==='en'||a==='ko')&&b){ b.days[wmS.editDay][+el.dataset.i][a]=el.value; wmSave(); return; }
+    else return;
+    wmRefresh();
+  });
+  const fi=document.getElementById('wmFile');
+  fi.onchange=async ev=>{
+    const msgs=[]; for(const f of [...ev.target.files]){
+      try{ const d=await wmReadFile(f); if(!Object.keys(d).length){ msgs.push(f.name+': 단어를 찾지 못했어요'); continue; } const n=wmAddBook(f.name.replace(/\.[^.]+$/,''),d); msgs.push(f.name+': '+Object.keys(d).length+'개 Day · '+n+'단어'); }
+      catch(err){ msgs.push(f.name+': '+err.message); }
+    }
+    wmS.msg=msgs.join(' / '); ev.target.value=''; wmRefresh();
+  };
+}
+
 function renderWordRange(list){
+  if(state.wrMode==='make') return wordModeBarHTML()+'<div id="wmRoot"></div>';
+  return wordModeBarHTML()+renderWordRange0(list);
+}
+function renderWordRange0(list){
   let h=`<div class="todaybar"><span class="wd">${mLabel(state.month)} 단어 범위</span>
     <span style="font-size:.76rem;color:var(--sub)">반별로 그날 시험 본 단어장·유형·범위를 한눈에 확인합니다. 결석 처리된 날은 자동으로 "미응시"로 표시됩니다.</span></div>`;
   let any=false;
@@ -4856,6 +5176,8 @@ function renderWordRange(list){
 }
 function bindWordRange(){
   const v=document.getElementById('view');
+  v.querySelectorAll('.wrModeBtn').forEach(b=>b.onclick=()=>{ state.wrMode=b.dataset.m; render(true); });
+  if(state.wrMode==='make'){ wmBind(); return; }
   // 두 버튼 다 <summary> 안에 있어서, 그냥 두면 클릭했을 때 반 카드가 접히기도 한다 — 그건 막고 수정 모드만 켜고/끈다.
   v.querySelectorAll('[data-wreditclass]').forEach(b=>b.onclick=(e)=>{
     e.preventDefault(); e.stopPropagation();
@@ -4876,6 +5198,14 @@ function bindWordRange(){
 function subjectMeetsOnDate(c, subj, dateISO){
   const wd=wdOf(dateISO);
   return (c.subjects||[]).some(x=>x.subject===subj && !isWordTestSubject(x) && subjOnDay(x, wd));
+}
+function hwModeBarHTML(){
+  const pc=state.hwMode==='pc';
+  const b=(on,m,t)=>`<button type="button" class="btn small hwModeBtn" data-m="${m}" style="padding:6px 16px;font-size:.84rem;font-weight:800;${on?'background:var(--ink);color:#fff':'background:#eef0f6;color:var(--sub)'}">${t}</button>`;
+  return `<div style="display:flex;gap:6px;margin-bottom:10px">${b(!pc,'hw','✅ 숙제 체크표')}${b(pc,'pc','📋 과제검사표')}</div>`;
+}
+function bindHwModeBar(){
+  document.querySelectorAll('#view .hwModeBtn').forEach(b=>b.onclick=()=>{ state.hwMode=b.dataset.m; render(true); });
 }
 function renderHwRange(list){
   const lt=loginTeacher();
@@ -5119,7 +5449,7 @@ function bindPaperCheck(){
   };
   v.querySelectorAll('.pcOff').forEach(btn=>btn.onclick=()=>{
     if(!confirm('이 반을 과제검사표 탭에서 뺄까요? (입력해둔 자료는 남아있고, 나중에 다시 추가하면 그대로 보여요)')) return;
-    delete store.papercheckEnabled[btn.dataset.k]; save(); render(true);
+    delete store.papercheckEnabled[btn.dataset.k]; syncAllowEmptyNow(); save(); render(true);
   });
   v.querySelectorAll('.pcCatTab').forEach(b=>b.onclick=(e)=>{
     e.preventDefault(); e.stopPropagation(); // <summary> 안에 있어서 눌러도 반 카드가 접히지 않도록
@@ -5160,7 +5490,7 @@ function bindPaperCheck(){
     const k=btn.dataset.k, colId=btn.dataset.col;
     if(!confirm('이 시험(컬럼)을 삭제할까요? 입력된 점수·체크도 함께 사라집니다.')) return;
     store.papercheckCols[k]=(store.papercheckCols[k]||[]).filter(x=>x.id!==colId);
-    save(); render(true);
+    syncAllowEmptyNow(); save(); render(true);
   });
   v.querySelectorAll('.pcSelCell').forEach(sel=>sel.onchange=()=>{
     const k=sel.dataset.k, s=sel.dataset.s, colId=sel.dataset.col;
@@ -5909,7 +6239,7 @@ function renderSeat(){
   const noLevel=store.students.filter(st=>st.academy===a && !st._deleted && (st.status||'재원')==='재원' && !['초','중'].includes(csLevelOf(st)) && csLevelOf(st)!=='고').length;
   const labNone=csLabClassNames(a).size===0;
   return `<div class="setsec" style="border:2px solid #2e5fb7">
-    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1103-h · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
+    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1103-k · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
     <div class="desc">학원 전체 <b>초·중등 재원생 중 강의실이 '어학실'인 수업을 듣는 학생</b>(${cand.length}명, 어학실 수업이 있는 반 ${csLabClassNames(a).size}개)을 자리 ${seatCount}개에 자동으로 배치합니다. <b>같은 학년끼리</b>, <b>같은 반끼리</b>는 옆·앞뒤 자리에 앉지 않게 짜고, 학년·반은 학생 명단과 시간표(반)를 그대로 따릅니다. <b>어학실 이용 시간이 겹치지 않는 학생</b>은 같은 학년·같은 반이어도 옆자리에 앉을 수 있고, 한 자리(컴퓨터)를 시간대별로 나눠 써도 돼요(자리 칸 안에 학생이 여러 명 보여요). 수동으로는 학생을 눌러 고른 뒤 자리나 다른 학생을 누르면 옮기거나 서로 바꿔요. 빨간 테두리(⚠)는 규칙에 걸린 곳입니다.</div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:10px 0 0;font-size:.84rem"><b>📅 기간</b>
       <select data-csperiod style="padding:5px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${periods.map(x=>`<option value="${esc(x[0])}" ${x[0]===pkey?'selected':''}>${esc(x[1])}</option>`).join('')}</select>
@@ -15114,6 +15444,7 @@ document.getElementById('xlsBtn').onclick=()=>{
 
 /* ---------- 렌더 ---------- */
 function render(keepOpen){
+  if(state.tab==='papercheck'){ state.tab='hwrange'; state.hwMode='pc'; }
   const openKeys = keepOpen ? [...document.querySelectorAll('.ccard.open .chead')].map(h=>h.dataset.toggle) : [];
   try{ ensureAssign(); }catch(e){ console.error('ensureAssign 오류', e); }
   try{ refreshLoginSel(); }catch(e){ console.error('refreshLoginSel 오류', e); }
@@ -15164,7 +15495,7 @@ function render(keepOpen){
   } else if(state.tab==='wordrange'){
     v.innerHTML=renderWordRange(list); bindWordRange();
   } else if(state.tab==='hwrange'){
-    v.innerHTML=renderHwRange(list); bindHwRange();
+    v.innerHTML=hwModeBarHTML()+(state.hwMode==='pc'?renderPaperCheck(list):renderHwRange(list)); bindHwModeBar(); if(state.hwMode==='pc') bindPaperCheck(); else bindHwRange();
   } else if(state.tab==='papercheck'){
     v.innerHTML=renderPaperCheck(list); bindPaperCheck();
   } else if(state.tab==='yearly'){
