@@ -5746,7 +5746,8 @@ function csAuto(a){
     const unplace=(k)=>{ const arr=occ[at[k]]; arr.splice(arr.indexOf(k),1); };
     // 시작: 자리마다 한 명씩 흩뿌리고, 남는 학생은 아무 자리에
     const order=[...Array(n).keys()].sort(()=>Math.random()-0.5); const pos=[...seats].sort(()=>Math.random()-0.5);
-    order.forEach((k,idx)=>place(k, pos[idx%pos.length]));
+    // 빈 자리를 먼저 모두 채우고, 학생이 자리보다 많을 때만 남는 학생이 같은 자리를 나눠 쓴다
+    order.forEach((k,idx)=>place(k, idx<pos.length? pos[idx] : pos[(Math.random()*pos.length)|0]));
     // k가 자리 p에 있을 때 드는 비용(자기 제외)
     const costOf=(k,p)=>{ let c=0; occ[p].forEach(o=>{ if(o===k) return; c+= noShare(k,o)?W_SAME:W_SHARE; }); nb[p].forEach(j=>{ occ[j].forEach(o=>{ c+=conf(k,o); }); }); return c; };
     let total=0; for(let k=0;k<n;k++) total+=costOf(k,at[k]); total/=2;
@@ -5763,6 +5764,7 @@ function csAuto(a){
         if(delta<=0 || Math.random()<Math.exp(-delta/T)) total+=delta; else { unplace(k); unplace(m); place(k,pk); place(m,pm); }
       } else { // 한 학생을 다른 자리로 옮기기
         const k=(Math.random()*n)|0, q=seats[(Math.random()*seats.length)|0]; const p=at[k]; if(p===q) continue;
+        if(n<=seats.length){ if(occ[q].length>0) continue; } else { if(occ[p].length<2) continue; } // 자리 수와 학생 수에 따라 '빈 자리 먼저 채우기' 유지
         const before=costOf(k,p); unplace(k); place(k,q); const after=costOf(k,q);
         const delta=after-before;
         if(delta<=0 || Math.random()<Math.exp(-delta/T)) total+=delta; else { unplace(k); place(k,p); }
@@ -5835,7 +5837,7 @@ function csGrid(a, editable, printMode){
       <span style="position:absolute;left:4px;top:1px;font-size:.6rem;color:#8b93a7;font-weight:700">${nums[i]}</span>
       ${L.length?L.map((st,ix)=>{ const isSel=sel&&sel.id===st.id; const t=csTimeText(st);
         const tip=[st.nameKo+(st.nameEn?' ('+st.nameEn+')':''), (csGradeKey(st)||'')+' '+csClassOf(st), t].filter(Boolean).join(' · ');
-        return `<div ${printMode?'':`data-csst="${st.id}"`} title="${esc(tip)}" style="${ix?'border-top:1px dashed #d5d9e4;':''}padding:1px 2px;border-radius:5px;background:${isSel?'#e3d5f7':'#fff'};${isSel?'outline:2px solid #7c3aed;':''}color:${ccol[csClassOf(st)]||'#222'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(st.nameEn||st.nameKo)}${(d.solo||{})[st.id]?' 🔒':''}</div>`; }).join(''):''}
+        return `<div ${printMode?'':`data-csst="${st.id}"`} title="${esc(tip)}" style="${ix?'border-top:1px dashed #d5d9e4;':''}padding:1px 2px;border-radius:5px;background:${isSel?'#e3d5f7':'#fff'};${isSel?'outline:2px solid #7c3aed;':''}color:${ccol[csClassOf(st)]||'#222'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(st.nameEn||st.nameKo)}${(!printMode&&(d.solo||{})[st.id])?' 🔒':''}</div>`; }).join(''):''}
       ${b?'<span style="position:absolute;right:3px;top:0;color:#c0392b;font-size:.65rem">⚠</span>':''}</div>`;
   });
   h+='</div>';
