@@ -5665,10 +5665,15 @@ function csCandidates(a){
     .sort((x,y)=>{ const gx=csGradeKey(x), gy=csGradeKey(y); return (order[csLevelOf(x)]-order[csLevelOf(y)]) || gx.localeCompare(gy,'ko') || csClassOf(x).localeCompare(csClassOf(y),'ko') || x.nameKo.localeCompare(y.nameKo,'ko'); });
 }
 function csNeighbors(d, i){
+  // 옆·앞뒤 자리. 바로 붙은 칸이 비어 있어도(복도·빈 줄 한 칸) 그 건너편 자리를 이웃으로 본다
   const r=Math.floor(i/d.cols), c=i%d.cols, out=[];
-  if(r>0) out.push(i-d.cols); if(r<d.rows-1) out.push(i+d.cols);
-  if(c>0) out.push(i-1); if(c<d.cols-1) out.push(i+1);
-  return out.filter(j=>d.cells[j]);
+  [[-1,0],[1,0],[0,-1],[0,1]].forEach(([dr,dc])=>{
+    for(let k=1;k<=2;k++){
+      const rr=r+dr*k, cc=c+dc*k; if(rr<0||rr>=d.rows||cc<0||cc>=d.cols) break;
+      const j=rr*d.cols+cc; if(d.cells[j]){ out.push(j); break; }
+    }
+  });
+  return out;
 }
 function csConflict(sa, sb){
   const out=[];
@@ -5725,9 +5730,10 @@ function csResize(d, rows, cols){
   const map={};
   for(let r=0;r<Math.min(rows,d.rows);r++) for(let c=0;c<Math.min(cols,d.cols);c++){ cells[r*cols+c]=d.cells[r*d.cols+c]?1:0; map[r*d.cols+c]=r*cols+c; }
   const na={}; Object.keys(d.assign||{}).forEach(id=>{ const m=map[d.assign[id]]; if(m!=null && cells[m]) na[id]=m; });
-  d.rows=rows; d.cols=cols; d.cells=cells; d.assign=na;
+  const nn={}; Object.keys(d.nums||{}).forEach(k=>{ const m=map[k]; if(m!=null && cells[m]) nn[m]=d.nums[k]; });
+  d.rows=rows; d.cols=cols; d.cells=cells; d.assign=na; d.nums=nn;
 }
-function csSeatNumbers(d){ const m={}; let n=0; d.cells.forEach((v,i)=>{ if(v) m[i]=++n; }); return m; }
+function csSeatNumbers(d){ const m={}; let n=0; const cu=d.nums||{}; d.cells.forEach((v,i)=>{ if(v){ n++; m[i]=(cu[i]!=null&&cu[i]!=='')?cu[i]:n; } }); return m; }
 function csLabel(st){ return esc(st.nameKo)+(st.nameEn?`<br><span style="font-size:.7rem;font-weight:400">${esc(st.nameEn)}</span>`:''); }
 function csGrid(a, editable, printMode){
   const d=csGet(a); const {assign,cand}=csValidAssign(a); const nums=csSeatNumbers(d);
@@ -5741,7 +5747,7 @@ function csGrid(a, editable, printMode){
     if(editable){
       h+=`<div data-cscell="${i}" style="cursor:pointer;min-height:44px;border:2px ${v?'solid #2e5fb7':'dashed #c7cbd6'};border-radius:8px;background:${v?'#eef4ff':'#fafbfd'};display:flex;align-items:center;justify-content:center;font-size:.8rem;color:${v?'#2e5fb7':'#aab'};font-weight:800">${v?'💻 '+nums[i]:'—'}</div>`; return;
     }
-    if(!v){ h+='<div></div>'; return; }
+    if(!v){ h+=`<div style="min-height:${printMode?58:64}px"></div>`; return; }
     const st=occ[i]; const isSel=sel&&sel.t==='seat'&&sel.i===i; const b=bad[i];
     h+=`<div ${printMode?'':`data-csseat="${i}"`} title="${b?esc(b.join(' / ')):''}" style="${printMode?'':'cursor:pointer;'}min-height:${printMode?58:64}px;border:2px solid ${b?'#c0392b':(isSel?'#7c3aed':'#d5d9e4')};${isSel?'box-shadow:0 0 0 3px #e3d5f7;':''}border-radius:8px;padding:4px 6px;background:${st?(lvBg[csLevelOf(st)]||'#fff'):'#fff'};font-size:.8rem;font-weight:800;text-align:center;position:relative">
       <span style="position:absolute;left:5px;top:2px;font-size:.62rem;color:#8b93a7;font-weight:700">${nums[i]}</span>
@@ -5780,7 +5786,13 @@ function renderSeat(){
       <button class="btn" data-csprint>🖨 인쇄 · PDF</button>
       ${(can&&!state.csEdit&&sel&&sel.t==='seat')?'<button class="btn small" data-csfree style="color:#c0392b;border-color:#e7b3ab">선택한 자리 비우기</button>':''}
     </div>
-    ${state.csEdit?`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;font-size:.84rem">세로 <input type="number" min="1" max="20" value="${d.rows}" data-csrows style="width:62px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px"> 줄 × 가로 <input type="number" min="1" max="20" value="${d.cols}" data-cscols style="width:62px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px"> 칸 <span style="color:var(--sub);font-size:.78rem">— 칸을 눌러 자리를 만들거나(💻) 없앨 수 있어요. 실제 교실 모양대로 만들어주세요.</span></div>`:''}
+    ${state.csEdit?`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;font-size:.84rem">세로 <input type="number" min="1" max="20" value="${d.rows}" data-csrows style="width:62px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px"> 줄 × 가로 <input type="number" min="1" max="20" value="${d.cols}" data-cscols style="width:62px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px"> 칸
+      <span style="display:flex;gap:6px;flex-wrap:wrap;width:100%">
+        <button class="btn small ${!state.csNum?'primary':''}" data-csnum="off">🧩 자리 만들기/없애기</button>
+        <button class="btn small ${state.csNum==='one'?'primary':''}" data-csnum="one">🔢 번호 하나씩 수정</button>
+        <button class="btn small ${state.csNum==='seq'?'primary':''}" data-csnum="seq">🔢 클릭 순서대로 번호 매기기</button>
+        <button class="btn small" data-csnumreset>번호 처음으로 되돌리기</button></span>
+      <span style="color:var(--sub);font-size:.78rem;width:100%">${state.csNum==='one'?'— 번호를 바꿀 자리를 누르면 새 번호를 물어봐요 (비우면 기본 번호).':state.csNum==='seq'?`— 자리를 원하는 순서대로 누르면 <b>${state.csSeqN||1}번</b>부터 차례로 번호가 붙어요.`:'— 칸을 눌러 자리를 만들거나(💻) 없앨 수 있어요. 실제 교실 모양대로 만들어주세요.'}</span></div>`:''}
     <div style="font-size:.78rem;color:${g.bad?'#c0392b':'#0e9f6e'};font-weight:800;margin-bottom:6px">${state.csEdit?'':(g.bad?`⚠ 규칙에 걸린 자리 ${g.bad}곳`:(Object.keys(g.assign).length?'✔ 규칙 위반 없음':''))}</div>
     ${labNone?'<div style="font-size:.8rem;color:#b45309;margin-bottom:6px">⚠ 이번 달 시간표(반·교재의 과목표)에 강의실이 <b>어학실</b>로 적힌 수업이 없어서 배치할 학생이 없어요. 과목표의 "호실" 칸에 "어학실"을 적어주세요.</div>':''}
     <div data-csscroll style="overflow-x:auto;padding:4px 2px 10px">${g.html}</div>
@@ -5803,7 +5815,7 @@ function bindSeat(){
     if(Object.keys(csValidAssign(a).assign).length && !confirm('현재 배치를 지우고 새로 자동 배치할까요?')) return;
     csAuto(a);
   });
-  q('[data-csedit]',b=>b.onclick=()=>{ state.csEdit=!state.csEdit; state.csSel=null; csRender(); });
+  q('[data-csedit]',b=>b.onclick=()=>{ state.csNum=''; state.csEdit=!state.csEdit; state.csSel=null; csRender(); });
   q('[data-csclear]',b=>b.onclick=()=>{ if(!confirm('배치를 모두 비울까요? (자리 모양은 그대로 둡니다)')) return; d.assign={}; state.csSel=null; csTouch(d); csRender(); });
   q('[data-csfree]',b=>b.onclick=()=>{ const s=state.csSel; if(!s||s.t!=='seat') return; const {assign}=csValidAssign(a); const id=Object.keys(assign).find(k=>assign[k]===s.i); if(id) delete d.assign[id]; state.csSel=null; csTouch(d); csRender(); });
   q('[data-csperadd]',b=>b.onclick=()=>{
@@ -5817,8 +5829,24 @@ function bindSeat(){
   q('[data-csperdel]',b=>b.onclick=()=>{ if(!confirm('이 기간의 자리 배치를 삭제할까요?')) return; d._deleted=true; csTouch(d); state.csP[a]=a; state.csSel=null; render(true); });
   q('[data-csrows]',el=>el.onchange=()=>{ csResize(d, +el.value||d.rows, d.cols); csTouch(d); csRender(); });
   q('[data-cscols]',el=>el.onchange=()=>{ csResize(d, d.rows, +el.value||d.cols); csTouch(d); csRender(); });
+  q('[data-csnum]',b=>b.onclick=()=>{
+    const m=b.dataset.csnum;
+    if(m==='seq'){ if(!confirm('지금 번호를 모두 지우고, 누르는 순서대로 1번부터 새로 매길까요?')) return; d.nums={}; state.csSeqN=1; csTouch(d); }
+    state.csNum=(m==='off')?'':m; csRender();
+  });
+  q('[data-csnumreset]',b=>b.onclick=()=>{ if(!confirm('바꾼 번호를 모두 지우고 기본 번호(왼쪽 위부터 차례로)로 되돌릴까요?')) return; d.nums={}; state.csSeqN=1; csTouch(d); csRender(); });
   q('[data-cscell]',el=>el.onclick=()=>{
-    const i=+el.dataset.cscell; d.cells[i]=d.cells[i]?0:1;
+    const i=+el.dataset.cscell;
+    if(state.csNum){
+      if(!d.cells[i]) return;
+      d.nums=d.nums||{};
+      if(state.csNum==='seq'){ if(d.nums[i]!=null) return; const n=state.csSeqN||1; d.nums[i]=n; state.csSeqN=n+1; csTouch(d); csRender(); return; }
+      const cur=csSeatNumbers(d)[i]; const v=prompt('이 자리의 번호',String(cur)); if(v==null) return;
+      const t=v.trim(); if(t===''||t===String(cur)&&d.nums[i]==null) delete d.nums[i]; else d.nums[i]=/^\d+$/.test(t)?Number(t):t;
+      csTouch(d); csRender(); return;
+    }
+    d.cells[i]=d.cells[i]?0:1;
+    if(!d.cells[i] && d.nums) delete d.nums[i];
     if(!d.cells[i]){ Object.keys(d.assign||{}).forEach(id=>{ if(d.assign[id]===i) delete d.assign[id]; }); }
     csTouch(d); csRender();
   });
