@@ -1581,6 +1581,43 @@ function ymd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0
 const LASTTAB_KEY='academy-dash-lasttab-'+MODE;
 let state = {tab:(localStorage.getItem(LASTTAB_KEY)||'today'), sub:'class', todayOpen:{}, ac: MODE==='all'?'all':MODE, dept:'all', q:'', month:effectiveCurrentMonth() /* [수정] 예전엔 "자료가 있는 가장 최근 달"을 기본값으로 써서, 이번 달 자료가 아직 안 올라와 있으면 화면을 열 때마다 지난달로 돌아가버렸다 — 이제 실제 오늘 날짜의 달(또는 관리자가 강제 지정한 달)을 기본으로 연다 */, tf:null, date:todayISO(), myOnly:true, classOpen:{}, ttDay:null, ttView:null, rosterOpen:{}, rosterView:null, rosterClass:null, rosterStatus:null, fold:(function(){ try{ return JSON.parse(localStorage.getItem('ebest_fold')||'{}')||{}; }catch(e){ return {}; } })()};
 
+/* ---------- 탭별 주소 (예: /EBEST/students_list, /EBEST/schedule) ----------
+   GitHub Pages에서 주소를 직접 열거나 새로고침해도 열리도록, 저장소 맨 위에 404.html(함께 드린 파일)을 같이 올려둔다.
+   그 파일이 /EBEST/schedule 같은 주소를 /EBEST/?go=schedule 로 되돌려주면, 이 앱이 그 탭을 열고 주소를 다시 /EBEST/schedule 로 바꿔 보여준다. */
+var ROUTE_SLUGS={today:'home',consult:'consult',report:'work_report',dash:'classes',bookgive:'book_delivery',wordrange:'word_range',hwrange:'homework_check',papercheck:'paper_check',syllabus:'syllabus',examrpt:'exam_analysis',roster:'students_list',timetable:'schedule',seat:'computer_seats',attend:'attendance',yearly:'yearly_books',cal:'calendar',board:'board',archive:'archive',stats:'student_stats',set:'settings'};
+var ROUTE_TABS=(function(){ const o={}; for(const k in ROUTE_SLUGS) o[ROUTE_SLUGS[k]]=k; return o; })();
+function routeBase(){
+  const parts=location.pathname.split('/'); // ['', 'EBEST', 'students_list']
+  let last=parts[parts.length-1];
+  if(ROUTE_TABS[last]) parts.pop(); else if(last==='index.html') parts.pop();
+  let b=parts.join('/'); if(!b.endsWith('/')) b+='/';
+  return b;
+}
+function routeSlugNow(){ const last=location.pathname.split('/').pop(); return ROUTE_TABS[last]?last:''; }
+function routeInit(){
+  try{
+    if(!/^https?:$/.test(location.protocol)) return;
+    const go=new URLSearchParams(location.search).get('go');
+    const slug=ROUTE_TABS[go]?go:routeSlugNow();
+    if(slug && ROUTE_TABS[slug]) state.tab=ROUTE_TABS[slug];
+  }catch(e){}
+}
+function routeSync(){
+  try{
+    if(!/^https?:$/.test(location.protocol)) return;
+    const want=ROUTE_SLUGS[state.tab]; if(!want) return;
+    const cur=routeSlugNow(); const hasGo=/[?&]go=/.test(location.search);
+    if(cur===want && !hasGo) return;
+    const url=routeBase()+want;
+    if(cur && cur!==want && !hasGo) history.pushState(null,'',url); else history.replaceState(null,'',url);
+  }catch(e){}
+}
+routeInit();
+window.addEventListener('popstate',()=>{
+  try{ const t=ROUTE_TABS[routeSlugNow()]; if(t && t!==state.tab){ state.tab=t; render(); } }catch(e){}
+});
+
+
 /* ---------- 로그인 ---------- */
 function isMgr(){ const lt=loginTeacher(); return !!(lt && lt.t.role==='실장'); }
 function isAdminRole(){ return store.login==='admin' || (MODE==='all'&&!store.login) || isMgr(); }
@@ -5520,7 +5557,7 @@ function csClassOf(st){ return classNameInMonth(st,state.month)||st.className||'
 // 컴퓨터를 쓰는 수업은 강의실이 '어학실'인 수업뿐 — 시간표(과목표)에 어학실 수업이 있는 반의 학생만 대상이 된다
 function csLabClassNames(a){
   const set=new Set();
-  classesFor(state.month).forEach(c=>{ if(c.academy===a && !c._deleted && (c.subjects||[]).some(x=>String(x.room||'').includes('어학실'))) set.add(c.name); });
+  classesFor(state.month).forEach(c=>{ if(c.academy===a && !c._deleted && (c.subjects||[]).some(x=>String(x.room||'').includes('어학실') || isLabSubject(x.subject))) set.add(c.name); });
   return set;
 }
 function csCandidates(a){
@@ -10001,6 +10038,21 @@ function sylXlsxSheetsOf(en){
 }
 
 /* 이 기기에 통째로 저장돼 있는 Syllabus 자료(엑셀 표·PDF·파일)는 전부 서버로 옮기고 이 기기에서는 지운다 — 동기화가 켜져 있고 실장 이상 기기에서만 */
+// 본문뿐 아니라 항목에 붙여둔 첨부파일(base64)도 "이 기기에 통째로 저장된 자료"로 본다
+function sylLocalAtts(s){ return (s.attachments||[]).filter(a=>a && a.fileData && !a.remote); }
+function sylIsMainLocal(s){ return !s.remote && (((s.kind==='pdf'||s.kind==='file') && s.fileData) || (s.sheets && (!s.kind||s.kind==='xlsx'))); } // 처음부터 들어있던 예전 자료는 kind가 비어있어서 같이 처리
+function sylIsLocalBig(s){ return !s._deleted && (sylIsMainLocal(s) || sylLocalAtts(s).length>0); }
+function sylMigratable(){ return store.syllabus.filter(sylIsLocalBig); }
+// 삭제한 자료가 지워진 표시만 남기고 내용(표·파일 데이터)은 이 기기에 그대로 남아있는 경우를 비워준다
+function sylPurgeDeleted(){
+  let n=0;
+  (store.syllabus||[]).forEach(e=>{ if(!e._deleted) return;
+    if(e.sheets||e.fileData){ delete e.sheets; delete e.fileData; n++; }
+    (e.attachments||[]).forEach(a=>{ if(a.fileData){ delete a.fileData; n++; } });
+  });
+  if(n){ try{ persistStoreLocal(); }catch(err){} }
+  return n;
+}
 var __sylMigrating=false;
 var sylMig={i:0,n:0};
 function sylMigBtnText(){ return `⏳ 옮기는 중... (${sylMig.i}/${sylMig.n})`; }
@@ -12855,6 +12907,11 @@ function ttgTimeRange(text){
   const m=ttgCellText(text).match(/(\d{1,2}:\d{2})\s*~\s*(\d{1,2}:\d{2})/);
   return m?{start:m[1],end:m[2]}:null;
 }
+// L/C · IBT(EC 포함) · Writing L 수업은 항상 어학실에서 하므로 강의실이 비어 있어도 어학실로 본다
+function isLabSubject(subj){
+  const t=String(subj||'').replace(/\s+/g,'').toUpperCase();
+  return t==='L/C'||t==='LC'||t==='IBT'||t==='EC'||t==='WRITINGL';
+}
 function ttgParseCell(text){
   text=ttgCellText(text).trim();
   if(!text||text==='RECESS'||text==='어학실') return null;
@@ -13000,6 +13057,18 @@ function ttgParseWorkbook(ws, colorMap, codeMap){
       zones.forEach(z=>{ for(let c=z.classStart;c<=z.classEnd;c++){ const v=ttgCellText(ws.getCell(headerRow,c).value).trim(); if(v) classNameOf[c]=v; } });
       let r2=r+1; while(r2<=maxRow && !isDayHeader(r2)) r2++;
       const blockEnd=r2-1;
+      // 🚪 시간표 위쪽의 "강의실" 줄(예: "6 (9명)" → 강의실 6) — 그 반의 일반 수업(단어시험이 아닌 칸)에 강의실로 자동 입력한다
+      const classRoom={};
+      for(let rr=headerRow+1; rr<=Math.min(blockEnd, headerRow+4); rr++){
+        for(const z of zones){
+          if(ttgCellText(ws.getCell(rr,z.timeCol).value).replace(/\s+/g,'')!=='강의실') continue;
+          for(let c=z.classStart;c<=z.classEnd;c++){
+            const raw=ttgCellText(ws.getCell(rr,c).value).trim();
+            const m=raw.match(/^([^\s(（]+)/);
+            if(m && classNameOf[c]) classRoom[c]=m[1];
+          }
+        }
+      }
       // 시간표 격자에서 같은 과목·강의실·담당이 옆 시간 칸에도 이어져 있으면(예: 7:40~8:20, 8:20~9:00, 9:00~9:45가 전부 같은 수업),
       // 예전엔 이걸 하나로 합쳐 "7:40~9:45" 한 줄로 만들었는데, 실제로는 칸에 적힌 시간 구간 그대로 각각 따로 입력해야 한다고
       // 해서 합치지 않고 격자 한 칸(시간 구간)마다 결과를 하나씩 그대로 만든다.
@@ -13023,7 +13092,7 @@ function ttgParseWorkbook(ws, colorMap, codeMap){
               const ck=ttgColorKey(cell.fill);
               if(ck){ teacher=ttgResolveColorTeacher(ck,colorMap)||null; if(!teacher) unresolved.push({day,className:classNameOf[c],reason:'color',color:ck,near:ttgNearestInfo(ck,colorMap),text:cellText}); }
             }
-            results.push({day, className:classNameOf[c], subject:parsed.subject, room:parsed.room, teacher, time:tr.start+'-'+tr.end, isWordTest:!!parsed.isWordTest});
+            results.push({day, className:classNameOf[c], subject:parsed.subject, room:(!parsed.isWordTest&&isLabSubject(parsed.subject))?'어학실':(parsed.room||(parsed.isWordTest?'':(classRoom[c]||''))), teacher, time:tr.start+'-'+tr.end, isWordTest:!!parsed.isWordTest});
           }
         }
       }
@@ -13344,7 +13413,7 @@ async function handleTtGridImage(file, academy){
         if(!teacher) unresolved.push({day,className,reason:'color',color:(aiT||'')+' #'+aiHex+' (AI 판단)',near:/^[0-9A-F]{6}$/.test(aiHex)?ttgNearestInfo('FF'+aiHex,colorMap):'',text:cellText});
       }
       if(langWT){ teacher=(store.ttgLangTeacher||'').trim()||null; if(!teacher) langNoTeacher=true; }
-      results.push({day, className, subject:parsed.subject, room:parsed.room, teacher, time:tr.start+'-'+tr.end, isWordTest:!!parsed.isWordTest});
+      results.push({day, className, subject:parsed.subject, room:(!parsed.isWordTest&&isLabSubject(parsed.subject))?'어학실':parsed.room, teacher, time:tr.start+'-'+tr.end, isWordTest:!!parsed.isWordTest});
     });
     if(!results.length){ say('시간표 항목을 하나도 읽지 못했습니다. 더 선명한 이미지로 다시 시도해주세요.'); return; }
     // 이후는 엑셀 업로드(ttgParseSheet)와 같은 후처리: L/C→IBT, 어학실 기본 담당, 반 자동 매칭, 미리보기
@@ -14713,6 +14782,7 @@ function render(keepOpen){
   try{ refreshLoginSel(); }catch(e){ console.error('refreshLoginSel 오류', e); }
   try{
     buildTabs();
+    routeSync();
   }catch(tabErr){
     // 탭바 자체를 만드는 중 오류가 나면, 최소한 설정 탭으로는 항상 들어갈 수 있도록 안전판 역할의 탭바를 직접 그려준다
     console.error('buildTabs 오류 — 안전 탭바로 대체', tabErr);
