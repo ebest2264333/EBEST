@@ -5791,7 +5791,10 @@ function csSeatNumbers(d){ const m={}; let n=0; const cu=d.nums||{}; d.cells.for
 function csLabel(st){ return esc(st.nameKo)+(st.nameEn?`<br><span style="font-size:.7rem;font-weight:400">${esc(st.nameEn)}</span>`:''); }
 const CS_PAL=['#e11d48','#d97706','#16a34a','#0891b2','#2563eb','#7c3aed','#c026d3','#65a30d','#0f766e','#b45309','#db2777','#4f46e5','#475569','#ea580c'];
 function csClassColors(a){ // 반별 글자색 — 기본은 반 순서대로 자동, 바꾼 색(d.clsColors)이 있으면 그걸 우선
-  const d=csGet(a); const names=[]; csCandidates(a).forEach(st=>{ const c=csClassOf(st); if(c && !names.includes(c)) names.push(c); });
+  const d=csGet(a); const present=new Set(); csCandidates(a).forEach(st=>{ const c=csClassOf(st); if(c) present.add(c); });
+  // 반 순서는 [반·교재]·시간표와 같은 기본 순서(초→중→고, 직접 정한 순서 포함)를 따른다
+  const names=[]; try{ classOrderEffective(a).forEach(n=>{ if(present.has(n) && !names.includes(n)) names.push(n); }); }catch(e){}
+  present.forEach(n=>{ if(!names.includes(n)) names.push(n); });
   const m={}; names.forEach((n,i)=>{ m[n]=(d.clsColors&&d.clsColors[n])||CS_PAL[i%CS_PAL.length]; }); return m;
 }
 function csLegend(a, editable){
@@ -5811,7 +5814,7 @@ function csGrid(a, editable, printMode){
   });
   if(csWarnOff()){ Object.keys(bad).forEach(k=>delete bad[k]); Object.keys(pairs).forEach(k=>delete pairs[k]); badId.clear(); } // 경고 끄기: 표시만 숨김
   const sel=state.csSel; const ccol=csClassColors(a);
-  let h=`<div style="display:grid;grid-template-columns:repeat(${d.cols},minmax(${printMode?60:76}px,1fr));gap:${printMode?3:5}px">`;
+  let h=`<div style="display:grid;grid-template-columns:repeat(${d.cols},minmax(${printMode?40:76}px,1fr));${printMode?'flex:1;grid-auto-rows:minmax(34px,1fr);':''}gap:${printMode?4:5}px">`;
   d.cells.forEach((v,i)=>{
     const lab=(d.labels||{})[i];
     if(editable && lab && !v){
@@ -5828,7 +5831,7 @@ function csGrid(a, editable, printMode){
     if(!v){ h+=`<div style="min-height:${printMode?34:42}px"></div>`; return; }
     const L=occ[i]||[]; const b=bad[i];
     const mh=printMode?34:42;
-    h+=`<div ${printMode?'':`data-csseat="${i}"`} title="${b?esc(b.join(' / ')):''}" style="${printMode?'':'cursor:pointer;'}min-height:${mh}px;border:2px solid ${b?'#c0392b':'#cfd5e1'};border-radius:6px;padding:${L.length?'13px 2px 2px':'2px 4px'};background:#fff;font-size:${printMode?'.74rem':'.8rem'};font-weight:800;text-align:center;position:relative;line-height:1.25">
+    h+=`<div ${printMode?'':`data-csseat="${i}"`} title="${b?esc(b.join(' / ')):''}" style="${printMode?'':'cursor:pointer;'}min-height:${mh}px;border:2px solid ${b?'#c0392b':'#cfd5e1'};border-radius:6px;padding:${L.length?'13px 2px 2px':'2px 4px'};background:#fff;font-size:${printMode?'.95rem':'.8rem'};font-weight:800;text-align:center;position:relative;line-height:1.3;${printMode?'display:flex;flex-direction:column;justify-content:center;':''}">
       <span style="position:absolute;left:4px;top:1px;font-size:.6rem;color:#8b93a7;font-weight:700">${nums[i]}</span>
       ${L.length?L.map((st,ix)=>{ const isSel=sel&&sel.id===st.id; const t=csTimeText(st);
         const tip=[st.nameKo+(st.nameEn?' ('+st.nameEn+')':''), (csGradeKey(st)||'')+' '+csClassOf(st), t].filter(Boolean).join(' · ');
@@ -5985,9 +5988,13 @@ function bindSeat(){
 }
 function seatPrintHTML(){
   const a=state.csA||academies()[0]; const g=csGrid(a,false,true);
-  return `<div id="seatPrintRoot" style="font-family:inherit;width:1040px"><div style="font-size:1.3rem;font-weight:800;margin-bottom:4px">💻 컴퓨터 자리 배치표 — ${esc(AC[a].label)}${csKey(a)!==a?' · '+esc(csGet(a).name||''):''}</div>
-    <div style="font-size:.8rem;color:#5a6478;margin-bottom:10px">어학실 수업 초·중등 재원생 ${Object.keys(g.assign).length}명 · 출력일 ${todayISO()} · 같은 학년/같은 반 옆·앞뒤 자리 배치 금지 규칙 적용</div>
-    ${csLegend(a,false)}<div style="text-align:center;font-size:.8rem;font-weight:800;margin-bottom:6px;color:#5a6478">▲ 칠판 / 앞쪽</div>${g.html}</div>`;
+  const mo=parseInt(String(state.month).slice(5,7),10)||'';
+  const per=csKey(a)!==a?esc(csGet(a).name||''):'';
+  return `<div id="seatPrintRoot" style="font-family:inherit;width:1040px;display:flex;flex-direction:column;box-sizing:border-box">
+    <div style="text-align:center;font-size:2.1rem;font-weight:900;letter-spacing:.04em;color:#111;padding:2px 0 8px;border-bottom:2px solid #a32020">${esc(AC[a].label)} 어학원 ${mo}월 IBT실${per?` <span style="font-size:1rem;font-weight:700;color:#555">(${per})</span>`:''}</div>
+    <div style="margin-top:10px">${csLegend(a,false)}</div>
+    <div style="flex:1;min-height:0;display:flex;flex-direction:column">${g.html}</div>
+    <div style="border-top:2px solid #a32020;margin-top:8px"></div></div>`;
 }
 function renderConsultRequestAdmin(){
   const rows=store.consultRequests.filter(r=>!r._deleted).map(r=>{
@@ -15026,7 +15033,7 @@ function reportHTML(){
   else if(state.tab==='seat'){ body=seatPrintHTML(); }
   else { body=repSet(); }
   // 내신 분석은 리포트 자체에 학교명·시험명이 들어간 전용 머리말이 이미 있어서, 위쪽의 일반 대시보드 타이틀 바는 중복이라 뺀다(중등부·고등부 모두 동일)
-  if(state.tab==='examrpt') return body;
+  if(state.tab==='examrpt'||state.tab==='seat') return body; // 자리표는 전용 제목만 쓴다(상단 대시보드 띠 없음)
   return rBand(`${tabName}${esc(extra)} &nbsp;·&nbsp; ${when} &nbsp;·&nbsp; 출력일 ${date}`)+boxes+body;
 }
 document.getElementById('printBtn').onclick=()=>{
@@ -15039,8 +15046,10 @@ document.getElementById('printBtn').onclick=()=>{
       const pa=document.getElementById('printarea'), root=document.getElementById('seatPrintRoot');
       if(root){
         pa.style.cssText='display:block;position:absolute;left:-99999px;top:0;width:1040px';
-        root.style.zoom='1'; const w=Math.max(root.scrollWidth,1), h=Math.max(root.scrollHeight,1);
-        const sc=Math.min(1, 1030/w, 590/h); root.style.zoom=String(sc);
+        const HMAX=700; root.style.zoom='1'; root.style.height='auto'; root.style.width='1040px';
+        const w=Math.max(root.scrollWidth,1), h=Math.max(root.scrollHeight,1);
+        const sc=Math.min(1, 1040/w, HMAX/h);
+        root.style.zoom=String(sc); root.style.width=(1040/sc)+'px'; root.style.height=(HMAX/sc)+'px'; // 용지 가로·세로를 꽉 채운다
         pa.style.cssText='';
       }
     }catch(e){ try{ document.getElementById('printarea').style.cssText=''; }catch(e2){} }
