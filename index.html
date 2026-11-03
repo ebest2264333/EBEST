@@ -1186,6 +1186,7 @@ async function pullSyllabusShared(silent){
         persistStoreLocal();
         if(state.tab==='syllabus' && !isEditingNow()) render(true);
         if(!silent) toast('☁ Syllabus 자료 자동 적용됨');
+        try{ if(sylMigratable().length) setTimeout(()=>sylAutoMigrate(true),500); }catch(e){} // 서버 목록에 아직 통째로 들어있는 자료가 다시 내려왔으면 바로 다시 서버 저장 방식으로 옮긴다
       }
     }
     lastSyncError=null; lastSyncOkAt=Date.now();
@@ -1384,6 +1385,20 @@ function editArr(a,m){
   });
   if(changed) persistStoreLocal();
   return store.uploads[key];
+}
+// 학생 명단에는 이 반으로 들어가 있는데 반 카드의 학생 명단(c.students)엔 없는 학생 찾기/채우기 — 둘은 따로 저장돼서 어긋날 수 있다
+function classMissingStudents(c){
+  if(!c || c.examOnly) return [];
+  const have=c.students||[];
+  return store.students.filter(st=>st.academy===c.academy && !st._deleted && st.status!=='퇴원' && st.className===c.name
+    && !have.some(sn=>rosterNameMatchesStudent(sn, st.nameKo, st.nameEn)));
+}
+function fillClassFromStudents(c){
+  const miss=classMissingStudents(c); if(!miss.length) return 0;
+  c.students=c.students||[];
+  miss.forEach(st=>c.students.push(st.nameKo));
+  c.count=c.students.length; c.updatedAt=Date.now();
+  return miss.length;
 }
 function findClassById(a,m,id){ return editArr(a,m).find(x=>x._id===id); }
 function uniqueClassName(a,m,base){
@@ -2780,7 +2795,7 @@ function classCard(c, admin, dayFilter, dupCount){
       </div>`;
     })()}
     <div style="font-size:.72rem;color:#8b93a7;margin-bottom:8px">🕒 반 기본 시간은 아래 과목표의 "시간" 칸에 요일별로 입력하시면 자동으로 등원~하원 범위가 계산됩니다. (예: RC는 화·목 3시, GR은 화·목 4시처럼 과목마다 요일별로 다른 시간 지정 가능)</div>
-    <div style="font-size:.78rem;font-weight:700;color:var(--sub);margin-bottom:4px">학생 명단</div>
+    <div style="font-size:.78rem;font-weight:700;color:var(--sub);margin-bottom:4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">학생 명단 ${(()=>{ const mc=classMissingStudents(c).length; return mc?`<button class="btn small" data-fillstu ${attrs} title="학생 명단에서 이 반으로 배정된 학생을 이 반에 넣습니다">👥 학생 명단에서 불러오기 (${mc}명)</button>`:''; })()}</div>
     <div class="students" style="margin-bottom:6px">
       ${(c.students||[]).map((s,i)=>`<span class="stu">${esc(studentDisplayName(c.academy,s,c.name))} <b data-rmstu="${i}" ${attrs} style="cursor:pointer;color:#c0392b;margin-left:3px">×</b></span>`).join('')}
     </div>
@@ -3168,7 +3183,13 @@ function bindClassEdit(){
   v.querySelectorAll('[data-toggleedit]').forEach(b=>b.onclick=()=>{
     let id=b.dataset.id;
     if(!id){ const arr=editArr(b.dataset.a,b.dataset.src); render(true); return; } // 안전장치(있을 수 없는 경우)
-    state.classOpen[id]=!state.classOpen[id]; render(true);
+    state.classOpen[id]=!state.classOpen[id];
+    if(state.classOpen[id]){ const cc=findClassById(b.dataset.a,b.dataset.src,id); if(cc && fillClassFromStudents(cc)) save(); } // 편집을 열 때 학생 명단에서 이 반으로 배정된 학생이 빠져 있으면 자동으로 채운다
+    render(true);
+  });
+  v.querySelectorAll('[data-fillstu]').forEach(b=>b.onclick=()=>{
+    const cc=findClassById(b.dataset.a,b.dataset.src,b.dataset.id); if(!cc) return;
+    const n=fillClassFromStudents(cc); if(n) save(); render(true);
   });
   v.querySelectorAll('[data-delclass]').forEach(b=>b.onclick=()=>{
     deleteClassAction(b.dataset.a,b.dataset.src,b.dataset.id);
@@ -4096,10 +4117,17 @@ function wtFieldsFor(s, date){
     const roundSel=`<select data-wtfield="${s.id}|${date}|round" ${r.absent?'disabled':''} style="width:110px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
       <option value="">회차 선택</option>
       ${MOCKEXAM_ROUND_OPTIONS.map(n=>`<option value="${n}" ${String(r.round||'')===n?'selected':''}>${n}회</option>`).join('')}
-      <option value="내신단어" ${r.round==='내신단어'?'selected':''}>📖 내신 단어</option>
+      ${r.round==='내신단어'?'<option value="내신단어" selected>📖 내신 단어 (이전 기록)</option>':''}
     </select>`;
     const mockScoreInp=`<input type="text" placeholder="점수 (예: 85점, 2등급)" value="${esc(mockScoreVal)}" data-wtfield="${s.id}|${date}|${mockScoreField}" ${r.absent?'disabled':''} style="width:120px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">`;
-    return `🎓 ${roundSel} ${mockScoreInp}`;
+    // 📖 "내신 단어"를 고르면 단어장 목록에서 내신 단어장·유형(한글/믹스/영어)·범위를 같이 고를 수 있다(단어시험과 동시에 켜진 반은 아래 단어시험 칸을 그대로 쓴다)
+    let nsExtra='';
+    if(r.round==='내신단어' && !both){
+      const st='padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;'+dim;
+      nsExtra=`<select data-wtfield="${s.id}|${date}|wordbook" ${r.absent?'disabled':''} style="width:120px;${st}"><option value="">단어장 선택</option>${wbOptionsFor(s.academy).map(o=>`<option value="${esc(o)}" ${r.wordbook===o?'selected':''}>${esc(o)}</option>`).join('')}</select>
+        <input type="text" placeholder="범위" value="${esc(r.range||'')}" data-wtfield="${s.id}|${date}|range" ${r.absent?'disabled':''} style="width:110px;${st}">`;
+    }
+    return `🎓 ${roundSel} ${nsExtra} ${mockScoreInp}`;
   };
   if(mOn && !wOn){
     return `${mockBlock()} ${absentLabel}`;
@@ -4113,8 +4141,9 @@ function wtFieldsFor(s, date){
       <option value="">유형</option>
       ${WORDLANG_OPTIONS.map(o=>`<option value="${esc(o)}" ${r.lang===o?'selected':''}>${esc(o)}</option>`).join('')}
     </select>`;
+    const isNaeshin=String(r.wordbook||'').includes('내신'); // 내신 단어장은 한글/믹스/영어 구분이 없다
     return `${wbSel}
-        ${langSel}
+        ${isNaeshin?'':langSel}
         <input type="text" placeholder="범위" value="${esc(r.range||'')}" data-wtfield="${s.id}|${date}|range" ${r.absent?'disabled':''} style="width:110px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
         <input type="text" placeholder="점수 (예: 18/20)" value="${esc(r.score||'')}" data-wtfield="${s.id}|${date}|score" ${r.absent?'disabled':''} style="width:90px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
         ${studentIsHigh(s)?`<label style="font-size:.8rem;color:${r.accumulate?'#7c3aed':'var(--sub)'};${dim}" title="체크하면 이전 등원일 이틀치 시험 범위를 자동으로 이어서 채워줍니다"><input type="checkbox" data-wtaccum="${s.id}|${date}" ${r.accumulate?'checked':''} ${r.absent?'disabled':''}> 📚 누적</label>`:''}
@@ -4665,9 +4694,10 @@ function renderWordRange(list){
             // 🎓 그 날짜에 실제로 회차가 입력된 기록만 회차·점수 형식으로 보여준다 — 반을 모의고사로 바꾸기 "전"에
             // 남긴 옛날 단어장 기록은 그 자체는 그대로 단어장 기록이므로 건드리지 않고 원래 형식대로 보여준다
             const mockScoreShown=rec.mockScore||rec.score;
-            cell=`<span style="font-size:.7rem;color:#7c3aed;font-weight:800">🎓 ${esc(rec.round)}${rec.round==='내신단어'?'':'회'}</span>${mockScoreShown?`<br><span style="font-size:.72rem;color:#7c3aed;font-weight:800">📊 ${esc(mockScoreShown)}</span>`:''}`;
+            const nsWb=rec.round==='내신단어'?wbShort(rec.wordbook):'';
+            cell=`<span style="font-size:.7rem;color:#7c3aed;font-weight:800">🎓 ${esc(rec.round)}${rec.round==='내신단어'?'':'회'}${nsWb?' · '+esc(nsWb):''}</span>${rec.round==='내신단어'&&rec.range?`<br><b style="font-size:.74rem">${esc(rec.range)}</b>`:''}${mockScoreShown?`<br><span style="font-size:.72rem;color:#7c3aed;font-weight:800">📊 ${esc(mockScoreShown)}</span>`:''}`;
           } else {
-            const wbTxt=[wbShort(rec.wordbook),rec.lang].filter(Boolean).join(' ');
+            const wbTxt=[wbShort(rec.wordbook),String(rec.wordbook||'').includes('내신')?'':rec.lang].filter(Boolean).join(' ');
             cell=`<span style="font-size:.7rem;color:var(--sub)">${esc(wbTxt)}</span>${rec.range?`<br><b style="font-size:.74rem">${esc(rec.range)}</b>`:''}${rec.score?`<br><span style="font-size:.72rem;color:#7c3aed;font-weight:800">📊 ${esc(rec.score)}</span>`:''}`;
           }
         }
@@ -9763,31 +9793,59 @@ function sylXlsxSheetsOf(en){
 
 /* 이 기기에 통째로 저장돼 있는 Syllabus 자료(엑셀 표·PDF·파일)는 전부 서버로 옮기고 이 기기에서는 지운다 — 동기화가 켜져 있고 실장 이상 기기에서만 */
 var __sylMigrating=false;
-function sylIsLocalBig(s){ return !s._deleted && !s.remote && (((s.kind==='pdf'||s.kind==='file') && s.fileData) || (s.sheets && (!s.kind||s.kind==='xlsx'))); } // 처음부터 들어있던 예전 자료는 kind가 비어있어서 같이 처리
-function sylMigratable(){ return store.syllabus.filter(sylIsLocalBig); }
+var sylMig={i:0,n:0};
+function sylMigBtnText(){ return `⏳ 옮기는 중... (${sylMig.i}/${sylMig.n})`; }
 async function sylMigrateAll(onProg, manual){
-  if(__sylMigrating || !syncOn() || (!manual && !isAdminRole())) return {done:0, failed:[], skipped:true};
+  sylPurgeDeleted();
+  if(!syncOn() || (!manual && !isAdminRole())) return {done:0, failed:[], skipped:true};
+  if(__sylMigrating){ return {done:0, failed:[], skipped:true, busy:true}; }
   const targets=sylMigratable(); if(!targets.length) return {done:0, failed:[], skipped:true};
   __sylMigrating=true;
-  let done=0; const failed=[];
-  try{
-    for(const en of targets){
-      if(onProg) onProg(done+1, targets.length);
-      try{
+  sylMig={i:0,n:targets.length};
+  let done=0, finished=0; const failed=[]; let firstErr='';
+  const tick=()=>{ sylMig.i=finished; const t=sylMigBtnText(); document.querySelectorAll('#sylMigrateBtn,#sylMigrateBtnSet').forEach(b=>{ b.disabled=true; b.textContent=t; }); if(onProg) onProg(finished,targets.length); };
+  const one=async(en0)=>{
+    const id=en0.id; const cur=()=>store.syllabus.find(x=>x.id===id)||en0;
+    try{
+      let en=cur();
+      if(sylIsMainLocal(en)){
         const size=sylEntrySize(en);
-        if(en.sheets && (!en.kind||en.kind==='xlsx')){ en.kind='xlsx'; await sylChunkPut(en.id, en.fileName||en.title, 'sylxlsx:,'+JSON.stringify(en.sheets)); delete en.sheets; }
-        else { await sylChunkPut(en.id, en.fileName||en.title, en.fileData); delete en.fileData; }
-        en.remote=true; en.size=size; en.updatedAt=Date.now(); done++;
-      }catch(e){ failed.push(en.title||en.fileName); }
-    }
+        if(en.sheets && (!en.kind||en.kind==='xlsx')){ await sylChunkPut(en.id, en.fileName||en.title, 'sylxlsx:,'+JSON.stringify(en.sheets)); en=cur(); en.kind='xlsx'; delete en.sheets; }
+        else { await sylChunkPut(en.id, en.fileName||en.title, en.fileData); en=cur(); delete en.fileData; }
+        en.remote=true; en.size=size;
+      }
+      for(const at0 of sylLocalAtts(cur())){
+        const asize=String(at0.fileData||'').length;
+        await sylChunkPut(at0.id, at0.fileName||cur().title, at0.fileData);
+        const at=(cur().attachments||[]).find(x=>x.id===at0.id)||at0;
+        delete at.fileData; at.remote=true; at.size=asize;
+      }
+      cur().updatedAt=Date.now(); done++;
+      try{ persistStoreLocal(); }catch(e){} // 하나 끝날 때마다 바로 저장 — 중간에 화면이 다시 그려지거나 멈춰도 옮긴 것은 그대로 남는다
+    }catch(e){ failed.push(en0.title||en0.fileName||id); if(!firstErr) firstErr=(e&&e.message)||String(e); }
+    finished++; tick();
+  };
+  try{
+    tick();
+    const queue=[...targets]; // 여러 개를 동시에(3개씩) 옮겨서 빠르게
+    const workers=Array.from({length:3},async()=>{ while(queue.length){ await one(queue.shift()); } });
+    await Promise.all(workers);
     let saveErr=null;
     try{ save(); schedulePushSyllabus(); }catch(e){ saveErr=e; }
     if(saveErr) sylErrAlert(saveErr, '서버로 옮긴 자료 정보');
   } finally { __sylMigrating=false; }
-  return {done, failed};
+  return {done, failed, firstErr};
 }
-async function sylAutoMigrate(){
-  const r=await sylMigrateAll();
+async function sylMigRun(btn){
+  if(__sylMigrating){ alert('이미 옮기는 중이에요 ('+sylMig.i+'/'+sylMig.n+'). 끝날 때까지 기다려주세요.'); return; }
+  if(btn) btn.disabled=true;
+  const r=await sylMigrateAll(null, true);
+  render(true);
+  if(r.failed&&r.failed.length) alert(`${r.failed.length}개는 옮기지 못했습니다(네트워크 확인 후 다시 눌러주세요):\n${r.failed.slice(0,10).join('\n')}${r.firstErr?'\n\n오류: '+r.firstErr:''}`);
+  if(r.done) alert(`${r.done}개 자료를 서버로 옮겼습니다. 이 기기의 저장 공간이 확보됐어요.`);
+}
+async function sylAutoMigrate(manual){
+  const r=await sylMigrateAll(null, !!manual);
   if(r.done){ try{ toast('☁️ 이 기기에 저장돼 있던 Syllabus 자료 '+r.done+'개를 서버로 옮겼어요'); }catch(e){} render(true); }
 }
 function sylIsQuotaErr(e){ return !!(e && (e.name==='QuotaExceededError' || e.code===22 || e.code===1014 || /quota/i.test(e.message||''))); }
@@ -10310,13 +10368,7 @@ function bindSyllabus(){
     }catch(e){ alert('자료를 불러오지 못했습니다: '+(e.message||e)); b.disabled=false; b.textContent=origLabel; }
   });
   const migrateBtn=v.querySelector('#sylMigrateBtn');
-  if(migrateBtn) migrateBtn.onclick=async()=>{
-    migrateBtn.disabled=true;
-    const r=await sylMigrateAll((i,n)=>{ migrateBtn.textContent=`⏳ 옮기는 중... (${i}/${n})`; }, true);
-    render(true);
-    if(r.failed.length) alert(`다음 파일은 옮기지 못했습니다(네트워크 확인 후 다시 시도해주세요):\n${r.failed.join('\n')}`);
-    if(r.done) alert(`${r.done}개 파일을 서버로 옮겼습니다. 이 기기의 저장 공간이 확보됐어요.`);
-  };
+  if(migrateBtn) migrateBtn.onclick=()=>sylMigRun(migrateBtn);
   v.querySelectorAll('.sylAttOpen').forEach(b=>b.onclick=async()=>{
     if(b.disabled) return;
     const origLabel=b.textContent;
@@ -13886,13 +13938,7 @@ function bindSet(){
   bindTtGrid();
   const v=document.getElementById('view');
   const sylMigSet=v.querySelector('#sylMigrateBtnSet');
-  if(sylMigSet) sylMigSet.onclick=async()=>{
-    sylMigSet.disabled=true;
-    const r=await sylMigrateAll((i,n)=>{ sylMigSet.textContent=`⏳ 옮기는 중... (${i}/${n})`; }, true);
-    render(true);
-    if(r.failed.length) alert(`다음 파일은 옮기지 못했습니다(네트워크 확인 후 다시 시도해주세요):\n${r.failed.join('\n')}`);
-    if(r.done) alert(`${r.done}개 자료를 서버로 옮겼습니다. 이 기기의 저장 공간이 확보됐어요.`);
-  };
+  if(sylMigSet) sylMigSet.onclick=()=>sylMigRun(sylMigSet);
   const mtgMigBtn=v.querySelector('#mtgMigrateBtn');
   if(mtgMigBtn) mtgMigBtn.onclick=async()=>{
     const targets=[];
