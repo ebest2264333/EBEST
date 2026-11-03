@@ -602,6 +602,7 @@ if(!store.timeedit) store.timeedit={};
 if(!store.enrollment) store.enrollment={};
 if(!store.newStudents) store.newStudents=[];
 if(!store.dropouts) store.dropouts=[];
+if(!store.compSeats) store.compSeats={};
 if(!store.consultRoles) store.consultRoles={};
 if(!store.consultRequests) store.consultRequests=[];
 if(!store.students) store.students=[];
@@ -645,11 +646,11 @@ store.syllabusSeeded=true; // 예전에 기본으로 들어있던 'Spider Phonic
 if(!store.examAnalysis) store.examAnalysis=[]; // 내신 분석 — {id, academy, school, grade, examTitle, examRange, examDate, prepStart, prepEnd, teacherLecture, teacherIBT, note, categories:[{name,count,questions:[{id,no,question,points,difficulty}]}], updatedAt, updatedBy} · 월 상관없이 항상 보임, 모든 선생님 열람·수정 가능(Syllabus처럼 보관용)
 if(!store.absentNotes) store.absentNotes={}; // 날짜별 결석생 요약의 '특이사항' 자유 메모 {YYYY-MM-DD: text}
 if(!store.examTrends) store.examTrends=[]; // 동향 분석 리포트 — {id, academy, school, grade, title, memo, source:'ai'|'upload', entryIds, snaps, files, report:{headline,strategy,metrics,changes,teaching}, aiModel, createdAt, updatedAt, createdBy, _deleted} · 내신 분석 탭 안의 두 번째 탭, AI로 만든 리포트는 자동 저장
-const SHARE_FIELDS=['uploads','bookedit','bookdone','daysedit','timeedit','calendar','calendarTombstones','calCatColors','meetings','teachers','adminEmail','enrollment','newStudents','dropouts','consultRoles','students','admissionConsults','wordTests','attend','homework','stayback','bookGiven','uploadTombstones','uploadStamps','wordbookOptions','testPaperOptions','giveSel','consultRequests','records','assign','cmemo','worklog','weekplan','submits','handover','boardPosts','handoverGrid','monthOverride','examAnalysis','examTrends','absentNotes','bookCatalog','tuitionCatalog','papercheckEnabled','papercheckCols','papercheckData','worklogMonthly','worklogWeekly'];
+const SHARE_FIELDS=['uploads','bookedit','bookdone','daysedit','timeedit','calendar','calendarTombstones','calCatColors','meetings','teachers','adminEmail','enrollment','newStudents','dropouts','compSeats','consultRoles','students','admissionConsults','wordTests','attend','homework','stayback','bookGiven','uploadTombstones','uploadStamps','wordbookOptions','testPaperOptions','giveSel','consultRequests','records','assign','cmemo','worklog','weekplan','submits','handover','boardPosts','handoverGrid','monthOverride','examAnalysis','examTrends','absentNotes','bookCatalog','tuitionCatalog','papercheckEnabled','papercheckCols','papercheckData','worklogMonthly','worklogWeekly'];
 // syllabus(실러버스)는 PDF/한글/워드 첨부가 커서 별도 경로(/syllabus)로, 낮은 빈도로만 동기화합니다 — 그래야 매 5초/매 입력마다 전체를 전송하지 않습니다.
 // 반 자료·학생 명단처럼 "삭제"가 중요한 항목은 병합하지 않고 통째로 교체한다(마지막 저장이 우선).
 // 병합 방식(mergeById)에는 삭제라는 개념이 없어서, 지운 반·학생이 다른 기기 자료와 합쳐지며 계속 되살아나기 때문.
-const REPLACE_FIELDS=['uploads','students','teachers','bookedit','bookdone','daysedit','timeedit','wordbookOptions','testPaperOptions','handoverGrid'];
+const REPLACE_FIELDS=['compSeats','uploads','students','teachers','bookedit','bookdone','daysedit','timeedit','wordbookOptions','testPaperOptions','handoverGrid'];
 // 출결·숙제 등은 여러 선생님이 동시에 서로 다른 학생을 입력하므로 기존처럼 병합해야 안전하다.
 function isReplaceField(f){ return REPLACE_FIELDS.includes(f); }
 // 각 항목을 마지막으로 편집한 시각 — 교체 방식에서 "누가 더 최신인지" 판단에 사용
@@ -1770,7 +1771,18 @@ document.getElementById('logoutBtn').onclick=()=>{
 };
 document.getElementById('syncBadge').onclick=()=>{ goTab('set'); };
 
+function csIsIbtTeacher(lt){
+  try{ return classesFor(state.month).some(c=>c.academy===lt.a && (c.subjects||[]).some(x=>x.teacher===lt.t.name && normalizeLCtoIBT(String(x.subject||'').trim()).toUpperCase()==='IBT')); }catch(e){ return false; }
+}
 function tabDefs(){
+  const r=tabDefsBase(); const lt=loginTeacher();
+  if(!lt || isMgr() || csIsIbtTeacher(lt)){ // 관리자·실장, 그리고 IBT 수업을 맡은 선생님만 컴퓨터 자리 메뉴가 보인다
+    const i=r.more.findIndex(x=>x[0]==='timetable');
+    r.more.splice(i>=0?i+1:r.more.length,0,['seat','💻 컴퓨터 자리']);
+  }
+  return r;
+}
+function tabDefsBase(){
   const lt=loginTeacher();
   if(lt && !isMgr()){
     return {main:[['today','🏠 홈'],['consult','상담'],['report','업무일지'],['dash','반 · 교재']],
@@ -5486,6 +5498,203 @@ function renderDropoutMine(a,i){
     <textarea data-dpmemo="${d.id}" data-dpwho="${esc(who)}" placeholder="${esc(r.label)} 내용 메모…" style="width:100%;min-height:50px;border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:.83rem">${esc(n.memo||'')}</textarea>
   </div>`; }).join('');
   return `<details class="mypanel" data-fold="dpMine" ${state.fold.dpMine===true?'open':''} style="border-top-color:#c0392b"><summary style="cursor:pointer;font-weight:800;font-size:1.05rem;margin-bottom:8px">🚪 퇴원생 상담 (${mine.length}명)</summary>${rows}</details>`;
+}
+
+/* ---------- 💻 컴퓨터 자리 배치표 (초·중등 전체 · 같은 학년/같은 반 옆·앞뒤 금지) ---------- */
+function csGet(a){
+  store.compSeats=store.compSeats||{};
+  let d=store.compSeats[a];
+  if(!d){ d={rows:5, cols:8, cells:Array(40).fill(1), assign:{}, excluded:[], updatedAt:0}; store.compSeats[a]=d; }
+  return d;
+}
+function csTouch(d){ d.updatedAt=Date.now(); save(); }
+function csLevelOf(st){
+  const g=gradeTag(st.grade, st); const m=g.match(/^[초중고]/); if(m) return m[0];
+  const cn=classNameInMonth(st,state.month)||st.className||'';
+  const c=classesFor(state.month).find(x=>x.academy===st.academy && x.name===cn);
+  if(c && c.dept==='초등') return '초'; if(c && c.dept==='중등') return '중';
+  return '';
+}
+function csGradeKey(st){ const g=gradeTag(st.grade, st); return /^[초중고]\d/.test(g)?g:''; }
+function csClassOf(st){ return classNameInMonth(st,state.month)||st.className||''; }
+// 컴퓨터를 쓰는 수업은 강의실이 '어학실'인 수업뿐 — 시간표(과목표)에 어학실 수업이 있는 반의 학생만 대상이 된다
+function csLabClassNames(a){
+  const set=new Set();
+  classesFor(state.month).forEach(c=>{ if(c.academy===a && !c._deleted && (c.subjects||[]).some(x=>String(x.room||'').includes('어학실'))) set.add(c.name); });
+  return set;
+}
+function csCandidates(a){
+  const order={'초':0,'중':1}; const lab=csLabClassNames(a);
+  return store.students.filter(st=>st.academy===a && !st._deleted && (st.status||'재원')==='재원' && order[csLevelOf(st)]!=null && lab.has(csClassOf(st)))
+    .sort((x,y)=>{ const gx=csGradeKey(x), gy=csGradeKey(y); return (order[csLevelOf(x)]-order[csLevelOf(y)]) || gx.localeCompare(gy,'ko') || csClassOf(x).localeCompare(csClassOf(y),'ko') || x.nameKo.localeCompare(y.nameKo,'ko'); });
+}
+function csNeighbors(d, i){
+  const r=Math.floor(i/d.cols), c=i%d.cols, out=[];
+  if(r>0) out.push(i-d.cols); if(r<d.rows-1) out.push(i+d.cols);
+  if(c>0) out.push(i-1); if(c<d.cols-1) out.push(i+1);
+  return out.filter(j=>d.cells[j]);
+}
+function csConflict(sa, sb){
+  const out=[];
+  const ga=csGradeKey(sa), gb=csGradeKey(sb); if(ga && ga===gb) out.push('같은 학년('+ga+')');
+  const ca=csClassOf(sa), cb=csClassOf(sb); if(ca && ca===cb) out.push('같은 반('+ca+')');
+  return out;
+}
+// 현재 배치에서 유효한 {studentId→cell}만 추려서 돌려준다(없어진 자리·제외된 학생 등은 무시)
+function csValidAssign(a){
+  const d=csGet(a); const cand=new Map(csCandidates(a).map(s=>[s.id,s])); const out={}; const used=new Set();
+  Object.keys(d.assign||{}).forEach(id=>{ const cell=d.assign[id]; if(cand.has(id) && !(d.excluded||[]).includes(id) && d.cells[cell] && !used.has(cell)){ out[id]=cell; used.add(cell); } });
+  return {assign:out, cand};
+}
+function csAuto(a){
+  const d=csGet(a);
+  const cand=csCandidates(a).filter(s=>!(d.excluded||[]).includes(s.id));
+  const seats=[]; d.cells.forEach((v,i)=>{ if(v) seats.push(i); });
+  if(!seats.length){ alert('자리가 없어요. [자리 모양 편집]에서 자리를 먼저 만들어주세요.'); return; }
+  if(!cand.length){ alert('배치할 초·중등 재원생이 없어요.'); return; }
+  if(cand.length>seats.length){ alert(`배치할 학생 ${cand.length}명이 자리 ${seats.length}개보다 많아요. 자리를 더 만들거나 일부 학생을 제외해주세요.`); return; }
+  const n=cand.length;
+  const conf=(x,y)=>{ if(x<0||y<0) return 0; return ((cand[x]._g&&cand[x]._g===cand[y]._g)?1:0)+((cand[x]._c&&cand[x]._c===cand[y]._c)?1:0); };
+  cand.forEach(s=>{ s._g=csGradeKey(s); s._c=csClassOf(s); });
+  const nb={}; seats.forEach(i=>{ nb[i]=csNeighbors(d,i); });
+  let best=null, bestCost=Infinity;
+  for(let rs=0; rs<8 && bestCost>0; rs++){
+    const occ=Array(d.cells.length).fill(-1);
+    const pos=[...seats].sort(()=>Math.random()-0.5);
+    for(let k=0;k<n;k++) occ[pos[k]]=k;
+    const costAt=cell=>{ let c=0; const o=occ[cell]; if(o<0) return 0; nb[cell].forEach(j=>{ c+=conf(o,occ[j]); }); return c; };
+    let total=0; seats.forEach(i=>{ total+=costAt(i); }); total/=2;
+    const N=40000;
+    for(let it=0; it<N && total>0; it++){
+      const p=seats[(Math.random()*seats.length)|0], q=seats[(Math.random()*seats.length)|0];
+      if(p===q || (occ[p]<0 && occ[q]<0)) continue;
+      const before=costAt(p)+costAt(q);
+      const t=occ[p]; occ[p]=occ[q]; occ[q]=t;
+      const after=costAt(p)+costAt(q);
+      const delta=after-before;
+      const T=1.2*(1-it/N)+0.03;
+      if(delta<=0 || Math.random()<Math.exp(-delta/T)) total+=delta; else { const t2=occ[p]; occ[p]=occ[q]; occ[q]=t2; }
+    }
+    if(total<bestCost){ bestCost=total; best=occ.slice(); }
+  }
+  d.assign={}; best.forEach((k,cell)=>{ if(k>=0) d.assign[cand[k].id]=cell; });
+  state.csSel=null; csTouch(d);
+  render(true);
+  setTimeout(()=>{ try{ toast(bestCost? `⚠ 자리 배치 완료 — 규칙에 걸리는 이웃이 ${bestCost}쌍 남았어요(자리가 부족하거나 한 학년·반이 많아서일 수 있어요)` : '✔ 자리 배치 완료 — 규칙 위반 없음'); }catch(e){} },50);
+}
+function csResize(d, rows, cols){
+  rows=Math.max(1,Math.min(20,rows|0)); cols=Math.max(1,Math.min(20,cols|0));
+  const cells=Array(rows*cols).fill(1);
+  const map={};
+  for(let r=0;r<Math.min(rows,d.rows);r++) for(let c=0;c<Math.min(cols,d.cols);c++){ cells[r*cols+c]=d.cells[r*d.cols+c]?1:0; map[r*d.cols+c]=r*cols+c; }
+  const na={}; Object.keys(d.assign||{}).forEach(id=>{ const m=map[d.assign[id]]; if(m!=null && cells[m]) na[id]=m; });
+  d.rows=rows; d.cols=cols; d.cells=cells; d.assign=na;
+}
+function csSeatNumbers(d){ const m={}; let n=0; d.cells.forEach((v,i)=>{ if(v) m[i]=++n; }); return m; }
+function csLabel(st){ return esc(st.nameKo)+(st.nameEn?`<br><span style="font-size:.7rem;font-weight:400">${esc(st.nameEn)}</span>`:''); }
+function csGrid(a, editable, printMode){
+  const d=csGet(a); const {assign,cand}=csValidAssign(a); const nums=csSeatNumbers(d);
+  const occ={}; Object.keys(assign).forEach(id=>{ occ[assign[id]]=cand.get(id); });
+  const bad={}; // 규칙에 걸린 자리
+  d.cells.forEach((v,i)=>{ if(!v||!occ[i]) return; csNeighbors(d,i).forEach(j=>{ if(occ[j] && j>i){ const why=csConflict(occ[i],occ[j]); if(why.length){ (bad[i]=bad[i]||[]).push(why.join('·')+' - '+occ[j].nameKo); (bad[j]=bad[j]||[]).push(why.join('·')+' - '+occ[i].nameKo); } } }); });
+  const sel=state.csSel;
+  const lvBg={'초':'#eaf3ff','중':'#e9f8ee'};
+  let h=`<div style="display:grid;grid-template-columns:repeat(${d.cols},minmax(${printMode?70:84}px,1fr));gap:${printMode?4:6}px">`;
+  d.cells.forEach((v,i)=>{
+    if(editable){
+      h+=`<div data-cscell="${i}" style="cursor:pointer;min-height:44px;border:2px ${v?'solid #2e5fb7':'dashed #c7cbd6'};border-radius:8px;background:${v?'#eef4ff':'#fafbfd'};display:flex;align-items:center;justify-content:center;font-size:.8rem;color:${v?'#2e5fb7':'#aab'};font-weight:800">${v?'💻 '+nums[i]:'—'}</div>`; return;
+    }
+    if(!v){ h+='<div></div>'; return; }
+    const st=occ[i]; const isSel=sel&&sel.t==='seat'&&sel.i===i; const b=bad[i];
+    h+=`<div ${printMode?'':`data-csseat="${i}"`} title="${b?esc(b.join(' / ')):''}" style="${printMode?'':'cursor:pointer;'}min-height:${printMode?58:64}px;border:2px solid ${b?'#c0392b':(isSel?'#7c3aed':'#d5d9e4')};${isSel?'box-shadow:0 0 0 3px #e3d5f7;':''}border-radius:8px;padding:4px 6px;background:${st?(lvBg[csLevelOf(st)]||'#fff'):'#fff'};font-size:.8rem;font-weight:800;text-align:center;position:relative">
+      <span style="position:absolute;left:5px;top:2px;font-size:.62rem;color:#8b93a7;font-weight:700">${nums[i]}</span>
+      ${st?`${csLabel(st)}<div style="font-size:.66rem;color:#5a6478;font-weight:600">${esc(csGradeKey(st)||'')} ${esc(csClassOf(st))}</div>`:'<span style="color:#c7cbd6;font-weight:400">빈 자리</span>'}
+      ${b?'<span style="position:absolute;right:4px;top:1px;color:#c0392b;font-size:.7rem">⚠</span>':''}</div>`;
+  });
+  h+='</div>';
+  return {html:h, bad:Object.keys(bad).length, assign, cand};
+}
+function renderSeat(){
+  const lt=loginTeacher(); const acs=academies();
+  if(!state.csA || !acs.includes(state.csA)) state.csA=lt?lt.a:acs[0];
+  const a=state.csA; const d=csGet(a);
+  const g=csGrid(a, !!state.csEdit, false);
+  const cand=csCandidates(a);
+  const placedIds=new Set(Object.keys(g.assign));
+  const unplaced=cand.filter(s=>!placedIds.has(s.id) && !(d.excluded||[]).includes(s.id));
+  const seatCount=d.cells.filter(Boolean).length;
+  const sel=state.csSel;
+  const grades={}; cand.forEach(s=>{ const k=csGradeKey(s)||'학년 미입력'; (grades[k]=grades[k]||[]).push(s); });
+  const noLevel=store.students.filter(st=>st.academy===a && !st._deleted && (st.status||'재원')==='재원' && !['초','중'].includes(csLevelOf(st)) && csLevelOf(st)!=='고').length;
+  const labNone=csLabClassNames(a).size===0;
+  return `<div class="setsec" style="border:2px solid #2e5fb7">
+    <h3>💻 컴퓨터 자리 배치표 ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
+    <div class="desc">학원 전체 <b>초·중등 재원생 중 강의실이 '어학실'인 수업을 듣는 학생</b>(${cand.length}명, 어학실 수업이 있는 반 ${csLabClassNames(a).size}개)을 자리 ${seatCount}개에 자동으로 배치합니다. <b>같은 학년끼리</b>, <b>같은 반끼리</b>는 옆·앞뒤 자리에 앉지 않게 짜고, 학년·반은 학생 명단과 시간표(반)를 그대로 따릅니다. 자동 배치 뒤에는 학생 칸을 눌러 다른 칸을 누르면 자리를 서로 바꿀 수 있어요. 빨간 테두리(⚠)는 규칙에 걸린 이웃입니다.</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">
+      <button class="btn primary" data-csauto>🎲 자동 배치</button>
+      <button class="btn" data-csedit>${state.csEdit?'✔ 자리 모양 편집 끝':'✏ 자리 모양 편집'}</button>
+      <button class="btn" data-csclear>🧹 배치 비우기</button>
+      <button class="btn" data-csprint>🖨 인쇄 · PDF</button>
+      ${(!state.csEdit&&sel&&sel.t==='seat')?'<button class="btn small" data-csfree style="color:#c0392b;border-color:#e7b3ab">선택한 자리 비우기</button>':''}
+    </div>
+    ${state.csEdit?`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;font-size:.84rem">세로 <input type="number" min="1" max="20" value="${d.rows}" data-csrows style="width:62px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px"> 줄 × 가로 <input type="number" min="1" max="20" value="${d.cols}" data-cscols style="width:62px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px"> 칸 <span style="color:var(--sub);font-size:.78rem">— 칸을 눌러 자리를 만들거나(💻) 없앨 수 있어요. 실제 교실 모양대로 만들어주세요.</span></div>`:''}
+    <div style="font-size:.78rem;color:${g.bad?'#c0392b':'#0e9f6e'};font-weight:800;margin-bottom:6px">${state.csEdit?'':(g.bad?`⚠ 규칙에 걸린 자리 ${g.bad}곳`:(Object.keys(g.assign).length?'✔ 규칙 위반 없음':''))}</div>
+    ${labNone?'<div style="font-size:.8rem;color:#b45309;margin-bottom:6px">⚠ 이번 달 시간표(반·교재의 과목표)에 강의실이 <b>어학실</b>로 적힌 수업이 없어서 배치할 학생이 없어요. 과목표의 "호실" 칸에 "어학실"을 적어주세요.</div>':''}
+    <div style="overflow-x:auto;padding:4px 2px 10px">${g.html}</div>
+    ${state.csEdit?'':`<div style="margin-top:8px"><b style="font-size:.84rem">미배치 학생 ${unplaced.length}명</b> <span style="font-size:.74rem;color:var(--sub)">(눌러서 고른 뒤 자리를 누르면 그 자리에 앉아요)</span>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${unplaced.map(s=>`<span data-csun="${s.id}" style="cursor:pointer;border:2px solid ${sel&&sel.t==='stu'&&sel.id===s.id?'#7c3aed':'#d5d9e4'};border-radius:8px;padding:3px 8px;font-size:.78rem;background:#fff">${esc(s.nameKo)} <span style="color:var(--sub);font-size:.7rem">${esc(csGradeKey(s))} ${esc(csClassOf(s))}</span></span>`).join('')||'<span style="font-size:.78rem;color:#8b93a7">없음</span>'}</div></div>`}
+    <details style="margin-top:12px"><summary style="cursor:pointer;font-size:.84rem;font-weight:800;color:var(--sub)">배치 대상 학생 선택 (컴퓨터를 안 쓰는 학생은 체크 해제)</summary>
+      ${Object.keys(grades).sort((x,y)=>x.localeCompare(y,'ko')).map(k=>`<div style="margin:8px 0 2px;font-size:.78rem;font-weight:800">${esc(k)} (${grades[k].length}명)</div><div style="display:flex;gap:4px 12px;flex-wrap:wrap">${grades[k].map(s=>`<label style="font-size:.78rem"><input type="checkbox" data-csex="${s.id}" ${(d.excluded||[]).includes(s.id)?'':'checked'}> ${esc(s.nameKo)}${s.nameEn?'('+esc(s.nameEn)+')':''} <span style="color:var(--sub)">${esc(csClassOf(s))}</span></label>`).join('')}</div>`).join('')}
+      ${noLevel?`<div style="margin-top:8px;font-size:.74rem;color:#b45309">※ 학년·반 정보로 초/중을 알 수 없는 재원생 ${noLevel}명은 제외돼 있어요(학생 명단에서 학년을 "초3"처럼 적어주세요).</div>`:''}
+    </details></div>`;
+}
+function bindSeat(){
+  const v=document.getElementById('view'); const a=state.csA; const d=csGet(a);
+  const q=(sel,fn)=>v.querySelectorAll(sel).forEach(fn);
+  q('[data-csa]',el=>el.onchange=()=>{ state.csA=el.value; state.csSel=null; render(true); });
+  q('[data-csauto]',b=>b.onclick=()=>{
+    if(Object.keys(csValidAssign(a).assign).length && !confirm('현재 배치를 지우고 새로 자동 배치할까요?')) return;
+    csAuto(a);
+  });
+  q('[data-csedit]',b=>b.onclick=()=>{ state.csEdit=!state.csEdit; state.csSel=null; render(true); });
+  q('[data-csclear]',b=>b.onclick=()=>{ if(!confirm('배치를 모두 비울까요? (자리 모양은 그대로 둡니다)')) return; d.assign={}; state.csSel=null; csTouch(d); render(true); });
+  q('[data-csprint]',b=>b.onclick=()=>document.getElementById('printBtn').click());
+  q('[data-csfree]',b=>b.onclick=()=>{ const s=state.csSel; if(!s||s.t!=='seat') return; const {assign}=csValidAssign(a); const id=Object.keys(assign).find(k=>assign[k]===s.i); if(id) delete d.assign[id]; state.csSel=null; csTouch(d); render(true); });
+  q('[data-csrows]',el=>el.onchange=()=>{ csResize(d, +el.value||d.rows, d.cols); csTouch(d); render(true); });
+  q('[data-cscols]',el=>el.onchange=()=>{ csResize(d, d.rows, +el.value||d.cols); csTouch(d); render(true); });
+  q('[data-cscell]',el=>el.onclick=()=>{
+    const i=+el.dataset.cscell; d.cells[i]=d.cells[i]?0:1;
+    if(!d.cells[i]){ Object.keys(d.assign||{}).forEach(id=>{ if(d.assign[id]===i) delete d.assign[id]; }); }
+    csTouch(d); render(true);
+  });
+  q('[data-csex]',el=>el.onchange=()=>{
+    d.excluded=d.excluded||[]; const id=el.dataset.csex;
+    if(el.checked) d.excluded=d.excluded.filter(x=>x!==id); else { if(!d.excluded.includes(id)) d.excluded.push(id); delete d.assign[id]; }
+    csTouch(d); render(true);
+  });
+  q('[data-csun]',el=>el.onclick=()=>{ const id=el.dataset.csun; state.csSel=(state.csSel&&state.csSel.t==='stu'&&state.csSel.id===id)?null:{t:'stu',id}; render(true); });
+  q('[data-csseat]',el=>el.onclick=()=>{
+    const i=+el.dataset.csseat; const {assign}=csValidAssign(a);
+    const idAt=cell=>Object.keys(assign).find(k=>assign[k]===cell);
+    const sel=state.csSel;
+    if(!sel){ if(idAt(i)) state.csSel={t:'seat',i}; render(true); return; }
+    if(sel.t==='seat'){
+      if(sel.i===i){ state.csSel=null; render(true); return; }
+      const idA=idAt(sel.i), idB=idAt(i);
+      if(idA) d.assign[idA]=i; if(idB) d.assign[idB]=sel.i;
+      state.csSel=null; csTouch(d); render(true); return;
+    }
+    if(sel.t==='stu'){
+      const idB=idAt(i); if(idB) delete d.assign[idB];
+      d.assign[sel.id]=i; state.csSel=null; csTouch(d); render(true);
+    }
+  });
+}
+function seatPrintHTML(){
+  const a=state.csA||academies()[0]; const g=csGrid(a,false,true);
+  return `<div style="font-family:inherit"><div style="font-size:1.3rem;font-weight:800;margin-bottom:4px">💻 컴퓨터 자리 배치표 — ${esc(AC[a].label)}</div>
+    <div style="font-size:.8rem;color:#5a6478;margin-bottom:10px">어학실 수업 초·중등 재원생 ${Object.keys(g.assign).length}명 · 출력일 ${todayISO()} · 같은 학년/같은 반 옆·앞뒤 자리 배치 금지 규칙 적용</div>
+    <div style="text-align:center;font-size:.8rem;font-weight:800;margin-bottom:6px;color:#5a6478">▲ 칠판 / 앞쪽</div>${g.html}</div>`;
 }
 function renderConsultRequestAdmin(){
   const rows=store.consultRequests.filter(r=>!r._deleted).map(r=>{
@@ -14426,7 +14635,7 @@ function reportHTML(){
     if(whoTeacher(who)) return state.rkind==='weekly' ? repWeekPlan(who, weekOf(state.date)) : repDailyJournal(who, state.date);
   }
   const date=todayISO();
-  const tabName={dash:'반 · 교재 현황',today:'수업 일지 (출석 · 숙제)',consult:'상담 기록',attend:'월별 출결부',report:(state.rkind==='weekly'?'주간 진도계획표':'업무일지'),roster:'학교 · 학년별 명단',yearly:'연간 교재 내역',stats:'학생 통계',cal:'학사일정 · 회의록',board:'게시판',syllabus:'Syllabus',examrpt:'내신 분석',archive:'전체 기록 모아보기',set:'선생님 설정'}[state.tab];
+  const tabName={seat:'컴퓨터 자리 배치표',dash:'반 · 교재 현황',today:'수업 일지 (출석 · 숙제)',consult:'상담 기록',attend:'월별 출결부',report:(state.rkind==='weekly'?'주간 진도계획표':'업무일지'),roster:'학교 · 학년별 명단',yearly:'연간 교재 내역',stats:'학생 통계',cal:'학사일정 · 회의록',board:'게시판',syllabus:'Syllabus',examrpt:'내신 분석',archive:'전체 기록 모아보기',set:'선생님 설정'}[state.tab];
   let extra='';
   if(state.tab==='consult'&&state.tf) extra=' — '+store.teachers[state.tf.a][state.tf.i].name+' 선생님';
   const lt=loginTeacher();
@@ -14471,6 +14680,7 @@ function reportHTML(){
     } else
     body=(eaSid && eaEntry && (eaEntry.students||[]).some(s=>s.id===eaSid)) ? eaStudentReportBody(eaEntry, eaSid) : eaReportBody(eaEntry, eaPrintOptsFor(eaEntry));
   }
+  else if(state.tab==='seat'){ body=seatPrintHTML(); }
   else { body=repSet(); }
   // 내신 분석은 리포트 자체에 학교명·시험명이 들어간 전용 머리말이 이미 있어서, 위쪽의 일반 대시보드 타이틀 바는 중복이라 뺀다(중등부·고등부 모두 동일)
   if(state.tab==='examrpt') return body;
@@ -14479,14 +14689,14 @@ function reportHTML(){
 document.getElementById('printBtn').onclick=()=>{
   let st=document.getElementById('pageOrient');
   if(!st){ st=document.createElement('style'); st.id='pageOrient'; document.head.appendChild(st); }
-  st.textContent = (state.tab==='yearly'||state.tab==='attend') ? '@page{size:A4 landscape;margin:10mm}' : '@page{size:A4 portrait;margin:12mm}';
+  st.textContent = (state.tab==='yearly'||state.tab==='attend'||state.tab==='seat') ? '@page{size:A4 landscape;margin:10mm}' : '@page{size:A4 portrait;margin:12mm}';
   document.getElementById('printarea').innerHTML='<div style="'+rF+'">'+reportHTML()+'</div>';
   window.print();
 };
 document.getElementById('xlsBtn').onclick=()=>{
   const html=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>보고서</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head><body>${reportHTML()}</body></html>`;
   const blob=new Blob(['\uFEFF'+html],{type:'application/vnd.ms-excel'});
-  const tabName={dash:'반교재',today:'수업일지',consult:'상담기록',attend:'출결부',report:(state.rkind==='weekly'?'주간진도계획표':'업무일지'),roster:'학교학년별명단',yearly:'연간교재',stats:'학생통계',cal:'일정회의',archive:'전체기록',set:'설정'}[state.tab];
+  const tabName={seat:'컴퓨터자리',dash:'반교재',today:'수업일지',consult:'상담기록',attend:'출결부',report:(state.rkind==='weekly'?'주간진도계획표':'업무일지'),roster:'학교학년별명단',yearly:'연간교재',stats:'학생통계',cal:'일정회의',archive:'전체기록',set:'설정'}[state.tab];
   let who = (state.tab==='consult'&&state.tf) ? '_'+store.teachers[state.tf.a][state.tf.i].name : '';
   const lt=loginTeacher();
   if((state.tab==='today'||state.tab==='attend')&&lt&&state.myOnly) who='_'+lt.t.name;
@@ -14561,6 +14771,8 @@ function render(keepOpen){
     v.innerHTML=renderBoard(); bindBoard();
   } else if(state.tab==='syllabus'){
     v.innerHTML=renderSyllabus(); bindSyllabus();
+  } else if(state.tab==='seat'){
+    v.innerHTML=renderSeat(); bindSeat();
   } else if(state.tab==='examrpt'){
     v.innerHTML=renderExamAnalysis(); bindExamAnalysis();
   } else { v.innerHTML=renderSet(); bindSet(); }
