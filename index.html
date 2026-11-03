@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>이베스트 (본관) — 선생님용 대시보드 · v1103-b</title>
+<title>이베스트 (본관) — 선생님용 대시보드 · v1103-h</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%96%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">
@@ -5642,6 +5642,14 @@ function csGet(a){
   if(!d){ d={rows:5, cols:8, cells:Array(40).fill(1), assign:{}, excluded:[], updatedAt:0}; store.compSeats[key]=d; }
   return d;
 }
+// 바로 앞 기간(예: 지난달) 배치의 {학생id→자리번호} — 자동 배치가 같은 자리를 피하는 데 쓴다
+function csPrevInfo(a){
+  const d=csGet(a); if(d.avoidOff) return null;
+  const list=csPeriods(a); const cur=csKey(a); const ix=list.findIndex(x=>x[0]===cur);
+  if(ix<=0) return null; const ref=store.compSeats[list[ix-1][0]]; if(!ref||!ref.assign) return null;
+  const nums=csSeatNumbers(ref); const labels={}; Object.keys(ref.assign).forEach(id=>{ const n=nums[ref.assign[id]]; if(n!=null) labels[id]=String(n); });
+  return {name:list[ix-1][1], labels};
+}
 function csEditing(){ return csCanEdit() && !!state.csUnlock; }
 function csTouch(d){ d.updatedAt=Date.now(); save(); }
 function csLevelOf(st){
@@ -5739,6 +5747,8 @@ function csAuto(a){
   const okp=d.okPairs||{};
   const conf=(x,y)=>{ if(!ov[x][y] || okp[csPairKey(cand[x].id,cand[y].id)]) return 0; return ((cand[x]._g&&cand[x]._g===cand[y]._g)?1:0)+((cand[x]._c&&cand[x]._c===cand[y]._c)?1:0); };
   const nb={}; seats.forEach(i=>{ nb[i]=csNeighbors(d,i); });
+  const pv=csPrevInfo(a); const myNums=csSeatNumbers(d); const W_PREV=1.2;
+  const prevLab=cand.map(s=>pv&&pv.labels[s.id]!=null?pv.labels[s.id]:null);
   let best=null, bestCost=Infinity;
   for(let rs=0; rs<6 && bestCost>0.5; rs++){
     const at=Array(n); const occ={}; seats.forEach(i=>occ[i]=[]);
@@ -5749,7 +5759,7 @@ function csAuto(a){
     // 빈 자리를 먼저 모두 채우고, 학생이 자리보다 많을 때만 남는 학생이 같은 자리를 나눠 쓴다
     order.forEach((k,idx)=>place(k, idx<pos.length? pos[idx] : pos[(Math.random()*pos.length)|0]));
     // k가 자리 p에 있을 때 드는 비용(자기 제외)
-    const costOf=(k,p)=>{ let c=0; occ[p].forEach(o=>{ if(o===k) return; c+= noShare(k,o)?W_SAME:W_SHARE; }); nb[p].forEach(j=>{ occ[j].forEach(o=>{ c+=conf(k,o); }); }); return c; };
+    const costOf=(k,p)=>{ let c=0; occ[p].forEach(o=>{ if(o===k) return; c+= noShare(k,o)?W_SAME:W_SHARE; }); nb[p].forEach(j=>{ occ[j].forEach(o=>{ c+=conf(k,o); }); }); if(prevLab[k]!=null && String(myNums[p])===prevLab[k]) c+=2*W_PREV; return c; };
     let total=0; for(let k=0;k<n;k++) total+=costOf(k,at[k]); total/=2;
     const N=60000;
     for(let it=0; it<N && total>=0.5; it++){
@@ -5777,7 +5787,12 @@ function csAuto(a){
   state.csSel=null; csTouch(d);
   render(true);
   const shared=new Set(Object.values(d.assign)).size<n;
-  setTimeout(()=>{ try{ toast(bestCost>=1? `⚠ 자리 배치 완료 — 규칙에 걸리는 곳이 남았어요(자리가 부족하거나 시간이 겹치는 학생이 많아서일 수 있어요)` : (shared?'✔ 자리 배치 완료 — 시간이 다른 학생은 같은 자리를 나눠 앉았어요':'✔ 자리 배치 완료 — 규칙 위반 없음')); }catch(e){} },50);
+  const rep1=cand.filter((s,k)=>prevLab[k]!=null && String(myNums[d.assign[s.id]])===prevLab[k]).length;
+  setTimeout(()=>{ try{
+    const bad=csGrid(a,false,false).bad;
+    let msg= bad? '⚠ 자리 배치 완료 — 규칙에 걸린 곳이 남았어요(자리가 부족하거나 시간이 겹치는 학생이 많아서일 수 있어요)' : (shared?'✔ 자리 배치 완료 — 빈 자리를 다 채우고, 시간이 다른 학생끼리 같은 자리를 나눠 앉았어요':'✔ 자리 배치 완료 — 규칙 위반 없음');
+    if(pv) msg+= rep1? ` · ${pv.name}과 같은 자리 ${rep1}명`:` · ${pv.name}과 겹치는 자리 없음`;
+    toast(msg); }catch(e){} },50);
 }
 function csResize(d, rows, cols){
   rows=Math.max(1,Math.min(20,rows|0)); cols=Math.max(1,Math.min(20,cols|0));
@@ -5816,7 +5831,14 @@ function csGrid(a, editable, printMode){
   });
   if(csWarnOff()){ Object.keys(bad).forEach(k=>delete bad[k]); Object.keys(pairs).forEach(k=>delete pairs[k]); badId.clear(); } // 경고 끄기: 표시만 숨김
   const sel=state.csSel; const ccol=csClassColors(a);
-  let h=`<div style="display:grid;grid-template-columns:repeat(${d.cols},minmax(${printMode?40:76}px,1fr));${printMode?'flex:1;grid-auto-rows:minmax(34px,1fr);':''}gap:${printMode?4:5}px">`;
+  // 복도(자리·메모가 하나도 없는 줄/칸)는 좁게 — 수정 화면에서는 그대로 둔다
+  const used=i=>!!d.cells[i]||!!(d.labels||{})[i];
+  const emptyCol=[], emptyRow=[];
+  for(let c=0;c<d.cols;c++){ let e=true; for(let r=0;r<d.rows;r++) if(used(r*d.cols+c)){ e=false; break; } emptyCol.push(e); }
+  for(let r=0;r<d.rows;r++){ let e=true; for(let c=0;c<d.cols;c++) if(used(r*d.cols+c)){ e=false; break; } emptyRow.push(e); }
+  const colT=editable?`repeat(${d.cols},minmax(${printMode?40:76}px,1fr))`:emptyCol.map(e=>e?(printMode?'minmax(10px,.35fr)':'28px'):`minmax(${printMode?40:76}px,1fr)`).join(' ');
+  const rowT=editable?'':(printMode?`grid-template-rows:${emptyRow.map(e=>e?'minmax(8px,.35fr)':'minmax(34px,1fr)').join(' ')};`:`grid-template-rows:${emptyRow.map(e=>e?'20px':'auto').join(' ')};`);
+  let h=`<div style="display:grid;grid-template-columns:${colT};${printMode?'flex:1;':''}${rowT}gap:${printMode?4:5}px">`;
   d.cells.forEach((v,i)=>{
     const lab=(d.labels||{})[i];
     if(editable && lab && !v){
@@ -5830,7 +5852,7 @@ function csGrid(a, editable, printMode){
       let span=1; while(c+span<d.cols && !d.cells[i+span] && (d.labels||{})[i+span]===lab) span++;
       h+=`<div style="grid-column:span ${span};min-height:${printMode?34:42}px;border:2px solid #333;border-radius:6px;background:#fff8e1;display:flex;align-items:center;justify-content:center;font-size:${printMode?'.78rem':'.84rem'};font-weight:800;color:#333">${esc(lab)}</div>`; return;
     }
-    if(!v){ h+=`<div style="min-height:${printMode?34:42}px"></div>`; return; }
+    if(!v){ h+='<div></div>'; return; }
     const L=occ[i]||[]; const b=bad[i];
     const mh=printMode?34:42;
     h+=`<div ${printMode?'':`data-csseat="${i}"`} title="${b?esc(b.join(' / ')):''}" style="${printMode?'':'cursor:pointer;'}min-height:${mh}px;border:2px solid ${b?'#c0392b':'#cfd5e1'};border-radius:6px;padding:${L.length?'13px 2px 2px':'2px 4px'};background:#fff;font-size:${printMode?'.95rem':'.8rem'};font-weight:800;text-align:center;position:relative;line-height:1.3;${printMode?'display:flex;flex-direction:column;justify-content:center;':''}">
@@ -5871,12 +5893,13 @@ function renderSeat(){
   const noLevel=store.students.filter(st=>st.academy===a && !st._deleted && (st.status||'재원')==='재원' && !['초','중'].includes(csLevelOf(st)) && csLevelOf(st)!=='고').length;
   const labNone=csLabClassNames(a).size===0;
   return `<div class="setsec" style="border:2px solid #2e5fb7">
-    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1103-b · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
+    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1103-h · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
     <div class="desc">학원 전체 <b>초·중등 재원생 중 강의실이 '어학실'인 수업을 듣는 학생</b>(${cand.length}명, 어학실 수업이 있는 반 ${csLabClassNames(a).size}개)을 자리 ${seatCount}개에 자동으로 배치합니다. <b>같은 학년끼리</b>, <b>같은 반끼리</b>는 옆·앞뒤 자리에 앉지 않게 짜고, 학년·반은 학생 명단과 시간표(반)를 그대로 따릅니다. <b>어학실 이용 시간이 겹치지 않는 학생</b>은 같은 학년·같은 반이어도 옆자리에 앉을 수 있고, 한 자리(컴퓨터)를 시간대별로 나눠 써도 돼요(자리 칸 안에 학생이 여러 명 보여요). 수동으로는 학생을 눌러 고른 뒤 자리나 다른 학생을 누르면 옮기거나 서로 바꿔요. 빨간 테두리(⚠)는 규칙에 걸린 곳입니다.</div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:10px 0 0;font-size:.84rem"><b>📅 기간</b>
       <select data-csperiod style="padding:5px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${periods.map(x=>`<option value="${esc(x[0])}" ${x[0]===pkey?'selected':''}>${esc(x[1])}</option>`).join('')}</select>
       ${can?`<button class="btn small" data-csperadd>+ 기간 추가</button>${pkey!==a?'<button class="btn small" data-csperren>이름 변경</button><button class="btn small" data-csperdel style="color:#c0392b;border-color:#e7b3ab">삭제</button>':''}`:''}
-      <span style="font-size:.74rem;color:var(--sub)">시간표가 바뀌는 달·주마다 기간을 만들어 따로 저장해요 (예: 11월 1-2주 / 11월 3-4주)</span></div>
+      <span style="font-size:.74rem;color:var(--sub)">시간표가 바뀌는 달·주마다 기간을 만들어 따로 저장해요 (예: 11월 1-2주 / 11월 3-4주)</span>
+      ${(()=>{ const pi=csPeriods(a); const ix=pi.findIndex(x=>x[0]===pkey); return ix>0?`<label style="font-size:.78rem;display:flex;gap:4px;align-items:center;width:100%"><input type="checkbox" data-csavoid ${d.avoidOff?'':'checked'} ${can?'':'disabled'}> 자동 배치할 때 <b>${esc(pi[ix-1][1])}</b> 배치와 같은 자리는 피하기</label>`:`<span style="font-size:.74rem;color:var(--sub);width:100%">※ 다음 기간부터는 바로 앞 기간 배치와 같은 자리를 피해서 자동 배치할 수 있어요.</span>`; })()}</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">
       ${perm?`<button class="btn ${can?'primary':''}" data-csunlock>${can?'✔ 수정 끝 (보기로)':'✏ 수정하기'}</button>`:''}
       ${can?`<button class="btn primary" data-csauto>🎲 자동 배치</button>
@@ -5913,6 +5936,7 @@ function bindSeat(){
   q('[data-csa]',el=>el.onchange=()=>{ state.csA=el.value; state.csSel=null; render(true); });
   q('[data-csperiod]',el=>el.onchange=()=>{ state.csP=state.csP||{}; state.csP[a]=el.value; state.csSel=null; render(true); });
   q('[data-csdet]',el=>el.addEventListener('toggle',()=>{ state.csDetOpen=el.open; }));
+  q('[data-csavoid]',el=>el.onchange=()=>{ d.avoidOff=!el.checked; csTouch(d); csRender(); });
   q('[data-cswarn]',b=>b.onclick=()=>{ csSetWarnOff(!csWarnOff()); csRender(); });
   q('[data-csunlock]',b=>b.onclick=()=>{ state.csUnlock=!state.csUnlock; if(!state.csUnlock) state.csEdit=false; state.csSel=null; csRender(); });
   q('[data-csprint]',b=>b.onclick=()=>document.getElementById('printBtn').click());
