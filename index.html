@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>이베스트 (본관) — 선생님용 대시보드 · v1103-k</title>
+<title>이베스트 (본관) — 선생님용 대시보드 · v1103-l</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%96%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">
@@ -1595,29 +1595,67 @@ let state = {tab:(localStorage.getItem(LASTTAB_KEY)||'today'), sub:'class', toda
 /* ---------- 탭별 주소 (예: /EBEST/students_list, /EBEST/schedule) ----------
    GitHub Pages에서 주소를 직접 열거나 새로고침해도 열리도록, 저장소 맨 위에 404.html(함께 드린 파일)을 같이 올려둔다.
    그 파일이 /EBEST/schedule 같은 주소를 /EBEST/?go=schedule 로 되돌려주면, 이 앱이 그 탭을 열고 주소를 다시 /EBEST/schedule 로 바꿔 보여준다. */
-var ROUTE_SLUGS={today:'home',consult:'consult',report:'work_report',dash:'classes',bookgive:'book_delivery',wordrange:'word_range',hwrange:'homework_check',papercheck:'paper_check',syllabus:'syllabus',examrpt:'exam_analysis',roster:'students_list',timetable:'schedule',seat:'computer_seats',attend:'attendance',yearly:'yearly_books',cal:'calendar',board:'board',archive:'archive',stats:'student_stats',set:'settings'};
+var ROUTE_SLUGS={today:'home',consult:'consult',report:'work_report',dash:'classes',bookgive:'book_delivery',wordrange:'words',hwrange:'homework',syllabus:'syllabus',examrpt:'exam_analysis',roster:'students_list',timetable:'schedule',seat:'computer_seats',attend:'attendance',yearly:'yearly_books',cal:'calendar',board:'board',archive:'archive',stats:'student_stats',set:'settings'};
 var ROUTE_TABS=(function(){ const o={}; for(const k in ROUTE_SLUGS) o[ROUTE_SLUGS[k]]=k; return o; })();
+// 탭 안에서 버튼으로 바뀌는 화면은 /탭/화면 형태로 주소를 따로 갖는다 (예: /EBEST/words/make)
+var ROUTE_SUBS={
+  dash:{prop:'sub',def:'class',map:{class:'class',book:'book',student:'student'}},
+  wordrange:{prop:'wrMode',def:'range',map:{range:'range',make:'make'}},
+  hwrange:{prop:'hwMode',def:'hw',map:{check:'hw',paper:'pc'}},
+  timetable:{prop:'ttView',def:'day',map:{week:'week',card:'weekcard',day:'day',bulk:'bulk'}},
+  roster:{prop:'rosterView',def:'all',map:{all:'all',class:'class',school:'school',stats:'stats'}}
+};
+// 예전 주소(단어 범위·숙제 체크표·과제검사표를 따로 쓰던 때)도 계속 열리게
+var ROUTE_LEGACY={word_range:['wordrange','range'],homework_check:['hwrange','check'],paper_check:['hwrange','paper']};
+function routeParse(path){ // 'words/make' 또는 '/EBEST/words/make' → {tab,sub}
+  const segs=String(path||'').split('/').filter(Boolean);
+  for(let n=segs.length-1;n>=0;n--){
+    const sg=segs[n];
+    if(ROUTE_LEGACY[sg]) return {tab:ROUTE_LEGACY[sg][0],sub:ROUTE_LEGACY[sg][1],idx:n,len:1};
+    if(ROUTE_TABS[sg]){
+      const tab=ROUTE_TABS[sg], nx=segs[n+1], cfg=ROUTE_SUBS[tab];
+      const hasSub=!!(cfg && nx && cfg.map[nx]!=null && n+1===segs.length-1);
+      return {tab,sub:hasSub?nx:'',idx:n,len:hasSub?2:1};
+    }
+    if(n<segs.length-2) break;
+  }
+  return null;
+}
+function routeSubSlug(tab){ // 지금 화면의 sub 주소 조각
+  const cfg=ROUTE_SUBS[tab]; if(!cfg) return '';
+  const cur=state[cfg.prop]||cfg.def;
+  for(const k in cfg.map) if(cfg.map[k]===cur) return k;
+  return '';
+}
+function routeApply(r){
+  if(!r) return;
+  state.tab=r.tab;
+  const cfg=ROUTE_SUBS[r.tab];
+  if(cfg && r.sub && cfg.map[r.sub]!=null) state[cfg.prop]=cfg.map[r.sub];
+}
 function routeBase(){
-  const parts=location.pathname.split('/'); // ['', 'EBEST', 'students_list']
-  let last=parts[parts.length-1];
-  if(ROUTE_TABS[last]) parts.pop(); else if(last==='index.html') parts.pop();
+  const parts=location.pathname.split('/'); // ['', 'EBEST', 'words', 'make']
+  const r=routeParse(location.pathname);
+  if(r) parts.length=parts.length-r.len; else if(parts[parts.length-1]==='index.html') parts.pop();
   let b=parts.join('/'); if(!b.endsWith('/')) b+='/';
   return b;
 }
-function routeSlugNow(){ const last=location.pathname.split('/').pop(); return ROUTE_TABS[last]?last:''; }
+function routeNow(){ const r=routeParse(location.pathname); return r?(ROUTE_SLUGS[r.tab]+(r.sub?'/'+r.sub:'')):''; }
 function routeInit(){
   try{
     if(!/^https?:$/.test(location.protocol)) return;
     const go=new URLSearchParams(location.search).get('go');
-    const slug=ROUTE_TABS[go]?go:routeSlugNow();
-    if(slug && ROUTE_TABS[slug]) state.tab=ROUTE_TABS[slug];
+    const r=routeParse(go||location.pathname);
+    routeApply(r);
   }catch(e){}
 }
 function routeSync(){
   try{
     if(!/^https?:$/.test(location.protocol)) return;
-    const want=ROUTE_SLUGS[state.tab]; if(!want) return;
-    const cur=routeSlugNow(); const hasGo=/[?&]go=/.test(location.search);
+    const slug=ROUTE_SLUGS[state.tab]; if(!slug) return;
+    const sub=routeSubSlug(state.tab);
+    const want=slug+(sub?'/'+sub:'');
+    const cur=routeNow(); const hasGo=/[?&]go=/.test(location.search);
     if(cur===want && !hasGo) return;
     const url=routeBase()+want;
     if(cur && cur!==want && !hasGo) history.pushState(null,'',url); else history.replaceState(null,'',url);
@@ -1625,7 +1663,7 @@ function routeSync(){
 }
 routeInit();
 window.addEventListener('popstate',()=>{
-  try{ const t=ROUTE_TABS[routeSlugNow()]; if(t && t!==state.tab){ state.tab=t; render(); } }catch(e){}
+  try{ const r=routeParse(location.pathname); if(r){ routeApply(r); render(); } }catch(e){}
 });
 
 
@@ -6239,7 +6277,7 @@ function renderSeat(){
   const noLevel=store.students.filter(st=>st.academy===a && !st._deleted && (st.status||'재원')==='재원' && !['초','중'].includes(csLevelOf(st)) && csLevelOf(st)!=='고').length;
   const labNone=csLabClassNames(a).size===0;
   return `<div class="setsec" style="border:2px solid #2e5fb7">
-    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1103-k · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
+    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1103-l · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
     <div class="desc">학원 전체 <b>초·중등 재원생 중 강의실이 '어학실'인 수업을 듣는 학생</b>(${cand.length}명, 어학실 수업이 있는 반 ${csLabClassNames(a).size}개)을 자리 ${seatCount}개에 자동으로 배치합니다. <b>같은 학년끼리</b>, <b>같은 반끼리</b>는 옆·앞뒤 자리에 앉지 않게 짜고, 학년·반은 학생 명단과 시간표(반)를 그대로 따릅니다. <b>어학실 이용 시간이 겹치지 않는 학생</b>은 같은 학년·같은 반이어도 옆자리에 앉을 수 있고, 한 자리(컴퓨터)를 시간대별로 나눠 써도 돼요(자리 칸 안에 학생이 여러 명 보여요). 수동으로는 학생을 눌러 고른 뒤 자리나 다른 학생을 누르면 옮기거나 서로 바꿔요. 빨간 테두리(⚠)는 규칙에 걸린 곳입니다.</div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:10px 0 0;font-size:.84rem"><b>📅 기간</b>
       <select data-csperiod style="padding:5px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${periods.map(x=>`<option value="${esc(x[0])}" ${x[0]===pkey?'selected':''}>${esc(x[1])}</option>`).join('')}</select>
