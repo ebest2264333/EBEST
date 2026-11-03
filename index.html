@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>이베스트 (본관) — 선생님용 대시보드 · v1103-l</title>
+<title>이베스트 (본관) — 선생님용 대시보드 · v1103-p</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%96%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">
@@ -1600,7 +1600,7 @@ var ROUTE_TABS=(function(){ const o={}; for(const k in ROUTE_SLUGS) o[ROUTE_SLUG
 // 탭 안에서 버튼으로 바뀌는 화면은 /탭/화면 형태로 주소를 따로 갖는다 (예: /EBEST/words/make)
 var ROUTE_SUBS={
   dash:{prop:'sub',def:'class',map:{class:'class',book:'book',student:'student'}},
-  wordrange:{prop:'wrMode',def:'range',map:{range:'range',make:'make'}},
+  wordrange:{prop:'wrMode',def:'range',map:{range:'range',make:'make',manage:'manage'}},
   hwrange:{prop:'hwMode',def:'hw',map:{check:'hw',paper:'pc'}},
   timetable:{prop:'ttView',def:'day',map:{week:'week',card:'weekcard',day:'day',bulk:'bulk'}},
   roster:{prop:'rosterView',def:'all',map:{all:'all',class:'class',school:'school',stats:'stats'}}
@@ -4841,7 +4841,7 @@ function wbShort(wb){ return String(wb||'').replace(/^(초등|중등|고등)\s*/
 function wordModeBarHTML(){
   const m=state.wrMode==='make';
   const b=(on,v,t)=>`<button type="button" class="btn small wrModeBtn" data-m="${v}" style="padding:6px 16px;font-size:.84rem;font-weight:800;${on?'background:var(--ink);color:#fff':'background:#eef0f6;color:var(--sub)'}">${t}</button>`;
-  return `<div style="display:flex;gap:6px;margin-bottom:10px">${b(!m,'range','📅 범위')}${b(m,'make','📝 시험지 만들기')}</div>`;
+  return `<div style="display:flex;gap:6px;margin-bottom:10px">${b(!m&&state.wrMode!=='manage','range','📅 범위')}${b(m,'make','📝 시험지 만들기')}${b(state.wrMode==='manage','manage','📚 단어장 관리')}</div>`;
 }
 /* ---------- 단어 시험지 만들기 (단어장 불러오기 → Day/단어 선택 → 시험지·답안지 한꺼번에 인쇄) ---------- */
 // 단어장은 store.wordBooks에 저장되어 서버로 공유된다(통째 교체 방식이라 삭제도 다른 기기에 반영).
@@ -4880,17 +4880,17 @@ const WM_SHEET_CSS=`
 .q:nth-child(even){border-right:none}.q .n{color:#666;min-width:1.7em;text-align:right;font-size:.78rem;flex:none}.q .tx{font-weight:500;flex:none;max-width:48%}.q .an{flex:1;color:#b91c1c;font-weight:700;font-size:.82rem}
 .mcq{padding:6px 10px;border-bottom:1px dashed #ddd;border-right:1px solid #e5e5e5;break-inside:avoid;font-size:.83rem}.mcq:nth-child(even){border-right:none}
 .mcq .st{font-weight:700;margin-bottom:3px}.mcq .st .n{color:#666;font-weight:400;margin-right:4px}.mcq .ch{display:grid;gap:1px;padding-left:1.5em;font-size:.78rem}
-.sheet.tb{padding:0 0 3mm}.hd{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;padding:2mm 0 2.5mm}
+.sheet.tb{height:277mm;display:flex;flex-direction:column;padding:0 0 1mm}.tbw{flex:1;min-height:0}.hd{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;padding:2mm 0 2.5mm}
 .hd .ti{font-size:.95rem;font-weight:700}.hd .in{font-size:.7rem;color:#555;margin-top:1px}.hd .fl{display:flex;gap:6px;align-items:flex-end;font-size:.8rem;white-space:nowrap}
 .hd .fl span.l{font-weight:700}.hd .fl span.b{display:inline-block;min-width:22mm;border-bottom:1px solid #000;text-align:center;padding:0 3px;height:1.5em;line-height:1.5em}
-table.wt{width:100%;border-collapse:collapse;table-layout:fixed;font-size:.8rem;color:#000}
-table.wt th,table.wt td{border:1px solid #000;text-align:center;padding:0 4px;height:6.7mm;line-height:1.1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+table.wt{width:100%;height:100%;border-collapse:collapse;table-layout:fixed;font-size:.84rem;color:#000}
+table.wt th,table.wt td{border:1px solid #000;text-align:center;padding:0 4px;line-height:1.1;vertical-align:middle;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 table.wt td.x{border:none}table.wt td.k{text-align:left;font-size:.74rem;padding-left:6px}table.wt td.hn{text-align:left;font-weight:700;padding-left:8px}
 table.wt td.an{color:#b91c1c;font-weight:700;text-align:left;font-size:.74rem;padding-left:6px}.sheet.tb.ans .ti{color:#166534}
 @page{size:A4 portrait;margin:9mm 10mm}
-@media print{.sheet{width:100%;border:none;break-before:page;page-break-before:always;padding:0}.sheet:first-child{break-before:auto;page-break-before:auto}.sheet.tb{break-inside:avoid}table.wt th,table.wt td{height:6.6mm}.q{padding:3px 8px;min-height:0}}
+@media print{.sheet{width:100%;border:none;break-before:page;page-break-before:always;padding:0}.sheet:first-child{break-before:auto;page-break-before:auto}.sheet.tb{break-inside:avoid}.q{padding:3px 8px;min-height:0}}
 `;
-const wmS={cur:null,days:new Set(),checked:new Set(),scope:'all',types:new Set(['korean']),dist:'all',order:'random',content:'both',title:'',klass:'',student:'',html:'',edit:false,editDay:null,msg:''};
+const wmS={cur:null,days:new Set(),checked:new Set(),scope:'all',types:new Set(['korean']),dist:'all',order:'random',content:'both',title:'',klass:'',student:'',count:'',html:'',edit:false,editDay:null,msg:''};
 function wmBooks(){ return store.wordBooks=store.wordBooks||[]; }
 function wmSave(){ save(); }
 // 예전에 이 기기에만 저장해 둔 단어장이 있으면, 서버 공유 목록이 비어 있을 때 한 번 옮겨 담는다
@@ -4972,21 +4972,23 @@ function wmAddBook(name,days){
   wmBooks().push({id,name,days:sorted}); wmS.cur=id; wmS.days=new Set(); wmS.checked.clear(); wmS.editDay=null; wmSave();
   return keys.reduce((s,k)=>s+days[k].length,0);
 }
+function wmCount(total){ const n=parseInt(wmS.count); return (n>0&&n<total)?n:total; }
 function wmSelWords(){
   const b=wmBook(); const pool=[]; if(!b) return pool;
   [...wmS.days].filter(d=>b.days[d]).sort(wmDaySort).forEach(d=>b.days[d].forEach(w=>{ if(w.en&&w.ko&&(wmS.scope==='all'||wmS.checked.has(d+'|'+w.en))) pool.push({...w,day:d}); }));
   return pool;
 }
 /* ----- 시험지 만들기 ----- */
+function wmTitle(){ const b=wmBook(); return wmS.title||(b?b.name:'단어 시험'); }
 function wmHeader(title,info,ans,total){
-  return '<div class="sh"><div><div class="t">'+esc(title)+(ans?' — 답안지':'')+'</div><div class="i">'+esc(info)+'</div></div><div class="nm">반'+(wmS.klass?' <b>'+esc(wmS.klass)+'</b>':'<span></span>')+' 이름'+(wmS.student?' <b>'+esc(wmS.student)+'</b>':'<span></span>')+' 점수<span style="width:16mm"></span>/ <b>'+total+'</b></div></div>';
+  return '<div class="sh"><div><div class="t">'+esc(title)+(ans?' — 답안지':'')+'</div></div><div class="nm">반'+(wmS.klass?' <b>'+esc(wmS.klass)+'</b>':'<span></span>')+' 이름'+(wmS.student?' <b>'+esc(wmS.student)+'</b>':'<span></span>')+' 점수<span style="width:16mm"></span>/ <b>'+total+'</b></div></div>';
 }
 function wmFieldHd(title,info,total,ans){
-  return '<div class="hd"><div><div class="ti">'+esc(title)+(ans?' — 답안지':'')+'</div><div class="in">'+esc(info)+'</div></div><div class="fl"><span class="l">반</span><span class="b">'+esc(wmS.klass)+'</span><span class="l">이름</span><span class="b">'+esc(wmS.student)+'</span><span class="l">점수</span><span class="b" style="min-width:12mm"></span><span>/ '+total+'</span></div></div>';
+  return '<div class="hd"><div><div class="ti" style="font-size:1.1rem">'+esc(title)+(ans?' — 답안지':'')+'</div></div><div class="fl"><span class="l">반</span><span class="b">'+esc(wmS.klass)+'</span><span class="l">이름</span><span class="b">'+esc(wmS.student)+'</span><span class="l">점수</span><span class="b" style="min-width:12mm"></span><span>/ '+total+'</span></div></div>';
 }
-const WM_MAXROWS=36;
+const WM_MAXROWS=30; // 한 칸(열)에 최대 30단어, 넘으면 다음 열로 — 한 장 = 2열 = 최대 60단어
 function wmSheetWriting(type,words,info,ans){
-  const t=(wmS.title||'단어 시험')+(type==='korean'?' · 영어 → 한글':type==='english'?' · 한글 → 영어':' · 믹스');
+  const t=wmTitle();
   const g={}; words.forEach(w=>{ (g[w.day||'Day']=g[w.day||'Day']||[]).push(w); });
   const chunks=[];
   Object.keys(g).sort(wmDaySort).forEach(d=>{ const arr=g[d]; for(let i=0;i<arr.length;i+=WM_MAXROWS) chunks.push({label:d+(arr.length>WM_MAXROWS?' ('+(i/WM_MAXROWS+1)+')':''),words:arr.slice(i,i+WM_MAXROWS)}); });
@@ -4994,7 +4996,7 @@ function wmSheetWriting(type,words,info,ans){
   return pages.map(pg=>{
     const rows=Math.max(...pg.map(c=>c.words.length)); const total=pg.reduce((s,c)=>s+c.words.length,0);
     const pad=pg.length<2?'<td class="x" colspan="2"></td>':'';
-    let h='<table class="wt"><colgroup>'+pg.map(()=>'<col style="width:25%"><col style="width:25%">').join('')+(pg.length<2?'<col style="width:25%"><col style="width:25%">':'')+'</colgroup>';
+    let h='<div class="tbw"><table class="wt"><colgroup>'+pg.map(()=>'<col style="width:25%"><col style="width:25%">').join('')+(pg.length<2?'<col style="width:25%"><col style="width:25%">':'')+'</colgroup>';
     h+='<tr>'+pg.map(c=>'<th colspan="2">'+esc(c.label)+'</th>').join('')+pad+'</tr><tr>'+pg.map(()=>'<th>English</th><th>Korean</th>').join('')+pad+'</tr>';
     for(let r=0;r<rows;r++){
       h+='<tr>'+pg.map(c=>{
@@ -5004,14 +5006,18 @@ function wmSheetWriting(type,words,info,ans){
         return (ans?'<td class="an">'+esc(w.en)+'</td>':'<td class="hn"></td>')+'<td class="k">'+esc(w.ko)+'</td>';
       }).join('')+pad+'</tr>';
     }
-    return '<div class="sheet tb'+(ans?' ans':'')+'">'+wmFieldHd(t,info,total,ans)+h+'</table></div>';
+    return '<div class="sheet tb'+(ans?' ans':'')+'">'+wmFieldHd(t,info,total,ans)+h+'</table></div></div>';
   }).join('');
 }
 function wmGenerate(){
   const b=wmBook(); if(!b){ toast('단어장을 먼저 불러오세요'); return; }
   if(!wmS.days.size){ toast('Day를 선택하세요'); return; }
-  if(!wmS.types.size){ toast('시험 유형을 하나 이상 선택하세요'); return; }
-  const pool=wmSelWords(); if(!pool.length){ toast('체크한 단어가 없어요'); return; }
+  if(!wmS.types.size){ toast('시험 유형을 선택하세요'); return; }
+  let pool=wmSelWords(); if(!pool.length){ toast('체크한 단어가 없어요'); return; }
+  const cnt=wmCount(pool.length);
+  if(cnt<pool.length){ // 개수를 적었고 단어가 그보다 많으면 그 개수만큼 랜덤으로 뽑는다 (순차 출제면 원래 순서 유지)
+    const idx=wmShuffle(pool.map((_,i)=>i)).slice(0,cnt).sort((a,b)=>a-b); pool=idx.map(i=>pool[i]);
+  }
   const all=[]; Object.values(b.days).forEach(a=>a.forEach(w=>{ if(w.en&&w.ko) all.push(w); }));
   const mcPool=all.length>=4?all:pool;
   const seq=wmS.order==='seq';
@@ -5027,7 +5033,7 @@ function wmGenerate(){
     if(t==='mixed'){ const dirs=wmShuffle(ws.map((_,i)=>i%2?'en':'ko')); ws=ws.map((w,i)=>({...w,dir:dirs[i]})); }
     if(t==='mc'){
       const built=ws.map(w=>({w,ch:wmShuffle([w,...wmShuffle(mcPool.filter(x=>x.en!==w.en&&x.ko!==w.ko)).slice(0,3)])}));
-      const tt=(wmS.title||'단어 시험')+' · 객관식';
+      const tt=wmTitle();
       const mk=ans=>'<div class="sheet'+(ans?' ans':'')+'">'+wmHeader(tt,info,ans,built.length)+'<div class="grid">'+built.map(({w,ch},i)=>{
         const ai=ch.indexOf(w)+1;
         return ans?'<div class="q"><span class="n">'+(i+1)+'.</span><span class="tx">'+esc(w.en)+'</span><span class="an">→ '+ai+'번 '+esc(w.ko)+'</span></div>'
@@ -5050,7 +5056,7 @@ function wmPrint(){
 function wmEditorHTML(b){
   const keys=Object.keys(b.days); if(!wmS.editDay||!b.days[wmS.editDay]) wmS.editDay=keys[0]||null;
   let h=`<div class="wmed" style="margin-top:8px;padding:8px;background:#f6f8fc;border-radius:8px">
-    <div style="display:flex;gap:6px;flex-wrap:wrap"><input type="text" data-wm="bname" value="${esc(b.name)}" style="flex:1;min-width:120px;font-weight:700"><button class="wmbtn d" data-wm="delbook">단어장 삭제</button></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap"><input type="text" data-wm="bname" value="${esc(b.name)}" style="flex:1;min-width:120px;font-weight:700"><button class="wmbtn" data-wm="export">⬇ 텍스트로 내보내기</button><button class="wmbtn d" data-wm="delbook">단어장 삭제</button></div>
     <div class="wmchips" style="margin-top:8px">${keys.map(k=>`<div class="wmchip ${k===wmS.editDay?'on':''}" data-wm="editday" data-v="${esc(k)}">${esc(k)} (${b.days[k].length})</div>`).join('')}<div class="wmchip" data-wm="addday">+ Day</div></div>`;
   if(wmS.editDay){
     const ws=b.days[wmS.editDay];
@@ -5066,8 +5072,8 @@ function wmHTML(){
   const T=[['korean','🇰🇷 한글 뜻 쓰기','영어단어 → 한글 뜻'],['english','🇺🇸 영어단어 쓰기','한글 뜻 → 영어단어'],['mixed','🔀 믹스','한 장에 한/영 섞어서'],['mc','🎯 객관식 (4지선다)','영어단어 → 뜻 고르기']];
   let words='';
   if(b&&wmS.days.size){
-    words=`<div class="wmpanel" style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px"><b style="font-size:.9rem">단어 선택 <span style="font-size:.72rem;background:#fff1e8;color:#c2410c;padding:2px 9px;border-radius:999px">${wmSelWords().length}단어 출제</span></b>
-      <span style="font-size:.78rem"><label style="cursor:pointer"><input type="radio" name="wmscope" data-wm="scope" value="all" ${wmS.scope==='all'?'checked':''}> 선택한 Day 전체</label> <label style="cursor:pointer;margin-left:8px"><input type="radio" name="wmscope" data-wm="scope" value="checked" ${wmS.scope==='checked'?'checked':''}> 체크한 단어만 (재시험)</label></span></div>
+    words=`<div class="wmpanel" style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px"><b style="font-size:.9rem">단어 선택 <span style="font-size:.72rem;background:#fff1e8;color:#c2410c;padding:2px 9px;border-radius:999px">${wmCount(wmSelWords().length)}단어 출제${wmCount(wmSelWords().length)<wmSelWords().length?' (랜덤)':''}</span></b>
+      <span style="font-size:.78rem"><label style="margin-right:10px">출제 개수 <input type="text" inputmode="numeric" data-wm="count" value="${esc(wmS.count)}" placeholder="전체" style="width:56px;padding:3px 6px;text-align:center"> 개 <small style="color:var(--sub)">(비우면 전체, 적으면 그만큼 랜덤)</small></label><label style="cursor:pointer"><input type="radio" name="wmscope" data-wm="scope" value="all" ${wmS.scope==='all'?'checked':''}> 선택한 Day 전체</label> <label style="cursor:pointer;margin-left:8px"><input type="radio" name="wmscope" data-wm="scope" value="checked" ${wmS.scope==='checked'?'checked':''}> 체크한 단어만 (재시험)</label></span></div>
       <div style="margin-bottom:6px"><button class="wmbtn" data-wm="chkall">전체 체크</button> <button class="wmbtn" data-wm="chkclr">전체 해제</button> <span style="font-size:.72rem;color:var(--sub)">틀린 단어를 체크하면 자동으로 「체크한 단어만」이 돼요.</span></div>
       <div class="wmwl">${[...wmS.days].filter(d=>b.days[d]).sort(wmDaySort).map(d=>`<div class="wmdh">${esc(d)} · ${b.days[d].length}단어</div>`+b.days[d].map(w=>{const k=d+'|'+w.en,on=wmS.checked.has(k);return `<label class="wmw ${on?'on':''}"><input type="checkbox" data-wm="wchk" data-k="${esc(k)}" ${on?'checked':''}><span class="en">${esc(w.en)}</span><span class="ko">${esc(w.ko)}</span></label>`;}).join('')).join('')}</div></div>`;
   }
@@ -5076,18 +5082,15 @@ function wmHTML(){
   <div class="wmgrid"><div class="wmside">
     <h4>1. 단어장</h4>
     <select data-wm="book">${wmBooks().length?'':'<option value="">-- 불러온 단어장 없음 --</option>'}${wmBooks().map(x=>`<option value="${x.id}" ${x.id===wmS.cur?'selected':''}>${esc(x.name)}</option>`).join('')}</select>
-    <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap"><button class="wmbtn" data-wm="upload">📂 파일 불러오기</button><button class="wmbtn" data-wm="newbook">+ 새 단어장</button>${b?`<button class="wmbtn" data-wm="toggleedit">${wmS.edit?'편집 닫기':'✎ 편집'}</button>`:''}</div>
+    <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap"><button class="wmbtn" data-wm="upload">📂 파일 불러오기</button><button class="wmbtn" data-wm="newbook">+ 새 단어장</button><button class="wmbtn" data-wm="gomanage">📚 단어장 관리</button></div>
     <input type="file" id="wmFile" accept=".xlsx,.xls,.csv,.txt,.pdf,.docx" multiple style="display:none">
     <div style="font-size:.72rem;color:var(--sub);margin-top:4px">.xlsx · .csv · .txt · .pdf · .docx · 서버에 저장돼 모든 선생님이 같이 써요 ${wmS.msg?'<br><b>'+esc(wmS.msg)+'</b>':''}</div>
     <details style="margin-top:6px"><summary style="font-size:.76rem;color:#1d4ed8;cursor:pointer">텍스트 직접 붙여넣기</summary><textarea data-wm="paste" rows="4" placeholder="[Day 1]&#10;apple - 사과"></textarea><button class="wmbtn" data-wm="pastego" style="margin-top:4px">붙여넣은 내용 불러오기</button></details>
-    ${wmS.edit&&b?wmEditorHTML(b):''}
     <h4>2. Day 선택</h4>
     <div style="margin-bottom:5px"><button class="wmbtn" data-wm="dayall">전체</button> <button class="wmbtn" data-wm="dayclr">해제</button></div>
     <div class="wmchips">${days.map(d=>`<div class="wmchip ${wmS.days.has(d)?'on':''}" data-wm="day" data-v="${esc(d)}">${esc(d)}</div>`).join('')}</div>
-    <h4>3. 시험 유형 (여러 개 선택)</h4>
-    ${T.map(([k,n,s])=>`<label class="wmopt ${wmS.types.has(k)?'on':''}"><input type="checkbox" data-wm="type" data-v="${k}" ${wmS.types.has(k)?'checked':''}><div><b>${n}</b><small>${s}</small></div></label>`).join('')}
-    <label style="font-size:.76rem;color:var(--sub)">단어 배분</label>
-    <select data-wm="dist"><option value="all" ${wmS.dist==='all'?'selected':''}>모든 유형에 같은 단어</option><option value="split" ${wmS.dist==='split'?'selected':''}>유형별로 단어 나누기</option></select>
+    <h4>3. 시험 유형 (하나 선택)</h4>
+    ${T.map(([k,n,s])=>`<label class="wmopt ${wmS.types.has(k)?'on':''}"><input type="radio" name="wmtype" data-wm="type" data-v="${k}" ${wmS.types.has(k)?'checked':''}><div><b>${n}</b><small>${s}</small></div></label>`).join('')}
     <h4>4. 옵션</h4>
     <div style="display:flex;gap:6px"><select data-wm="order"><option value="random" ${wmS.order==='random'?'selected':''}>랜덤</option><option value="seq" ${wmS.order==='seq'?'selected':''}>순차</option></select>
     <select data-wm="content"><option value="both" ${wmS.content==='both'?'selected':''}>시험지+답안지</option><option value="test" ${wmS.content==='test'?'selected':''}>시험지만</option><option value="ans" ${wmS.content==='ans'?'selected':''}>답안지만</option></select></div>
@@ -5097,19 +5100,35 @@ function wmHTML(){
     <button class="wmbtn g" data-wm="print" ${wmS.html?'':'disabled'}>🖨 한꺼번에 인쇄</button>
   </div><div style="min-width:0">${words}${wmS.html?`<div class="wmprev">${wmS.html}</div>`:`<div class="empty">왼쪽에서 단어장 · Day · 유형을 고르고 <b>시험지 만들기</b>를 누르세요.<br>틀린 단어만 체크해서 재시험지도 만들 수 있어요.</div>`}</div></div>`;
 }
+function wmManageHTML(){
+  const b=wmBook();
+  if(!b&&wmBooks().length){ wmS.cur=wmBooks()[0].id; }
+  const bk=wmBook();
+  const cards=wmBooks().map(x=>{ const n=Object.values(x.days).reduce((a,d)=>a+d.length,0); return `<div data-wm="mgbook" data-v="${x.id}" style="cursor:pointer;padding:10px 12px;border:1.5px solid ${x.id===wmS.cur?'#c2410c':'var(--line)'};background:${x.id===wmS.cur?'#fff1e8':'#fff'};border-radius:10px;margin-bottom:7px"><b style="font-size:.88rem;word-break:break-all">${esc(x.name)}</b><div style="font-size:.74rem;color:var(--sub)">${Object.keys(x.days).length}개 Day · ${n}단어</div></div>`; }).join('');
+  return `<style>${WM_CSS}</style><div class="wmgrid" style="grid-template-columns:320px 1fr"><div>
+    <div class="wmpanel"><b style="font-size:.9rem">단어장 목록</b>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0"><button class="wmbtn" data-wm="newbook">+ 새 단어장</button><button class="wmbtn" data-wm="upload">📂 파일 불러오기</button></div>
+      <input type="file" id="wmFile" accept=".xlsx,.xls,.csv,.txt,.pdf,.docx" multiple style="display:none">
+      <div style="font-size:.72rem;color:var(--sub);margin-bottom:6px">.xlsx · .csv · .txt · .pdf · .docx · 서버에 저장돼 모든 선생님이 같이 써요 ${wmS.msg?'<br><b>'+esc(wmS.msg)+'</b>':''}</div>
+      <details><summary style="font-size:.76rem;color:#1d4ed8;cursor:pointer">텍스트 직접 붙여넣기</summary><textarea data-wm="paste" rows="4" placeholder="[Day 1]&#10;apple - 사과" style="width:100%;margin-top:4px"></textarea><button class="wmbtn" data-wm="pastego" style="margin-top:4px">붙여넣은 내용 불러오기</button></details>
+      <div style="margin-top:10px">${cards||'<div class="empty" style="padding:16px">단어장이 없어요.<br>파일을 불러오거나 「새 단어장」을 눌러보세요.</div>'}</div></div>
+  </div><div class="wmpanel" style="min-width:0">${bk?wmEditorHTML(bk).replace('class="wmed" style="margin-top:8px;padding:8px;background:#f6f8fc;border-radius:8px"','class="wmed"'):'<div class="empty">왼쪽에서 단어장을 선택하세요.</div>'}</div></div>`;
+}
 function wmRefresh(){
   const root=document.getElementById('wmRoot'); if(!root) return;
-  const y=window.scrollY; root.innerHTML=wmHTML(); window.scrollTo(0,y);
+  const y=window.scrollY; root.innerHTML=state.wrMode==='manage'?wmManageHTML():wmHTML(); window.scrollTo(0,y);
 }
 function wmBind(){
   const root=document.getElementById('wmRoot'); if(!root) return;
   wmMigrate(); wmRefresh();
   root.addEventListener('click',e=>{
     const el=e.target.closest('[data-wm]'); if(!el) return; const a=el.dataset.wm, b=wmBook();
-    if(['book','dist','order','content','title','klass','student','paste','bulk','bname','dayname','en','ko','scope','type','wchk'].includes(a)) return; // change/input에서 처리
+    if(['book','count','order','content','title','klass','student','paste','bulk','bname','dayname','en','ko','scope','type','wchk'].includes(a)) return; // change/input에서 처리
     if(a==='upload'){ document.getElementById('wmFile').click(); return; }
-    if(a==='newbook'){ const id=Date.now(); wmBooks().push({id,name:'새 단어장',days:{'Day 01':[{en:'',ko:''}]}}); wmS.cur=id; wmS.days=new Set(); wmS.checked.clear(); wmS.edit=true; wmS.editDay='Day 01'; wmSave(); }
-    else if(a==='toggleedit') wmS.edit=!wmS.edit;
+    if(a==='newbook'){ const id=Date.now(); wmBooks().push({id,name:'새 단어장',days:{'Day 01':[{en:'',ko:''}]}}); wmS.cur=id; wmS.days=new Set(); wmS.checked.clear(); wmS.editDay='Day 01'; if(state.wrMode!=='manage'){ state.wrMode='manage'; wmSave(); render(true); return; } wmSave(); }
+    else if(a==='gomanage'){ state.wrMode='manage'; render(true); return; }
+    else if(a==='mgbook'){ wmS.cur=+el.dataset.v; wmS.days=new Set(); wmS.checked.clear(); wmS.html=''; wmS.editDay=null; }
+    else if(a==='export'&&b){ const t=Object.keys(b.days).map(d=>'['+d+']\n'+b.days[d].filter(w=>w.en||w.ko).map(w=>w.en+' - '+w.ko).join('\n')).join('\n\n'); const a2=document.createElement('a'); a2.href=URL.createObjectURL(new Blob([t],{type:'text/plain;charset=utf-8'})); a2.download=(b.name||'단어장')+'.txt'; a2.click(); return; }
     else if(a==='pastego'){ const d=wmParseLines(root.querySelector('[data-wm=paste]').value.split(/\r?\n/)); if(!Object.keys(d).length){ wmS.msg='인식 실패: "영어 - 한글" 형식과 [Day 1] 표제를 확인하세요'; } else { const n=wmAddBook('붙여넣기 '+new Date().toLocaleDateString('ko-KR'),d); wmS.msg=Object.keys(d).length+'개 Day · '+n+'단어 불러옴'; } }
     else if(a==='delbook'){ if(!confirm('이 단어장을 삭제할까요?')) return; store.wordBooks=wmBooks().filter(x=>x.id!==wmS.cur); syncAllowEmptyNow(); wmS.cur=wmBooks()[0]?wmBooks()[0].id:null; wmS.days=new Set(); wmS.checked.clear(); wmS.html=''; wmSave(); }
     else if(a==='editday') wmS.editDay=el.dataset.v;
@@ -5133,10 +5152,11 @@ function wmBind(){
     const el=e.target.closest('[data-wm]'); if(!el) return; const a=el.dataset.wm, b=wmBook();
     if(a==='wmFile') return;
     if(a==='book'){ wmS.cur=+el.value||null; wmS.days=new Set(); wmS.checked.clear(); wmS.html=''; wmS.editDay=null; }
-    else if(a==='type'){ el.checked?wmS.types.add(el.dataset.v):wmS.types.delete(el.dataset.v); }
+    else if(a==='type'){ wmS.types=new Set([el.dataset.v]); }
     else if(a==='scope') wmS.scope=el.value;
     else if(a==='wchk'){ el.checked?wmS.checked.add(el.dataset.k):wmS.checked.delete(el.dataset.k); if(wmS.checked.size) wmS.scope='checked'; }
-    else if(['dist','order','content'].includes(a)){ wmS[a]=el.value; return; }
+    else if(['order','content'].includes(a)){ wmS[a]=el.value; return; }
+    else if(a==='count'){ wmS.count=el.value.replace(/\D/g,''); }
     else if(['title','klass','student'].includes(a)){ wmS[a]=el.value; return; }
     else if(a==='bname'&&b){ b.name=el.value; wmSave(); const o=root.querySelector('[data-wm=book] option:checked'); if(o) o.textContent=b.name; return; }
     else if((a==='en'||a==='ko')&&b){ b.days[wmS.editDay][+el.dataset.i][a]=el.value; wmSave(); return; }
@@ -5154,7 +5174,7 @@ function wmBind(){
 }
 
 function renderWordRange(list){
-  if(state.wrMode==='make') return wordModeBarHTML()+'<div id="wmRoot"></div>';
+  if(state.wrMode==='make'||state.wrMode==='manage') return wordModeBarHTML()+'<div id="wmRoot"></div>';
   return wordModeBarHTML()+renderWordRange0(list);
 }
 function renderWordRange0(list){
@@ -5215,7 +5235,7 @@ function renderWordRange0(list){
 function bindWordRange(){
   const v=document.getElementById('view');
   v.querySelectorAll('.wrModeBtn').forEach(b=>b.onclick=()=>{ state.wrMode=b.dataset.m; render(true); });
-  if(state.wrMode==='make'){ wmBind(); return; }
+  if(state.wrMode==='make'||state.wrMode==='manage'){ wmBind(); return; }
   // 두 버튼 다 <summary> 안에 있어서, 그냥 두면 클릭했을 때 반 카드가 접히기도 한다 — 그건 막고 수정 모드만 켜고/끈다.
   v.querySelectorAll('[data-wreditclass]').forEach(b=>b.onclick=(e)=>{
     e.preventDefault(); e.stopPropagation();
@@ -6277,7 +6297,7 @@ function renderSeat(){
   const noLevel=store.students.filter(st=>st.academy===a && !st._deleted && (st.status||'재원')==='재원' && !['초','중'].includes(csLevelOf(st)) && csLevelOf(st)!=='고').length;
   const labNone=csLabClassNames(a).size===0;
   return `<div class="setsec" style="border:2px solid #2e5fb7">
-    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1103-l · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
+    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1103-p · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
     <div class="desc">학원 전체 <b>초·중등 재원생 중 강의실이 '어학실'인 수업을 듣는 학생</b>(${cand.length}명, 어학실 수업이 있는 반 ${csLabClassNames(a).size}개)을 자리 ${seatCount}개에 자동으로 배치합니다. <b>같은 학년끼리</b>, <b>같은 반끼리</b>는 옆·앞뒤 자리에 앉지 않게 짜고, 학년·반은 학생 명단과 시간표(반)를 그대로 따릅니다. <b>어학실 이용 시간이 겹치지 않는 학생</b>은 같은 학년·같은 반이어도 옆자리에 앉을 수 있고, 한 자리(컴퓨터)를 시간대별로 나눠 써도 돼요(자리 칸 안에 학생이 여러 명 보여요). 수동으로는 학생을 눌러 고른 뒤 자리나 다른 학생을 누르면 옮기거나 서로 바꿔요. 빨간 테두리(⚠)는 규칙에 걸린 곳입니다.</div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:10px 0 0;font-size:.84rem"><b>📅 기간</b>
       <select data-csperiod style="padding:5px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${periods.map(x=>`<option value="${esc(x[0])}" ${x[0]===pkey?'selected':''}>${esc(x[1])}</option>`).join('')}</select>
