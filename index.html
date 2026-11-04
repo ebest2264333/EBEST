@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>이베스트 (본관) — 선생님용 대시보드 · v1104-g</title>
+<title>이베스트 (본관) — 선생님용 대시보드 · v1104-j</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%96%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">
@@ -6663,7 +6663,7 @@ function renderSeat(){
   const noLevel=store.students.filter(st=>st.academy===a && !st._deleted && (st.status||'재원')==='재원' && !['초','중'].includes(csLevelOf(st)) && csLevelOf(st)!=='고').length;
   const labNone=csLabClassNames(a).size===0;
   return `<div class="setsec" style="border:2px solid #2e5fb7">
-    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1104-g · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
+    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1104-j · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
     <div class="desc">학원 전체 <b>초·중등 재원생 중 강의실이 '어학실'인 수업을 듣는 학생</b>(${cand.length}명, 어학실 수업이 있는 반 ${csLabClassNames(a).size}개)을 자리 ${seatCount}개에 자동으로 배치합니다. <b>같은 학년끼리</b>, <b>같은 반끼리</b>는 옆·앞뒤 자리에 앉지 않게 짜고, 학년·반은 학생 명단과 시간표(반)를 그대로 따릅니다. <b>어학실 이용 시간이 겹치지 않는 학생</b>은 같은 학년·같은 반이어도 옆자리에 앉을 수 있고, 한 자리(컴퓨터)를 시간대별로 나눠 써도 돼요(자리 칸 안에 학생이 여러 명 보여요). 수동으로는 학생을 눌러 고른 뒤 자리나 다른 학생을 누르면 옮기거나 서로 바꿔요. 빨간 테두리(⚠)는 규칙에 걸린 곳입니다.</div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:10px 0 0;font-size:.84rem"><b>📅 기간</b>
       <select data-csperiod style="padding:5px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${periods.map(x=>`<option value="${esc(x[0])}" ${x[0]===pkey?'selected':''}>${esc(x[1])}</option>`).join('')}</select>
@@ -9106,6 +9106,31 @@ function wlGet(who, date){
   if(!e.updatedAt) e.lessons=autoLessonsFilled(who,date);
   return e;
 }
+// 업무일지 옆 메모 — 스티커 메모처럼 굵게·기울임·밑줄·취소선·글머리 기호를 쓸 수 있다(허용한 태그만 저장)
+function wlMemoClean(html){
+  const ALLOW={B:'b',STRONG:'b',I:'i',EM:'i',U:'u',S:'s',STRIKE:'s',DEL:'s',UL:'ul',OL:'ul',LI:'li',BR:'br',DIV:'div',P:'div'};
+  const doc=new DOMParser().parseFromString('<body>'+String(html||'')+'</body>','text/html');
+  const walk=(node)=>{
+    let out='';
+    node.childNodes.forEach(n=>{
+      if(n.nodeType===3){ out+=n.nodeValue.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+      else if(n.nodeType===1){
+        const t=ALLOW[n.tagName];
+        if(n.tagName==='SCRIPT'||n.tagName==='STYLE') return;
+        const inner=walk(n);
+        const ck=(t==='div')?n.getAttribute('data-ck'):null;
+        if(!t) out+=inner; else if(t==='br') out+='<br>'; else if(ck==='0'||ck==='1') out+=`<div data-ck="${ck}">${inner}</div>`; else out+=`<${t}>${inner}</${t}>`;
+      }
+    });
+    return out;
+  };
+  return walk(doc.body);
+}
+function wlMemoHtml(rec){
+  if(!rec) return '';
+  if(rec.html!=null) return wlMemoClean(rec.html);
+  return esc(rec.text||'').replace(/\n/g,'<br>'); // 예전 일반 텍스트 메모
+}
 function journalForm(who, date, readOnly){
   const w=whoTeacher(who); const e=wlGet(who,date);
   const mo=Number(date.slice(5,7)), wk=Math.floor((Number(date.slice(8))-1+((new Date(date.slice(0,7)+'-01T00:00:00').getDay()+6)%7))/7)+1; // 월요일 기준 주차(주간 업무 초기화 시점과 일치)
@@ -9165,12 +9190,17 @@ function journalForm(who, date, readOnly){
   h+=`</tbody></table></div>${readOnly?'':'<button class="btn small" id="wlLadd">+ 수업 줄 추가</button>'}`;
   h+=`</div>`;
   if(readOnly) return h;
-  const memo=((store.wlMemo||{})[who]||{}).text||'';
+  const memoHtml=wlMemoHtml((store.wlMemo||{})[who]);
+  const tb=(cmd,label,title,style)=>`<button type="button" class="wlmt" data-cmd="${cmd}" title="${title}" style="border:none;background:none;cursor:pointer;font-size:.95rem;padding:3px 9px;border-radius:6px;color:#4a4320;${style||''}">${label}</button>`;
   return `<div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap"><div style="flex:1 1 640px;min-width:0">${h}</div>
-    <aside style="flex:1 1 230px;max-width:340px;min-width:210px;position:sticky;top:12px;background:#fffdf3;border:1px solid #f0e3a5;border-radius:12px;padding:12px 13px;box-shadow:var(--shadow)">
-      <div style="font-weight:800;font-size:.88rem">📝 내 메모 <span style="font-weight:500;font-size:.7rem;color:var(--sub)">제출되지 않는 개인 메모</span></div>
-      <textarea id="wlMemo" placeholder="자유롭게 메모하세요 (업무일지 제출에는 포함되지 않아요)" style="width:100%;min-height:340px;margin-top:8px;border:1px solid #ecdf9c;border-radius:8px;padding:8px 9px;font-family:inherit;font-size:.83rem;line-height:1.5;background:#fffef8;resize:vertical;box-sizing:border-box">${esc(memo)}</textarea>
-      <div id="wlMemoSt" style="font-size:.68rem;color:var(--sub);margin-top:4px">입력하면 자동 저장돼요</div>
+    <aside style="flex:1 1 230px;max-width:340px;min-width:210px;position:sticky;top:12px;background:#fff8c9;border:1px solid #f0e3a5;border-radius:12px;padding:0 0 10px;box-shadow:var(--shadow);overflow:hidden">
+      <style>#wlMemo:empty:before{content:attr(data-ph);color:#a79f6d}#wlMemo div[data-ck]{position:relative;padding-left:26px}#wlMemo div[data-ck]::before{content:'☐';position:absolute;left:2px;top:0;font-size:1.05em;cursor:pointer;color:#6b6330}#wlMemo div[data-ck="1"]::before{content:'☑';color:#2f8f4e}#wlMemo div[data-ck="1"]{text-decoration:line-through;color:#8a8860}#wlMemo ul{margin:2px 0 2px 20px;padding:0}#wlMemo li{margin:1px 0}.wlmt:hover{background:#f3e8a3!important}</style>
+      <div style="display:flex;align-items:center;gap:2px;padding:6px 8px;background:#fff1a0;border-bottom:1px solid #f0e3a5">
+        ${tb('bold','<b>B</b>','굵게 (Ctrl+B)')}${tb('italic','<i style="font-family:serif">I</i>','기울임 (Ctrl+I)')}${tb('underline','<u>U</u>','밑줄 (Ctrl+U)')}${tb('strikeThrough','<s>ab</s>','취소선 (Ctrl+Shift+X)')}${tb('checklist','☑','체크 목록 (Ctrl+Shift+L) — 앞의 네모를 눌러 체크')}
+        <span style="margin-left:auto;font-size:.66rem;color:#8a8248">제출 안 됨</span>
+      </div>
+      <div id="wlMemo" contenteditable="true" data-ph="메모하세요 (업무일지 제출에는 포함되지 않아요)" style="min-height:320px;max-height:70vh;overflow:auto;padding:10px 12px;font-family:inherit;font-size:.86rem;line-height:1.55;outline:none;word-break:break-word">${memoHtml}</div>
+      <div id="wlMemoSt" style="font-size:.68rem;color:#8a8248;padding:0 12px">입력하면 자동 저장돼요</div>
     </aside></div>`;
 }
 function bindJournal(who, date, readOnly){
@@ -9179,10 +9209,48 @@ function bindJournal(who, date, readOnly){
   const memoEl=v.querySelector('#wlMemo');
   if(memoEl){
     let mt=null;
-    memoEl.addEventListener('input',()=>{
-      store.wlMemo=store.wlMemo||{}; store.wlMemo[who]={text:memoEl.value, updatedAt:Date.now()};
+    const saveMemo=()=>{
+      store.wlMemo=store.wlMemo||{};
+      store.wlMemo[who]={html:wlMemoClean(memoEl.innerHTML), text:memoEl.innerText, updatedAt:Date.now()};
       const st=v.querySelector('#wlMemoSt'); if(st) st.textContent='저장 중…';
       clearTimeout(mt); mt=setTimeout(()=>{ save(); const st2=document.getElementById('wlMemoSt'); if(st2) st2.textContent='저장됨 ✓'; },700);
+    };
+    memoEl.addEventListener('input',saveMemo);
+    memoEl.addEventListener('paste',ev=>{ ev.preventDefault(); const t=(ev.clipboardData||window.clipboardData).getData('text/plain'); document.execCommand('insertText',false,t); }); // 다른 곳의 글꼴·색이 딸려오지 않게 글자만 붙여넣기
+    const blockOf=(node)=>{ while(node && node!==memoEl && node.parentNode!==memoEl) node=node.parentNode; return (node&&node!==memoEl&&node.nodeType===1)?node:null; };
+    const curBlock=()=>{ const sel=window.getSelection(); return (sel&&sel.rangeCount)?blockOf(sel.anchorNode):null; };
+    const toggleChecklist=()=>{
+      memoEl.focus();
+      document.execCommand('formatBlock',false,'div'); // 현재 줄(들)을 줄 단위 블록으로 만든다
+      const sel=window.getSelection(); if(!sel.rangeCount) return;
+      const r=sel.getRangeAt(0);
+      let blocks=[...memoEl.children].filter(c=>c.tagName==='DIV' && r.intersectsNode(c));
+      if(!blocks.length){ const cb=curBlock(); if(cb&&cb.tagName==='DIV') blocks=[cb]; }
+      if(!blocks.length) return;
+      const allOn=blocks.every(c=>c.hasAttribute('data-ck'));
+      blocks.forEach(c=>{ if(allOn) c.removeAttribute('data-ck'); else if(!c.hasAttribute('data-ck')) c.setAttribute('data-ck','0'); });
+      saveMemo();
+    };
+    memoEl.addEventListener('keydown',ev=>{
+      if(ev.ctrlKey&&ev.shiftKey&&(ev.key==='X'||ev.key==='x')){ ev.preventDefault(); document.execCommand('strikeThrough'); saveMemo(); }
+      else if(ev.ctrlKey&&ev.shiftKey&&(ev.key==='L'||ev.key==='l')){ ev.preventDefault(); toggleChecklist(); }
+      else if(ev.key==='Enter' && !ev.shiftKey){
+        const cb=curBlock();
+        if(cb && cb.hasAttribute('data-ck')){
+          if(!cb.textContent.trim()){ ev.preventDefault(); cb.removeAttribute('data-ck'); saveMemo(); return; } // 빈 체크칸에서 Enter → 목록 끝내기
+          setTimeout(()=>{ const nb=curBlock(); if(nb && nb!==cb && nb.hasAttribute('data-ck')) nb.setAttribute('data-ck','0'); saveMemo(); },0); // 새 줄은 항상 체크 안 된 상태로
+        }
+      }
+    });
+    // 체크칸(줄 왼쪽의 네모)을 누르면 체크/해제
+    memoEl.addEventListener('click',ev=>{
+      const d=ev.target.closest&&ev.target.closest('div[data-ck]'); if(!d||!memoEl.contains(d)) return;
+      const rect=d.getBoundingClientRect(); if(ev.clientX-rect.left>24) return;
+      ev.preventDefault(); d.setAttribute('data-ck', d.getAttribute('data-ck')==='1'?'0':'1'); saveMemo();
+    });
+    v.querySelectorAll('.wlmt').forEach(b=>{
+      b.addEventListener('mousedown',ev=>ev.preventDefault()); // 눌러도 글 선택이 풀리지 않게
+      b.addEventListener('click',()=>{ if(b.dataset.cmd==='checklist'){ toggleChecklist(); return; } memoEl.focus(); document.execCommand(b.dataset.cmd); saveMemo(); });
     });
   }
   const touch=()=>{ e.updatedAt=Date.now(); };
