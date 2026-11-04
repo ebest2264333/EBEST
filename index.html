@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>이베스트 (본관) — 선생님용 대시보드 · v1104-c</title>
+<title>이베스트 (본관) — 선생님용 대시보드 · v1104-d</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%96%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">
@@ -5364,7 +5364,7 @@ function wmEditorHTML(b){
   if(wmS.editDay){
     const ws=b.days[wmS.editDay];
     if(ed) h+=`<div style="display:flex;gap:6px;margin-top:8px;align-items:center"><input type="text" data-wm="dayname" value="${esc(wmS.editDay)}" style="width:110px"><button class="wmbtn" data-wm="renday">이름 변경</button><button class="wmbtn d" data-wm="delday">이 Day 삭제</button></div>`;
-    h+=`<div style="max-height:${ed?260:420}px;overflow:auto;margin-top:6px"><table>${ws.map((w,i)=>ed?`<tr><td style="width:24px;color:#999">${i+1}</td><td><input type="text" data-wm="en" data-i="${i}" value="${esc(w.en)}"></td><td><input type="text" data-wm="ko" data-i="${i}" value="${esc(w.ko)}"></td><td style="width:28px"><button class="wmbtn d" data-wm="delw" data-i="${i}">✕</button></td></tr>`:`<tr><td style="width:24px;color:#999">${i+1}</td><td style="font-weight:700">${esc(w.en)}</td><td>${esc(w.ko)}</td></tr>`).join('')}</table></div>`;
+    h+=`<div style="max-height:${ed?260:420}px;overflow:auto;margin-top:6px"><table>${ws.map((w,i)=>ed?`<tr draggable="true" data-wmrow="${i}"><td style="width:62px;color:#999;white-space:nowrap"><span title="끌어서 순서 바꾸기" style="cursor:grab">⠿</span> ${i+1}<button class="wmbtn" data-wm="mvw" data-i="${i}" data-d="-1" ${i===0?'disabled':''} style="padding:0 4px;margin-left:3px">▲</button><button class="wmbtn" data-wm="mvw" data-i="${i}" data-d="1" ${i===ws.length-1?'disabled':''} style="padding:0 4px">▼</button></td><td><input type="text" data-wm="en" data-i="${i}" value="${esc(w.en)}"></td><td><input type="text" data-wm="ko" data-i="${i}" value="${esc(w.ko)}"></td><td style="width:28px"><button class="wmbtn d" data-wm="delw" data-i="${i}">✕</button></td></tr>`:`<tr><td style="width:24px;color:#999">${i+1}</td><td style="font-weight:700">${esc(w.en)}</td><td>${esc(w.ko)}</td></tr>`).join('')}</table></div>`;
     if(ed) h+=`<button class="wmbtn" data-wm="addw" style="margin-top:6px">+ 단어 추가</button>
     <details style="margin-top:6px"><summary style="font-size:.76rem;cursor:pointer;color:#1d4ed8">텍스트로 한꺼번에 추가 (영어 - 한글)</summary><textarea data-wm="bulk" rows="4" placeholder="apple - 사과"></textarea><button class="wmbtn" data-wm="bulkgo" style="margin-top:4px">이 Day에 추가</button></details>`;
   }
@@ -5445,6 +5445,7 @@ function wmBind(){
     else if(a==='addday'&&b){ const n=Math.max(0,...Object.keys(b.days).map(k=>parseInt(k.replace(/\D/g,''))||0))+1, nm=wmDayName(n); b.days[nm]=[{en:'',ko:''}]; const o={}; Object.keys(b.days).sort(wmDaySort).forEach(k=>o[k]=b.days[k]); b.days=o; wmS.editDay=nm; wmSave(); }
     else if(a==='renday'&&b){ const nn=root.querySelector('[data-wm=dayname]').value.trim().replace(/[.$#\[\]\/]/g,'-'); if(!nn||(nn!==wmS.editDay&&b.days[nn])){ toast('이름이 비었거나 이미 있어요'); return; } const o={}; Object.keys(b.days).forEach(k=>o[k===wmS.editDay?nn:k]=b.days[k]); const o2={}; Object.keys(o).sort(wmDaySort).forEach(k=>o2[k]=o[k]); b.days=o2; wmS.days.delete(wmS.editDay); wmS.editDay=nn; wmSave(); }
     else if(a==='delday'&&b){ if(!confirm('이 Day를 삭제할까요?')) return; delete b.days[wmS.editDay]; syncAllowEmptyNow(); wmS.days.delete(wmS.editDay); wmS.editDay=null; wmSave(); }
+    else if(a==='mvw'&&b){ const ws=b.days[wmS.editDay], i=+el.dataset.i, j=i+(+el.dataset.d); if(j<0||j>=ws.length) return; const sc=root.querySelector('div[style*="overflow:auto"]'); const st=sc?sc.scrollTop:0; const t=ws[i]; ws[i]=ws[j]; ws[j]=t; wmSave(); wmRefresh(); const sc2=root.querySelector('div[style*="overflow:auto"]'); if(sc2) sc2.scrollTop=st; return; }
     else if(a==='delw'&&b){ b.days[wmS.editDay].splice(+el.dataset.i,1); wmSave(); }
     else if(a==='addw'&&b){ b.days[wmS.editDay].push({en:'',ko:''}); wmSave(); }
     else if(a==='bulkgo'&&b){ const add=root.querySelector('[data-wm=bulk]').value.split(/\r?\n/).map(wmParseLine).filter(Boolean); const ws=b.days[wmS.editDay]; if(ws.length===1&&!ws[0].en&&!ws[0].ko) ws.length=0; add.forEach(w=>ws.push(w)); wmSave(); }
@@ -5458,6 +5459,12 @@ function wmBind(){
     else return;
     wmRefresh();
   });
+  // 단어 줄을 끌어서 순서 바꾸기
+  let dragI=null;
+  root.addEventListener('dragstart',e=>{ const tr=e.target.closest&&e.target.closest('tr[data-wmrow]'); if(!tr) return; dragI=+tr.dataset.wmrow; try{ e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain',String(dragI)); }catch(x){} tr.style.opacity='.4'; });
+  root.addEventListener('dragend',e=>{ dragI=null; root.querySelectorAll('tr[data-wmrow]').forEach(r=>{ r.style.opacity=''; r.style.outline=''; }); });
+  root.addEventListener('dragover',e=>{ const tr=e.target.closest&&e.target.closest('tr[data-wmrow]'); if(!tr||dragI==null) return; e.preventDefault(); root.querySelectorAll('tr[data-wmrow]').forEach(r=>r.style.outline=''); tr.style.outline='2px solid #c2410c'; });
+  root.addEventListener('drop',e=>{ const tr=e.target.closest&&e.target.closest('tr[data-wmrow]'); const b=wmBook(); if(!tr||dragI==null||!b) return; e.preventDefault(); const to=+tr.dataset.wmrow, ws=b.days[wmS.editDay]; if(to!==dragI && ws){ const sc=root.querySelector('div[style*="overflow:auto"]'); const st=sc?sc.scrollTop:0; const [m]=ws.splice(dragI,1); ws.splice(to,0,m); wmSave(); wmRefresh(); const sc2=root.querySelector('div[style*="overflow:auto"]'); if(sc2) sc2.scrollTop=st; } dragI=null; });
   root.addEventListener('change',e=>{
     const el=e.target.closest('[data-wm]'); if(!el) return; const a=el.dataset.wm, b=wmBook();
     if(a==='wmFile') return;
@@ -6656,7 +6663,7 @@ function renderSeat(){
   const noLevel=store.students.filter(st=>st.academy===a && !st._deleted && (st.status||'재원')==='재원' && !['초','중'].includes(csLevelOf(st)) && csLevelOf(st)!=='고').length;
   const labNone=csLabClassNames(a).size===0;
   return `<div class="setsec" style="border:2px solid #2e5fb7">
-    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1104-c · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
+    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1104-d · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
     <div class="desc">학원 전체 <b>초·중등 재원생 중 강의실이 '어학실'인 수업을 듣는 학생</b>(${cand.length}명, 어학실 수업이 있는 반 ${csLabClassNames(a).size}개)을 자리 ${seatCount}개에 자동으로 배치합니다. <b>같은 학년끼리</b>, <b>같은 반끼리</b>는 옆·앞뒤 자리에 앉지 않게 짜고, 학년·반은 학생 명단과 시간표(반)를 그대로 따릅니다. <b>어학실 이용 시간이 겹치지 않는 학생</b>은 같은 학년·같은 반이어도 옆자리에 앉을 수 있고, 한 자리(컴퓨터)를 시간대별로 나눠 써도 돼요(자리 칸 안에 학생이 여러 명 보여요). 수동으로는 학생을 눌러 고른 뒤 자리나 다른 학생을 누르면 옮기거나 서로 바꿔요. 빨간 테두리(⚠)는 규칙에 걸린 곳입니다.</div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:10px 0 0;font-size:.84rem"><b>📅 기간</b>
       <select data-csperiod style="padding:5px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${periods.map(x=>`<option value="${esc(x[0])}" ${x[0]===pkey?'selected':''}>${esc(x[1])}</option>`).join('')}</select>
