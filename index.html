@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>이베스트 (본관) — 선생님용 대시보드 · v1103-u</title>
+<title>이베스트 (본관) — 선생님용 대시보드 · v1103-x</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%96%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">
@@ -3803,9 +3803,10 @@ function studentCard(s, admin){
   </article>`;
 }
 function renderRosterStats(){
-  const all=store.students.filter(x=>!x._deleted && (state.ac==='all'||x.academy===state.ac));
+  const all=store.students.filter(x=>!x._deleted && x.status!=='퇴원' && (state.ac==='all'||x.academy===state.ac)); // 퇴원생은 통계 위쪽 숫자에서 제외
   const byStatus={재원:0,휴원:0,퇴원:0};
   all.forEach(s=>{ byStatus[s.status]=(byStatus[s.status]||0)+1; });
+  const outCnt=store.students.filter(x=>!x._deleted && x.status==='퇴원' && (state.ac==='all'||x.academy===state.ac)).length; // 퇴원은 따로 보여주되 전체 인원에는 넣지 않는다
   const total=all.length;
   const rBox=(label,val,color)=>`<div style="flex:1;min-width:110px;background:#f6f8fc;border-radius:10px;padding:12px 14px">
     <div style="font-size:.74rem;color:var(--sub);font-weight:700">${label}</div>
@@ -3814,7 +3815,7 @@ function renderRosterStats(){
     ${rBox('전체', total+'명')}
     ${rBox('재원', (byStatus['재원']||0)+'명','#0e9f6e')}
     ${rBox('휴원', (byStatus['휴원']||0)+'명','#b45309')}
-    ${rBox('퇴원', (byStatus['퇴원']||0)+'명','#c0392b')}
+    ${rBox('퇴원 (전체에서 제외)', outCnt+'명','#c0392b')}
   </div>`;
   // 학원별
   if(MODE==='all'){
@@ -5284,6 +5285,39 @@ function hwModeBarHTML(){
 function bindHwModeBar(){
   document.querySelectorAll('#view .hwModeBtn').forEach(b=>b.onclick=()=>{ state.hwMode=b.dataset.m; render(true); });
 }
+// 날짜 칸 머리글 — 아래에 [✔ 전부] 버튼: 그날 이 반(또는 과목) 숙제 대상 학생 전원을 한 번에 "했어요"로 체크 (다 되어 있으면 다시 누르면 해제). 칸을 눌러 한 명씩 바꾸는 것도 그대로 가능.
+function hwDateTh(c,k,d,subj){
+  const can=!!(loginTeacher()||isAdminRole());
+  return `<th>${Number(d.slice(8))}일<br>${wdOf(d)}${can?`<br><button type="button" class="hwAllBtn" data-k="${esc(k)}" data-d="${d}" data-subj="${esc(subj||'')}" title="이 날 이 반 전원 숙제 했어요 (다시 누르면 해제)" style="margin-top:3px;border:1px solid var(--line);background:#fff;border-radius:6px;padding:1px 6px;font-size:.66rem;cursor:pointer;color:#0e9f6e;font-weight:800">✔ 전부</button>`:''}</th>`;
+}
+function hwTargetsFor(c,k,d,subj){
+  const out=[];
+  (c.students||[]).forEach(st=>{
+    if(subj){
+      const selfExcl=isSelfStudySubj(subj)&&!prevIndivHwText(c,k,st,subj,d,true);
+      if(!subjectMeetsOnDate(c,subj,d)||noHwMapFor(k,d)[noHwStoreKey(subj)]||selfExcl) return;
+      out.push({st,subs:[subj],multi:true});
+    } else {
+      const raw=hwDaySubjectNames(c,d), eff=hwEffectiveSubjectNames(c,d,k,st);
+      if(raw.length>0&&eff.length===0) return;
+      out.push({st,subs:eff.length?eff:raw,multi:raw.length>1});
+    }
+  });
+  return out;
+}
+function hwToggleAllDone(c,k,d,subj){
+  const t=hwTargetsFor(c,k,d,subj); if(!t.length) return false;
+  const hw=hwFor(d); hw[k]=hw[k]||{};
+  const isDone=o=>{ const r=hw[k][o.st]||{}; return (o.multi||subj)?o.subs.every(sn=>r.doneSubjects&&r.doneSubjects[sn]):!!r.done; };
+  const val=!t.every(isDone);
+  t.forEach(o=>{
+    const r=hw[k][o.st]=hw[k][o.st]||{};
+    if(o.multi||subj){ r.doneSubjects=r.doneSubjects||{}; o.subs.forEach(sn=>{ r.doneSubjects[sn]=val; }); }
+    else r.done=val;
+    r.updatedAt=Date.now();
+  });
+  return val;
+}
 function renderHwRange(list){
   const lt=loginTeacher();
   let cls=list;
@@ -5314,7 +5348,7 @@ function renderHwRange(list){
       <span style="font-size:.75rem;font-weight:400;color:var(--sub)">${esc(cdays(c))} · ${c.students.length}명</span>${tabs}</summary>`;
     if(curView!=='all'){
       const subj=curView;
-      h+=`<div class="attwrap"><table class="atable"><thead><tr><th>학생</th>${dates.map(d=>`<th>${Number(d.slice(8))}일<br>${wdOf(d)}</th>`).join('')}<th>완료</th></tr></thead><tbody>`;
+      h+=`<div class="attwrap"><table class="atable"><thead><tr><th>학생</th>${dates.map(d=>hwDateTh(c,k,d,subj)).join('')}<th>완료</th></tr></thead><tbody>`;
       c.students.forEach(s=>{
         let doneCnt=0, applicable=0;
         let row=`<tr><td class="nm">${hl(studentDisplayName(c.academy,s,c.name))}</td>`;
@@ -5333,7 +5367,7 @@ function renderHwRange(list){
       });
       h+='</tbody></table></div>';
     } else {
-      h+=`<div class="attwrap"><table class="atable"><thead><tr><th>학생</th>${dates.map(d=>`<th>${Number(d.slice(8))}일<br>${wdOf(d)}</th>`).join('')}<th>완료</th></tr></thead><tbody>`;
+      h+=`<div class="attwrap"><table class="atable"><thead><tr><th>학생</th>${dates.map(d=>hwDateTh(c,k,d,'')).join('')}<th>완료</th></tr></thead><tbody>`;
       c.students.forEach(s=>{
         let doneCnt=0, applicable=0;
         let row=`<tr><td class="nm">${hl(studentDisplayName(c.academy,s,c.name))}</td>`;
@@ -5365,6 +5399,12 @@ function renderHwRange(list){
 function bindHwRange(){
   const v=document.getElementById('view');
   const mo=v.querySelector('#myOnly'); if(mo) mo.onchange=()=>{state.myOnly=mo.checked; render();};
+  v.querySelectorAll('.hwAllBtn').forEach(btn=>btn.onclick=(e)=>{
+    e.preventDefault(); e.stopPropagation();
+    const k=btn.dataset.k; const c=classesFor(state.month).find(x=>ckey(x)===k); if(!c) return;
+    const val=hwToggleAllDone(c,k,btn.dataset.d,btn.dataset.subj);
+    save(); render(true); toast(val?'전원 숙제 했어요로 체크':'전원 체크 해제');
+  });
   v.querySelectorAll('.hwSubjTab').forEach(b=>b.onclick=(e)=>{
     e.preventDefault(); e.stopPropagation(); // <summary> 안에 있어서 눌러도 반 카드가 접히지 않도록
     state.hwSubjView=state.hwSubjView||{};
@@ -5381,7 +5421,17 @@ function bindHwRange(){
       hw[k][s].doneSubjects=hw[k][s].doneSubjects||{};
       hw[k][s].doneSubjects[subj]=!hw[k][s].doneSubjects[subj];
     } else {
-      hw[k][s].done=!hw[k][s].done;
+      // 원래 과목이 여러 개인 반(다른 과목이 숙제없음·자습으로 빠져 한 과목만 남은 경우 포함)은 상태 판정이 과목별 체크(doneSubjects)를 보므로 거기에 기록한다
+      const cc=classesFor(state.month).find(x=>ckey(x)===k);
+      const raw=cc?hwDaySubjectNames(cc,d):[];
+      if(cc && raw.length>1){
+        const eff=hwEffectiveSubjectNames(cc,d,k,s);
+        hw[k][s].doneSubjects=hw[k][s].doneSubjects||{};
+        const all=eff.every(sn=>hw[k][s].doneSubjects[sn]);
+        eff.forEach(sn=>{ hw[k][s].doneSubjects[sn]=!all; });
+      } else {
+        hw[k][s].done=!hw[k][s].done;
+      }
     }
     save(); render(true);
   });
@@ -6316,7 +6366,7 @@ function renderSeat(){
   const noLevel=store.students.filter(st=>st.academy===a && !st._deleted && (st.status||'재원')==='재원' && !['초','중'].includes(csLevelOf(st)) && csLevelOf(st)!=='고').length;
   const labNone=csLabClassNames(a).size===0;
   return `<div class="setsec" style="border:2px solid #2e5fb7">
-    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1103-u · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
+    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1103-x · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
     <div class="desc">학원 전체 <b>초·중등 재원생 중 강의실이 '어학실'인 수업을 듣는 학생</b>(${cand.length}명, 어학실 수업이 있는 반 ${csLabClassNames(a).size}개)을 자리 ${seatCount}개에 자동으로 배치합니다. <b>같은 학년끼리</b>, <b>같은 반끼리</b>는 옆·앞뒤 자리에 앉지 않게 짜고, 학년·반은 학생 명단과 시간표(반)를 그대로 따릅니다. <b>어학실 이용 시간이 겹치지 않는 학생</b>은 같은 학년·같은 반이어도 옆자리에 앉을 수 있고, 한 자리(컴퓨터)를 시간대별로 나눠 써도 돼요(자리 칸 안에 학생이 여러 명 보여요). 수동으로는 학생을 눌러 고른 뒤 자리나 다른 학생을 누르면 옮기거나 서로 바꿔요. 빨간 테두리(⚠)는 규칙에 걸린 곳입니다.</div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:10px 0 0;font-size:.84rem"><b>📅 기간</b>
       <select data-csperiod style="padding:5px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${periods.map(x=>`<option value="${esc(x[0])}" ${x[0]===pkey?'selected':''}>${esc(x[1])}</option>`).join('')}</select>
@@ -15241,8 +15291,8 @@ function repConsult(list){
     h+=`<tr>${rTD(`<span style="color:${r.t.color};font-weight:bold">■</span> <b>${esc(r.t.name)}</b>`)}${MODE==='all'?rTD(AC[r.a].label):''}${rTD(r.cls+'개','text-align:center')}${rTD(r.d+' / '+r.tot+'명','text-align:center')}${rTD(`<b style="color:${r.t.color}">${pct}%</b>`,'text-align:center')}</tr>`;
   });
   h+='</table>';
-  // 반별 상세
-  let cls=list;
+  // 반별 상세 (반 순서 설정을 그대로 따른다)
+  let cls=list; try{ cls=sortClassesByDept(list); }catch(e){}
   if(state.tf){ cls=list.filter(c=>c.academy===state.tf.a && mAssign()[ckey(c)]===state.tf.i); }
   cls.forEach(c=>{
     const t=teacherOf(c), k=ckey(c), rec=mRecords()[k]||{}, p=classProgress(c);
@@ -15520,7 +15570,48 @@ document.getElementById('xlsBtn').onclick=()=>{
 };
 
 /* ---------- 렌더 ---------- */
+// 어떤 버튼을 눌러 화면을 다시 그려도 스크롤이 맨 위로 돌아가지 않도록 — 같은 탭 안에서는 다시 그리기 전후로
+// 페이지 스크롤과 안쪽 스크롤 칸(표·목록)의 위치를 기억했다가 복원한다. 탭을 바꿀 때만 맨 위에서 시작한다.
+var _lastRenderTab=null;
 function render(keepOpen){
+  const v=document.getElementById('view');
+  const same=(_lastRenderTab===state.tab);
+  let y=0,x=0,inner=[],h0=0;
+  try{
+    if(same && v){
+      y=window.scrollY; x=window.scrollX; h0=v.offsetHeight;
+      const seen={};
+      v.querySelectorAll('*').forEach(el=>{
+        if(el.scrollTop>0||el.scrollLeft>0){
+          const key=el.tagName+'|'+(el.id||'')+'|'+(typeof el.className==='string'?el.className:'');
+          const idx=seen[key]=(seen[key]==null?0:seen[key]+1);
+          inner.push({key,idx,t:el.scrollTop,l:el.scrollLeft});
+        }
+      });
+      if(h0) v.style.minHeight=h0+'px'; // 잠깐 내용이 짧아져서 스크롤이 줄어드는 것을 막는다
+    }
+  }catch(e){}
+  try{ renderInner(keepOpen); }finally{
+    _lastRenderTab=state.tab;
+    try{
+      if(same && v){
+        const seen={};
+        const map={}; inner.forEach(o=>{ (map[o.key]=map[o.key]||[])[o.idx]=o; });
+        if(inner.length){
+          v.querySelectorAll('*').forEach(el=>{
+            const key=el.tagName+'|'+(el.id||'')+'|'+(typeof el.className==='string'?el.className:'');
+            const idx=seen[key]=(seen[key]==null?0:seen[key]+1);
+            const o=map[key]&&map[key][idx]; if(o){ el.scrollTop=o.t; el.scrollLeft=o.l; }
+          });
+        }
+        window.scrollTo(x,y);
+        v.style.minHeight='';
+        if(Math.abs(window.scrollY-y)>2) window.scrollTo(x,y);
+      }
+    }catch(e){ if(v) v.style.minHeight=''; }
+  }
+}
+function renderInner(keepOpen){
   if(state.tab==='papercheck'){ state.tab='hwrange'; state.hwMode='pc'; }
   const openKeys = keepOpen ? [...document.querySelectorAll('.ccard.open .chead')].map(h=>h.dataset.toggle) : [];
   try{ ensureAssign(); }catch(e){ console.error('ensureAssign 오류', e); }
@@ -15543,7 +15634,7 @@ function render(keepOpen){
   try{ buildFilters(); }catch(e){ console.error('buildFilters 오류', e); }
   let list=[]; try{ list=filtered(); }catch(e){ console.error('filtered 오류', e); }
   if(state.tab==='timetable'){ try{ list=classOrderApplyList(list); }catch(e){} }
-  if(state.tab==='dash'){ try{ list=sortClassesByDept(list); }catch(e){ console.error('반 정렬 오류', e); } } // [반·교재] 탭: 초→중→고 순
+  if(state.tab==='dash'||state.tab==='consult'){ try{ list=sortClassesByDept(list); }catch(e){ console.error('반 정렬 오류', e); } } // [반·교재] 탭: 초→중→고 순
   const v=document.getElementById('view');
   try{
   if(state.tab==='dash'){
