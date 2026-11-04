@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>이베스트 (본관) — 선생님용 대시보드 · v1103-x</title>
+<title>이베스트 (본관) — 선생님용 대시보드 · v1104-b</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%96%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">
@@ -397,6 +397,7 @@ for(const k in store.bookdone){ if(store.bookdone[k]===true) store.bookdone[k]='
 if(!store.bookedit) store.bookedit={};
 if(!store.bookGiven) store.bookGiven={};
 if(!store.bookCatalog) store.bookCatalog=[]; // 교재 마스터 목록(이름+금액) — 관리자/실장이 목록을 만들어두고 학생에게 배정
+if(!store.bookGiveLog) store.bookGiveLog=[]; // 교재 배부 내역(언제·누구에게·무슨 교재) — 같은 교재를 여러 번 배부해도 매번 남는다
 if(!store.wordBooks) store.wordBooks=[]; // 단어 시험지용 단어장 — 서버로 공유
 if(!store.tuitionCatalog) store.tuitionCatalog=[]; // 수강료 항목 마스터 목록 — 교재와 동일한 방식
 if(!store.uploadTombstones) store.uploadTombstones={};
@@ -640,6 +641,8 @@ function reconcileClassRosters(){
 if(!store.admissionConsults) store.admissionConsults=[];
 if(!store.wordTests) store.wordTests=[];
 if(!store.sharedAt) store.sharedAt=0;
+if(!store.syncHash) store.syncHash={}; // 항목별로 '서버에 올라가 있다고 아는 내용'의 지문 — 바뀐 항목만 올리기 위함(이 기기 전용)
+if(!store.fieldVerSeen) store.fieldVerSeen={}; // 항목별로 마지막에 받아온 서버 버전 — 바뀐 항목만 받기 위함(이 기기 전용)
 if(!store.inboxDone) store.inboxDone={};
 if(!store.boardPosts) store.boardPosts=[]; // 게시판(오류 제보·1:1 문의·공지) — {id, kind:'issue'|'ask'|'notice', title, body, authorName, authorAcademy, private, createdAt, replies:[{body,authorName,createdAt}], resolved}
 if(!store.syllabus) store.syllabus=[]; //  Syllabus(교재별 진도표) — {id, title, book, dept, academy, sheets:[{name,html}], uploadedBy, uploadedAt} · 모든 선생님 열람, 실장 이상만 업로드/삭제
@@ -648,7 +651,7 @@ store.syllabusSeeded=true; // 예전에 기본으로 들어있던 'Spider Phonic
 if(!store.examAnalysis) store.examAnalysis=[]; // 내신 분석 — {id, academy, school, grade, examTitle, examRange, examDate, prepStart, prepEnd, teacherLecture, teacherIBT, note, categories:[{name,count,questions:[{id,no,question,points,difficulty}]}], updatedAt, updatedBy} · 월 상관없이 항상 보임, 모든 선생님 열람·수정 가능(Syllabus처럼 보관용)
 if(!store.absentNotes) store.absentNotes={}; // 날짜별 결석생 요약의 '특이사항' 자유 메모 {YYYY-MM-DD: text}
 if(!store.examTrends) store.examTrends=[]; // 동향 분석 리포트 — {id, academy, school, grade, title, memo, source:'ai'|'upload', entryIds, snaps, files, report:{headline,strategy,metrics,changes,teaching}, aiModel, createdAt, updatedAt, createdBy, _deleted} · 내신 분석 탭 안의 두 번째 탭, AI로 만든 리포트는 자동 저장
-const SHARE_FIELDS=['wordBooks','uploads','bookedit','bookdone','daysedit','timeedit','calendar','calendarTombstones','calCatColors','meetings','teachers','adminEmail','enrollment','newStudents','dropouts','compSeats','classOrder','consultRoles','students','admissionConsults','wordTests','attend','homework','stayback','bookGiven','uploadTombstones','uploadStamps','wordbookOptions','testPaperOptions','giveSel','consultRequests','records','assign','cmemo','worklog','weekplan','submits','handover','boardPosts','handoverGrid','monthOverride','examAnalysis','examTrends','absentNotes','bookCatalog','tuitionCatalog','papercheckEnabled','papercheckCols','papercheckData','worklogMonthly','worklogWeekly'];
+const SHARE_FIELDS=['bookGiveLog','wordBooks','uploads','bookedit','bookdone','daysedit','timeedit','calendar','calendarTombstones','calCatColors','meetings','teachers','adminEmail','enrollment','newStudents','dropouts','compSeats','classOrder','consultRoles','students','admissionConsults','wordTests','attend','homework','stayback','bookGiven','uploadTombstones','uploadStamps','wordbookOptions','testPaperOptions','giveSel','consultRequests','records','assign','cmemo','worklog','weekplan','submits','handover','boardPosts','handoverGrid','monthOverride','examAnalysis','examTrends','absentNotes','bookCatalog','tuitionCatalog','papercheckEnabled','papercheckCols','papercheckData','worklogMonthly','worklogWeekly'];
 // syllabus(실러버스)는 PDF/한글/워드 첨부가 커서 별도 경로(/syllabus)로, 낮은 빈도로만 동기화합니다 — 그래야 매 5초/매 입력마다 전체를 전송하지 않습니다.
 // 반 자료·학생 명단처럼 "삭제"가 중요한 항목은 병합하지 않고 통째로 교체한다(마지막 저장이 우선).
 // 병합 방식(mergeById)에는 삭제라는 개념이 없어서, 지운 반·학생이 다른 기기 자료와 합쳐지며 계속 되살아나기 때문.
@@ -688,9 +691,71 @@ if(!store.ttColorFixMigrated_v1){
   store.ttColorFixMigrated_v1=true;
 }
 // 단어시험 담당(선생님 순번→고유id 변환)은 반 자료를 실제로 불러올 때(editArr) 그때그때 처리합니다.
+
+/* ---------- 과목명 대소문자 통일 ----------
+   "GR / Gr / gr"처럼 철자가 같고 대소문자만 다른 과목은 한 과목으로 취급한다.
+   표기는 (전부 대문자 > 첫 글자만 대문자 > 가장 많이 쓰인 것) 순으로 하나로 정하고,
+   반 자료의 과목명과 그 이름으로 저장된 기록(출결·숙제·교재배부 등)의 키도 같이 맞춘다. */
+const SUBJ_CASE_FIELDS=['attend','homework','bookGiven','wordTests','stayback','bookedit','bookdone','absentNotes','assign','papercheckData','records','cmemo','giveSel','bookGiveLog'];
+function subjCaseNormalize(){
+  try{
+    const cnt={}; // lower -> {variant:count}
+    const classLists=[];
+    for(const a in CLASSDATA){ for(const m in CLASSDATA[a]) classLists.push(CLASSDATA[a][m]); }
+    for(const k in (store.uploads||{})) if(Array.isArray(store.uploads[k])) classLists.push(store.uploads[k]);
+    classLists.forEach(arr=>(arr||[]).forEach(c=>(c&&c.subjects||[]).forEach(sj=>{
+      const n=String(sj&&sj.subject||'').trim(); if(!n || !/[A-Za-z]/.test(n)) return;
+      const l=n.toLowerCase(); (cnt[l]=cnt[l]||{})[n]=((cnt[l]||{})[n]||0)+1;
+    })));
+    const canon={}; // lower -> canonical (변형이 둘 이상인 것만)
+    for(const l in cnt){
+      const vs=Object.keys(cnt[l]); if(vs.length<2) continue;
+      const up=vs.find(v=>v===v.toUpperCase());
+      const title=vs.find(v=>v===v.charAt(0).toUpperCase()+v.slice(1).toLowerCase());
+      canon[l]= up || title || vs.sort((x,y)=>cnt[l][y]-cnt[l][x])[0];
+    }
+    if(!Object.keys(canon).length) return false;
+    let changed=false;
+    const fix=(n)=>{ const t=String(n).trim(); const c=canon[t.toLowerCase()]; return (c && c!==t) ? c : null; };
+    classLists.forEach(arr=>(arr||[]).forEach(c=>(c&&c.subjects||[]).forEach(sj=>{
+      if(!sj||sj.subject==null) return; const f=fix(sj.subject); if(f){ sj.subject=f; changed=true; }
+    })));
+    // 기록의 키·과목 필드 맞추기
+    const mergeInto=(dst,src)=>{
+      for(const k in src){
+        if(!(k in dst)) dst[k]=src[k];
+        else if(dst[k] && src[k] && typeof dst[k]==='object' && typeof src[k]==='object' && !Array.isArray(dst[k])) mergeInto(dst[k],src[k]);
+      }
+    };
+    const fixKey=(k)=>{
+      if(k.indexOf('|')<0){ return fix(k)||k; }
+      const parts=k.split('|'); let ch=false;
+      const np=parts.map(p=>{ const f=fix(p); if(f){ ch=true; return f; } return p; });
+      return ch?np.join('|'):k;
+    };
+    const walk=(o,depth)=>{
+      if(!o || typeof o!=='object' || depth>6) return;
+      if(Array.isArray(o)){ o.forEach(x=>walk(x,depth+1)); return; }
+      for(const k of Object.keys(o)){
+        const v=o[k];
+        if((k==='subject'||k==='subj') && typeof v==='string'){ const f=fix(v); if(f){ o[k]=f; changed=true; } continue; }
+        const nk=fixKey(k);
+        if(nk!==k){
+          if(nk in o && o[nk] && v && typeof o[nk]==='object' && typeof v==='object' && !Array.isArray(v)) mergeInto(o[nk],v);
+          else if(!(nk in o)) o[nk]=v;
+          delete o[k]; changed=true;
+          walk(o[nk],depth+1);
+        } else walk(v,depth+1);
+      }
+    };
+    SUBJ_CASE_FIELDS.forEach(f=>{ if(store[f]) walk(store[f],0); });
+    return changed;
+  }catch(e){ console.warn('과목명 통일 실패', e); return false; }
+}
 let saveTimer=null;
 let syncSnap=null;
 function save(){
+  subjCaseNormalize();
   // 어떤 값이든 바뀌면 그 즉시 이 기기에 저장되고, 곧바로 서버로도 올라간다(글자 하나만 고쳐도 반영)
   // [수정] 예전엔 저장할 때마다 REPLACE_FIELDS 전부를 "방금 편집함"으로 찍어버려서, 그 항목을 전혀
   // 건드리지 않은 저장(예: 다른 화면 클릭)까지도 "이 기기가 제일 최신"으로 착각하게 만들었다.
@@ -741,7 +806,9 @@ function fbFetch(url, opts, timeoutMs){
   return fetch(url, {...(opts||{}), signal:ctrl.signal}).finally(()=>clearTimeout(timer));
 }
 async function fbGet(path, timeoutMs){ let r; try{ r=await fbFetch(syncBase()+path+'.json', null, timeoutMs); }catch(e){ throw (e&&e.name==='AbortError') ? new Error('서버 응답 시간초과(네트워크 확인)') : e; } if(!r.ok){ let body=''; try{ body=await r.text(); }catch(e){} throw new Error('HTTP '+r.status+(body?' — '+body.slice(0,200):'')); } return r.json(); }
-async function fbPut(path, data, timeoutMs){ let r; try{ r=await fbFetch(syncBase()+path+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}, timeoutMs); }catch(e){ throw (e&&e.name==='AbortError') ? new Error('서버 응답 시간초과(네트워크 확인)') : e; } if(!r.ok){ let body=''; try{ body=await r.text(); }catch(e){} throw new Error('HTTP '+r.status+(body?' — '+body.slice(0,200):'')); } return r.json(); }
+async function fbWrite(method, path, data, timeoutMs){ let r; try{ r=await fbFetch(syncBase()+path+'.json?print=silent',{method:method,headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}, timeoutMs); }catch(e){ throw (e&&e.name==='AbortError') ? new Error('서버 응답 시간초과(네트워크 확인)') : e; } if(!r.ok){ let body=''; try{ body=await r.text(); }catch(e){} throw new Error('HTTP '+r.status+(body?' — '+body.slice(0,200):'')); } return null; } // print=silent: 서버가 방금 올린 내용을 다시 돌려보내지 않게 해서 다운로드 낭비를 없앤다
+async function fbPut(path, data, timeoutMs){ return fbWrite('PUT', path, data, timeoutMs); }
+async function fbPatch(path, data, timeoutMs){ return fbWrite('PATCH', path, data, timeoutMs); }
 async function fbDel(path){ try{ await fbFetch(syncBase()+path+'.json',{method:'DELETE'}); }catch(e){} }
 // 서버로 보내기 직전 마지막 안전장치: 객체 키 어딘가에 Firebase가 금지하는 글자(. $ # [ ] /)가 들어있으면
 // (과목명뿐 아니라 반 이름·학생 이름 등 예상 못한 곳에 생겨도) 그 키만 안전하게 바꿔서 보낸다.
@@ -866,19 +933,117 @@ function syncIsEmpty(v){ if(v==null) return true; if(Array.isArray(v)) return v.
 let syncAllowEmptyUntil=0;
 function syncAllowEmptyNow(){ syncAllowEmptyUntil=Date.now()+120000; }
 function syncEmptyGuardOn(){ return Date.now()>syncAllowEmptyUntil; }
+
+/* ---------- 동기화 비용 절감: 바뀐 항목만 주고받기 ----------
+   · 서버가 바뀌었는지는 /shared/updatedAt(숫자 하나)만 먼저 확인한다 — 바뀐 게 없으면 거기서 끝(거의 0바이트).
+   · 서버에는 항목별 버전표(fieldVer)를 같이 두고, 바뀐 항목만 골라서 받는다.
+   · 올릴 때도 서버에 있는 내용과 달라진 항목만 PATCH로 올린다(전체를 통째로 PUT 하지 않음).
+   · 내신분석(examAnalysis·examTrends)은 해당 메뉴를 열 때 처음 한 번만 불러온다. */
+const LAZY_FIELDS=['examAnalysis','examTrends'];
+const lazyLoaded={};
+let lazyBusy=false;
+function syncFields(){ return SHARE_FIELDS.filter(f=>LAZY_FIELDS.indexOf(f)<0 || lazyLoaded[f]); }
+function h53(str){ let h1=0xdeadbeef,h2=0x41c6ce57; for(let i=0;i<str.length;i++){ const ch=str.charCodeAt(i); h1=Math.imul(h1^ch,2654435761); h2=Math.imul(h2^ch,1597334677); } h1=Math.imul(h1^(h1>>>16),2246822507)^Math.imul(h2^(h2>>>13),3266489909); h2=Math.imul(h2^(h2>>>16),2246822507)^Math.imul(h1^(h1>>>13),3266489909); return 4294967296*(2097151&h2)+(h1>>>0); }
+// 서버(Firebase)가 빈 값을 없애거나 배열을 번호 맵으로 바꿔 돌려주는 차이, 배열 순서 차이를 없앤 "비교용 표준형"
+function _nrm(x){
+  if(x==null) return null;
+  if(typeof x!=='object') return x;
+  if(Array.isArray(x)){
+    if(!x.length) return null;
+    const ids=x.map(e=>(e&&typeof e==='object'&&!Array.isArray(e))?(e.id!=null?'i'+e.id:(e._id!=null?'i'+e._id:null)):null);
+    const pairs=x.map((e,i)=>[ids[i],_nrm(e)]);
+    if(ids.every(v=>v!=null)) pairs.sort((a,b)=>a[0]<b[0]?-1:(a[0]>b[0]?1:0));
+    const o={}; let any=false;
+    pairs.forEach((p,i)=>{ if(p[1]!==null){ o[i]=p[1]; any=true; } });
+    return any?o:null;
+  }
+  const o={}; let any=false;
+  Object.keys(x).sort().forEach(k=>{ const v=_nrm(x[k]); if(v!==null){ o[k]=v; any=true; } });
+  return any?o:null;
+}
+const EMPTY_HASH=h53('null');
+function remoteHash(v){ return h53(JSON.stringify(_nrm(v))); }
+const _lhCache={};
+function localHash(f){
+  const raw=String(JSON.stringify(store[f]));
+  const c=_lhCache[f]; if(c && c.raw===raw) return c.h;
+  const h=h53(JSON.stringify(_nrm(sanitizeKeysForFirebase(store[f]))));
+  _lhCache[f]={raw:raw,h:h}; return h;
+}
+function rawEmpty(v){ return v==null || (Array.isArray(v) && v.length===0) || (typeof v==='object' && !Array.isArray(v) && Object.keys(v).length===0); }
+function syncCtxCheck(){
+  // 서버 주소/코드가 바뀌면 이전 서버 기준의 기록은 모두 무효
+  const ctx=syncBase();
+  if(store.syncCtx!==ctx){
+    const had=!!store.syncCtx;
+    store.syncCtx=ctx; store.syncHash={}; store.fieldVerSeen={}; store.lastFullPullAt=0;
+    if(had) store.sharedAt=0;
+    for(const k in lazyLoaded) delete lazyLoaded[k];
+  }
+}
+// 서버에서 "바뀐 항목만" 받아 pack 형태로 돌려준다(예전 전체 pack과 같은 모양이라 기존 병합 코드가 그대로 동작)
+async function fetchSharedDelta(up, tmo, full){
+  const seen=(store.fieldVerSeen=store.fieldVerSeen||{});
+  store.syncHash=store.syncHash||{};
+  const r=await Promise.all([fbGet('/shared/fieldVer',tmo), fbGet('/shared/fieldStamps',tmo)]);
+  const fv=r[0], fs=r[1];
+  const fields=syncFields();
+  const need=fields.filter(f=> full || !fv || seen[f]===undefined || (fv[f]||0)!==seen[f]);
+  const pack={updatedAt:up, fieldStamps:fs||{}};
+  let i=0;
+  async function worker(){ while(i<need.length){ const f=need[i++]; pack[f]=await fbGet('/shared/'+f,tmo); } }
+  await Promise.all([worker(),worker(),worker(),worker(),worker()]);
+  return {
+    pack:pack, need:need, fv:fv, full:!!(full||!fv),
+    commit:function(){
+      fields.forEach(f=>{ seen[f]=(fv&&fv[f])||0; });
+      need.forEach(f=>{ store.syncHash[f]=remoteHash(pack[f]); });
+      if(full||!fv) store.lastFullPullAt=Date.now();
+    }
+  };
+}
+// 내신분석처럼 "해당 메뉴를 열 때" 불러오는 항목
+async function ensureLazy(fields){
+  if(!syncOn()) return false;
+  const need=(fields||LAZY_FIELDS).filter(f=>!lazyLoaded[f]);
+  if(!need.length || lazyBusy) return false;
+  lazyBusy=true;
+  try{
+    syncCtxCheck();
+    const vals=await Promise.all(need.map(f=>fbGet('/shared/'+f,20000)));
+    const fv=await fbGet('/shared/fieldVer',8000);
+    need.forEach((f,i)=>{
+      const rv=vals[i];
+      if(rv!=null) store[f]=mergeField(store[f], rv);
+      store.syncHash[f]=remoteHash(rv);
+      store.fieldVerSeen[f]=(fv&&fv[f])||0;
+      lazyLoaded[f]=true;
+    });
+    persistStoreLocal();
+    return true;
+  }catch(e){ console.warn('지연 로딩 실패', e); return false; }
+  finally{ lazyBusy=false; }
+}
 async function pushShared(){
   if(!syncOn()){ toast('⏸ 동기화 꺼짐 — 전송 안 됨'); return; }
   if(MODE!=='all' && !isAdminRole() && !loginTeacher()){ toast('🚫 로그인 상태 확인 필요 — 전송 안 됨'); return; }
   if(syncBusy) return;
   try{
     syncBusy=true;
-    // 전송 직전 서버 최신본을 받아와 내 자료와 병합 — 그 사이 다른 사람이 올린 내용을 덮어쓰지 않도록
-    let remotePack=null;
-    try{ remotePack=await fbGet('/shared'); }catch(e){}
-    if(remotePack){
+    syncCtxCheck();
+    // 서버 변경 여부만 먼저 확인(숫자 하나) — 그 사이 다른 사람이 올린 게 있을 때만 바뀐 항목을 받아 병합한다
+    let remoteUp=null, probeOk=false;
+    try{ remoteUp=await fbGet('/shared/updatedAt',10000); probeOk=true; }catch(e){}
+    if(probeOk && remoteUp==null){ store.syncHash={}; store.fieldVerSeen={}; } // 서버가 비어있으면 전부 새로 올린다
+    let delta=null;
+    if(probeOk && remoteUp!=null && remoteUp!==(store.sharedAt||0)){
+      delta=await fetchSharedDelta(remoteUp,15000,false); // 실패하면 오류로 중단 — 병합 없이 덮어쓰지 않기 위해
+    }
+    if(delta){
+      const remotePack=delta.pack;
       const rStamps=remotePack.fieldStamps||{};
       const lStamps=store.fieldStamps||{};
-      SHARE_FIELDS.forEach(f=>{
+      syncFields().forEach(f=>{
         if(remotePack[f]==null) return;
         if(isReplaceField(f)){
           if(syncEmptyGuardOn()){
@@ -904,14 +1069,47 @@ async function pushShared(){
         store[f]=mergeField(store[f], remotePack[f]);
       });
       pruneCalendarTombstones();
+      delta.commit();
     }
-    const pack={updatedAt:Date.now(), fieldStamps:store.fieldStamps||{}};
-    SHARE_FIELDS.forEach(f=>pack[f]=store[f]);
-    await fbPut('/shared', sanitizeKeysForFirebase(pack));
-    store.sharedAt=pack.updatedAt;
+    // 서버에 있는 내용과 달라진 항목만 골라서 올린다
+    const sh=(store.syncHash=store.syncHash||{}), seen=(store.fieldVerSeen=store.fieldVerSeen||{});
+    const changed=[], hashes={}; let blocked=false;
+    syncFields().forEach(f=>{
+      const lh=localHash(f);
+      if(sh[f]===lh) return;
+      if(rawEmpty(store[f])){
+        // 비어있는 값은 서버 자료를 지우게 되므로 보내지 않는다 — 단, 관리자 초기화 직후(2분)의 교체 항목만 예외
+        if(isReplaceField(f) && sh[f]!=null && sh[f]!==EMPTY_HASH){
+          if(!syncEmptyGuardOn()){ changed.push(f); hashes[f]=lh; }
+          else { delete seen[f]; blocked=true; } // 서버 자료를 다시 받아오도록 표시
+        }
+        return;
+      }
+      changed.push(f); hashes[f]=lh;
+    });
+    if(changed.length){
+      const newUp=Math.max(Date.now(), (remoteUp||0)+1);
+      const body={updatedAt:newUp};
+      changed.forEach(f=>{
+        body[f]=sanitizeKeysForFirebase(store[f]);
+        body['fieldVer/'+f]=newUp;
+        if(isReplaceField(f)) body['fieldStamps/'+f]=(store.fieldStamps&&store.fieldStamps[f])||newUp;
+      });
+      await fbPatch('/shared', body);
+      changed.forEach(f=>{ sh[f]=hashes[f]; seen[f]=newUp; });
+      store.sharedAt=newUp;
+      toast('☁ 학원 자료 전송됨 ✓');
+      // 그 사이 다른 기기가 같은 순간에 올린 게 있는지 가볍게 확인(버전표만) — 있으면 곧바로 받아온다
+      try{
+        const fv2=await fbGet('/shared/fieldVer',8000);
+        if(fv2 && syncFields().some(f=>changed.indexOf(f)<0 && fv2[f]!==undefined && (fv2[f]||0)!==(seen[f]||0))) setTimeout(()=>pullShared(true,true),500);
+      }catch(e){}
+    } else if(delta){
+      store.sharedAt=remoteUp;
+    }
+    if(blocked) setTimeout(()=>pullShared(true,true),300);
     persistStoreLocal();
     lastSyncError=null; lastSyncOkAt=Date.now();
-    toast('☁ 학원 자료 전송됨 ✓');
   }catch(e){ console.warn('sync push 실패', e); lastSyncError=e.message; toast('⚠ 전송 실패: '+e.message); }
   finally{ syncBusy=false; updateSyncBadge(); }
 }
@@ -923,13 +1121,19 @@ async function forcePushShared(){
   if(syncBusy) return;
   try{
     syncBusy=true;
+    syncCtxCheck();
+    // 아직 안 불러온 내신분석 항목은 먼저 받아서 합쳐둔다(통째로 덮어써도 그 자료가 사라지지 않게)
+    await ensureLazy(LAZY_FIELDS);
     // 이 기기 자료가 무조건 이기도록 모든 항목의 편집시각을 지금으로 찍어 올린다
     store.fieldStamps=store.fieldStamps||{};
     REPLACE_FIELDS.forEach(f=>{ store.fieldStamps[f]=Date.now(); });
-    const pack={updatedAt:Date.now(), fieldStamps:store.fieldStamps};
-    SHARE_FIELDS.forEach(f=>pack[f]=store[f]);
+    const up=Date.now();
+    const pack={updatedAt:up, fieldStamps:store.fieldStamps, fieldVer:{}};
+    const fields=syncFields();
+    fields.forEach(f=>{ pack[f]=store[f]; pack.fieldVer[f]=up; });
     await fbPut('/shared', sanitizeKeysForFirebase(pack));
-    store.sharedAt=pack.updatedAt;
+    fields.forEach(f=>{ store.syncHash[f]=localHash(f); store.fieldVerSeen[f]=up; });
+    store.sharedAt=up;
     persistStoreLocal();
     toast('☁ 서버 자료를 이 기기 자료로 완전히 덮어썼습니다');
   }catch(e){ console.warn('강제 전송 실패', e); toast('⚠ 전송 실패: '+e.message); }
@@ -962,17 +1166,26 @@ function pruneCalendarTombstones(){
     return evTs>delAt;
   });
 }
-async function pullShared(silent){
+async function pullShared(silent, force){
   if(!syncOn()) return;
   if(pullBusy) return; // 이전 수신이 아직 안 끝났으면 겹쳐서 또 요청하지 않는다 — 느린 회선에서 5초마다 계속 겹쳐 쌓이면 그때마다 실패해서 오류가 끊임없이 뜨는 원인이 됨
   pullBusy=true;
   let healNeeded=false;
   try{
-    const pack=await fbGet('/shared', 12000); // 5초 주기 폴링이라 타임아웃도 짧게(12초) — 오래 걸리는 요청이 다음 주기와 겹치지 않도록
-    if(pack && pack.updatedAt && pack.updatedAt>(store.sharedAt||0)){
+    syncCtxCheck();
+    // 먼저 "서버가 바뀌었나"만 숫자 하나로 확인 — 바뀐 게 없으면 여기서 끝(거의 0바이트). 바뀌었을 때만 바뀐 항목만 받는다.
+    const probeUp=await fbGet('/shared/updatedAt', 8000);
+    const stale=(Date.now()-(store.lastFullPullAt||0))>90*60000; // 90분에 한 번은 전체를 다시 확인(혹시 놓친 게 있어도 바로잡기 위한 안전장치)
+    const prevShared=store.sharedAt||0;
+    let delta=null, pack=null;
+    if(probeUp && (force || stale || probeUp>prevShared)){
+      delta=await fetchSharedDelta(probeUp, 15000, stale);
+      pack=delta.pack;
+    }
+    if(pack && pack.updatedAt && (force || stale || pack.updatedAt>prevShared)){
       const rStamps=pack.fieldStamps||{};
       const lStamps=store.fieldStamps||{};
-      SHARE_FIELDS.forEach(f=>{
+      syncFields().forEach(f=>{
         if(pack[f]==null) return;
         if(isReplaceField(f)){
           if(syncEmptyGuardOn() && syncIsEmpty(pack[f]) && !syncIsEmpty(store[f])){
@@ -991,10 +1204,14 @@ async function pullShared(silent){
         store[f]=mergeField(store[f], pack[f]);
       });
       pruneCalendarTombstones();
-      store.sharedAt=pack.updatedAt;
+      delta.commit();
+      if(subjCaseNormalize()) schedulePushShared();
+      store.sharedAt=Math.max(pack.updatedAt, prevShared);
       persistStoreLocal();
       if(healNeeded){ try{ toast('🛟 서버 자료가 비어있어 이 기기 자료로 복구합니다'); schedulePushShared(); }catch(e){} }
-      if(isEditingNow()){
+      if(!(pack.updatedAt>prevShared) && !force){
+        // 90분 안전 확인만 했고 새로 바뀐 건 없다 — 화면은 다시 그리지 않는다
+      } else if(isEditingNow()){
         // 입력칸에 타이핑하는 도중에 자동 수신이 화면을 다시 그리면 아직 저장 안 된 글자가 사라지므로,
         // 지금 편집 중이면 화면 갱신을 미뤄뒀다가 입력을 마치고(포커스를 벗어나면) 그때 반영한다
         pendingRenderAfterEdit=true;
@@ -1135,19 +1352,20 @@ async function refreshReplaceFieldsFromServer(fields){
   // 돌아와 보이는 사고가 난다.
   if(!syncOn()) return;
   try{
-    const pack=await fbGet('/shared', 12000);
-    if(!pack) return;
-    const rStamps=pack.fieldStamps||{};
+    syncCtxCheck();
+    const fs=await fbGet('/shared/fieldStamps', 12000);
+    if(!fs) return;
     const lStamps=store.fieldStamps||{};
-    (fields||REPLACE_FIELDS).forEach(f=>{
-      if(pack[f]==null) return;
-      if((rStamps[f]||0) > (lStamps[f]||0)){
-        store[f]=pack[f];
-        store.fieldStamps=store.fieldStamps||{}; store.fieldStamps[f]=rStamps[f];
-        syncSnap=syncSnap||{}; syncSnap[f]=JSON.stringify(pack[f]);
-      }
+    const need=(fields||REPLACE_FIELDS).filter(f=>(fs[f]||0) > (lStamps[f]||0));
+    if(!need.length) return;
+    const vals=await Promise.all(need.map(f=>fbGet('/shared/'+f, 12000))); // 필요한 항목만 받아온다
+    need.forEach((f,i)=>{
+      if(vals[i]==null) return;
+      store[f]=vals[i];
+      store.fieldStamps=store.fieldStamps||{}; store.fieldStamps[f]=fs[f];
+      syncSnap=syncSnap||{}; syncSnap[f]=JSON.stringify(vals[i]);
+      store.syncHash=store.syncHash||{}; store.syncHash[f]=remoteHash(vals[i]);
     });
-    if(pack.updatedAt && pack.updatedAt>(store.sharedAt||0)) store.sharedAt=pack.updatedAt;
   }catch(e){ /* 네트워크 문제면 그냥 이 기기에 있는 최신본으로 계속 진행 */ }
 }
 let syllabusSyncBusy=false, lastSylSyncAt=0;
@@ -4598,12 +4816,56 @@ function giveBlock(c, k, type, label, selected, options){
       <span style="font-size:.76rem;font-weight:800;color:${done===total&&total?'var(--ok)':'var(--sub)'}">배부 ${done}/${total}</span>
       <button class="btn small" data-bgall="${esc(k)}|${esc(subj)}" style="margin-left:auto">☑ 반 전체 선택</button>
       <button class="btn small" data-bgnone="${esc(k)}|${esc(subj)}">☐ 전체 해제</button>
+      <button class="btn small" data-bgnew="${esc(k)}|${esc(subj)}" title="같은 교재를 또 나눠줄 때 — 체크를 비우고 새로 시작해요 (이전 배부 기록은 남아요)">🔁 한 번 더 배부</button>
       <button class="btn small" data-bgapply="${esc(k)}|${esc(subj)}">✔ 체크된 학생 배부 처리</button>
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:6px">
       ${(c.students||[]).map(stu=>`<label style="display:flex;align-items:center;gap:4px;font-size:.8rem;background:${g.students[stu]?'#e6f6ef':'#fff'};border:1px solid ${g.students[stu]?'var(--ok)':'var(--line)'};border-radius:7px;padding:4px 8px;cursor:pointer">
         <input type="checkbox" class="bgchk" data-k="${esc(k)}" data-subj="${esc(subj)}" data-stu="${esc(stu)}" ${g.students[stu]?'checked':''}>${esc(studentDisplayName(c.academy,stu,c.name))}${g.students[stu]?' ✔':''}</label>`).join('')}
     </div>
+  </div>`;
+}
+function bgLogAdd(k,subj,stu,date,label,book){
+  const a=k.split('|')[0], className=k.slice(a.length+1);
+  store.bookGiveLog.push({id:genStudentId(), k, academy:a, className, subj, label:label||subj, book:book||'', stu, date:date||todayISO(), by:(loginTeacher()?loginTeacher().t.name:'관리자'), createdAt:Date.now(), updatedAt:Date.now()});
+}
+function bgLogRemove(k,subj,stu){ // 그 학생의 가장 최근 배부 기록 하나를 지운다(체크 해제)
+  const l=store.bookGiveLog.filter(x=>!x._deleted && x.k===k && x.subj===subj && x.stu===stu).sort((x,y)=>(y.createdAt||0)-(x.createdAt||0));
+  if(l[0]){ l[0]._deleted=true; l[0].updatedAt=Date.now(); }
+}
+// [실장·관리자] 이번 달 배부 내역 — 날짜별로 어느 반에 무슨 교재를 몇 명에게 줬는지 한눈에
+function bgMonthSummaryHTML(){
+  const m=state.month;
+  const ev=(store.bookGiveLog||[]).filter(x=>!x._deleted && String(x.date||'').slice(0,7)===m && (state.ac==='all'||x.academy===state.ac));
+  let h=`<details class="ysec" open style="margin-bottom:14px"><summary style="cursor:pointer;padding:10px 16px;font-weight:800">📅 ${mLabel(m)} 교재 배부 내역 <span style="font-weight:400;font-size:.78rem;color:var(--sub)">(${ev.length}건)</span></summary><div style="padding:0 16px 14px">`;
+  if(!ev.length) return h+'<div style="font-size:.82rem;color:#8b93a7">이번 달 배부 기록이 없어요. 아래에서 학생을 체크하면 날짜와 함께 여기에 쌓여요.</div></div></details>';
+  const byDate={}; ev.forEach(x=>{ (byDate[x.date]=byDate[x.date]||[]).push(x); });
+  Object.keys(byDate).sort().reverse().forEach(d=>{
+    const g={}; byDate[d].forEach(x=>{ const key=x.className+'|'+x.label+'|'+x.book; (g[key]=g[key]||{x,stus:[]}).stus.push(x.stu); });
+    h+=`<div style="margin-top:10px"><div style="font-size:.8rem;font-weight:800;color:#4338ca">${esc(d)} (${wdOf(d)})</div>`;
+    Object.values(g).forEach(({x,stus})=>{
+      h+=`<div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;padding:5px 0;border-bottom:1px dashed var(--line);font-size:.82rem"><b style="min-width:90px">${esc(x.className)}</b><span style="color:var(--sub)">${esc(x.label)}</span><span style="font-weight:700">${esc(x.book||'(교재명 없음)')}</span><span style="color:#0e9f6e;font-weight:800">${stus.length}명</span><span style="color:var(--sub);font-size:.76rem;flex:1;min-width:160px">${esc(stus.join(', '))}</span></div>`;
+    });
+    h+='</div>';
+  });
+  return h+'</div></details>';
+}
+// 과목 교재 배부 체크 — 교재명을 적으면 아래에 학생 체크칸이 나타나고, 체크하면 그 학생에게 배부한 것으로 기록된다
+function subjectGiveBlock(c,k,subj,book){
+  if(!String(book||'').trim()) return `<div style="font-size:.76rem;color:#8b93a7;margin-top:6px">교재명을 입력하면 학생 체크칸이 나타나요.</div>`;
+  const g=bookGivenFor(k, subj);
+  const stus=c.students||[]; const total=stus.length;
+  const done=stus.filter(stu=>g.students[stu]).length;
+  return `<div style="margin-top:8px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+      <span style="font-size:.76rem;font-weight:800;color:${done===total&&total?'var(--ok)':'var(--sub)'}">배부 ${done}/${total}</span>
+      <button class="btn small" data-bgall="${esc(k)}|${esc(subj)}" style="margin-left:auto">☑ 반 전체 선택</button>
+      <button class="btn small" data-bgnone="${esc(k)}|${esc(subj)}">☐ 전체 해제</button>
+      <button class="btn small" data-bgnew="${esc(k)}|${esc(subj)}" title="같은 교재를 또 나눠줄 때 — 체크를 비우고 새로 시작해요 (이전 배부 기록은 남아요)">🔁 한 번 더 배부</button>
+      <button class="btn small" data-bgapply="${esc(k)}|${esc(subj)}" title="업무일지에 교재 배부로 기록해요">📝 업무일지에 기록</button>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">${stus.map(stu=>`<label style="display:flex;align-items:center;gap:4px;font-size:.8rem;background:${g.students[stu]?'#e6f6ef':'#fff'};border:1px solid ${g.students[stu]?'var(--ok)':'var(--line)'};border-radius:7px;padding:4px 8px;cursor:pointer">
+      <input type="checkbox" class="bgchk" data-k="${esc(k)}" data-subj="${esc(subj)}" data-stu="${esc(stu)}" ${g.students[stu]?'checked':''}>${esc(studentDisplayName(c.academy,stu,c.name))}${g.students[stu]?' ✔':''}</label>`).join('')}</div>
   </div>`;
 }
 function effStudentsForGive(c){
@@ -4763,9 +5025,8 @@ function renderBookGive(list){
   let h=`<div class="todaybar"><span class="wd">📦 교재 배부</span>
     ${lt?`<span class="mytag" style="background:${lt.t.color}">👤 ${esc(lt.t.name)}</span><label class="hwlab"><input type="checkbox" id="bgMyOnly" ${state.myOnly?'checked':''}> 내 수업만 보기</label>`:''}
     <span style="font-size:.76rem;color:var(--sub)">과목별 교재명은 직접 입력하면 반교재·연간교재·업무일지에도 실시간으로 반영됩니다. IBT는 배부할 교재가 없어 목록에서 제외돼요.</span></div>`;
-  if(isAdminRole()){
-    // (교재 가격·수강료 항목 관리/배정 입력란은 제거됨 — 기존 저장 자료는 그대로 보존)
-  }
+  h+=`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;padding:9px 14px;background:#f4f6fb;border-radius:10px"><b style="font-size:.84rem">📆 배부일</b><input type="date" id="bgDate" value="${esc(state.bgDate||todayISO())}" style="padding:5px 8px;border:1.5px solid var(--line);border-radius:7px;font-family:inherit"><span style="font-size:.76rem;color:var(--sub)">체크하는 학생에게 이 날짜가 기록돼요 (기본: 오늘)</span></div>`;
+  if(isAdminRole()) h+=bgMonthSummaryHTML();
   if(!cls.length) return h+'<div class="empty">학생이 등록된 반이 없습니다.</div>';
   const wbOpts=wbOptionsFor(MODE);
   const tpOpts=tpOptionsFor(MODE);
@@ -4786,13 +5047,14 @@ function renderBookGive(list){
     h+=`<div class="ysec"><h3>${esc(c.name)} ${bdg(c.academy)}${(effStu!==c.students)?` <span style="background:#6366f1;color:#fff;font-size:.68rem;font-weight:800;border-radius:6px;padding:2px 6px">🔗 합반 학생 기준</span>`:''}</h3><div style="padding:0 16px 14px">`;
     subs.forEach(s=>{
       const subj=s.subject||'-';
-      // 배부(인원 체크)는 이제 위쪽 "교재 목록 관리 & 배정"에서 처리 — 여기서는 그 과목이 지금 쓰는 교재명(진도 기록용)만 관리
+      // 교재명을 적으면 아래에 학생 체크칸이 나타난다(교재 고르고 → 받은 학생 체크)
       h+=`<div style="margin-bottom:14px;padding:10px 12px;background:#f6f8fc;border-radius:10px">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <b style="font-size:.86rem">${esc(subj)}</b>
           <input type="text" class="bgbook" data-k="${esc(k)}" data-subj="${esc(subj)}" value="${esc(s.book||'')}" placeholder="교재명 직접 입력 (진도 기록용)" style="flex:1;min-width:120px;max-width:260px;border:1px solid var(--line);border-radius:7px;padding:5px 8px;font-family:inherit;font-size:.82rem">
-          <span style="font-size:.72rem;color:#8b93a7"></span>
+          <span style="font-size:.72rem;color:#8b93a7">교재명을 쓰고 받은 학생을 체크하세요</span>
         </div>
+        ${subjectGiveBlock(cEff,k,subj,s.book)}
       </div>`;
     });
     h+=giveBlock(cEff, k, 'wb', '📖 단어장', store.giveSel[k].wordbook||'', wbOpts);
@@ -4830,6 +5092,27 @@ function bindBookGive(){
     store.giveSel[k]=store.giveSel[k]||{};
     store.giveSel[k][type==='wb'?'wordbook':'testpaper']=sel.value;
     save(); render(true);
+  });
+  const splitKS=str=>{ const a=str.indexOf('|'), b=str.indexOf('|',a+1); return {k:str.slice(0,b), subj:str.slice(b+1)}; };
+  const clsOf=k=>{ const c=classesFor(state.month).find(x=>ckey(x)===k); return c?effStudentsForGive(c):[]; };
+  const bgDateVal=()=>{ const d=v.querySelector('#bgDate'); return (d&&d.value)||state.bgDate||todayISO(); };
+  const bd=v.querySelector('#bgDate'); if(bd) bd.onchange=()=>{ state.bgDate=bd.value||''; };
+  v.querySelectorAll('.bgchk').forEach(cb=>cb.onchange=()=>{
+    const k=cb.dataset.k, subj=cb.dataset.subj, stu=cb.dataset.stu;
+    const g=bookGivenFor(k, subj);
+    if(cb.checked){ const dt=bgDateVal(); g.students[stu]=dt; const info=resolveBookGiveLabel(v,k,subj); bgLogAdd(k,subj,stu,dt,info.label,info.book); }
+    else { delete g.students[stu]; bgLogRemove(k,subj,stu); }
+    g.updatedAt=Date.now(); save(); render(true);
+  });
+  v.querySelectorAll('[data-bgall]').forEach(b=>b.onclick=()=>{ const {k,subj}=splitKS(b.dataset.bgall); const g=bookGivenFor(k,subj); const dt=bgDateVal(); const info=resolveBookGiveLabel(v,k,subj); clsOf(k).forEach(st=>{ if(!g.students[st]){ g.students[st]=dt; bgLogAdd(k,subj,st,dt,info.label,info.book); } }); g.updatedAt=Date.now(); save(); render(true); });
+  v.querySelectorAll('[data-bgnone]').forEach(b=>b.onclick=()=>{ const {k,subj}=splitKS(b.dataset.bgnone); const g=bookGivenFor(k,subj); Object.keys(g.students||{}).forEach(st=>{ if(g.students[st]) bgLogRemove(k,subj,st); }); g.students={}; g.updatedAt=Date.now(); save(); render(true); });
+  v.querySelectorAll('[data-bgnew]').forEach(b=>b.onclick=()=>{ const {k,subj}=splitKS(b.dataset.bgnew); const g=bookGivenFor(k,subj); g.students={}; g.updatedAt=Date.now(); save(); render(true); toast('새 배부를 시작해요 (이전 기록은 남아요)'); });
+  v.querySelectorAll('[data-bgapply]').forEach(b=>b.onclick=()=>{
+    const {k,subj}=splitKS(b.dataset.bgapply); const g=bookGivenFor(k,subj);
+    const cnt=Object.keys(g.students||{}).filter(x=>g.students[x]).length;
+    if(!cnt){ toast('체크된 학생이 없어요'); return; }
+    const info=resolveBookGiveLabel(v,k,subj);
+    logBookGiveToJournal(k, info.label, info.book, cnt); save(); toast('업무일지에 기록했어요');
   });
   v.querySelectorAll('.bgbook').forEach(inp=>inp.onchange=()=>{
     const kk=inp.dataset.k; const a=kk.split('|')[0]; const className=kk.slice(a.length+1);
@@ -6366,7 +6649,7 @@ function renderSeat(){
   const noLevel=store.students.filter(st=>st.academy===a && !st._deleted && (st.status||'재원')==='재원' && !['초','중'].includes(csLevelOf(st)) && csLevelOf(st)!=='고').length;
   const labNone=csLabClassNames(a).size===0;
   return `<div class="setsec" style="border:2px solid #2e5fb7">
-    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1103-x · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
+    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1104-b · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
     <div class="desc">학원 전체 <b>초·중등 재원생 중 강의실이 '어학실'인 수업을 듣는 학생</b>(${cand.length}명, 어학실 수업이 있는 반 ${csLabClassNames(a).size}개)을 자리 ${seatCount}개에 자동으로 배치합니다. <b>같은 학년끼리</b>, <b>같은 반끼리</b>는 옆·앞뒤 자리에 앉지 않게 짜고, 학년·반은 학생 명단과 시간표(반)를 그대로 따릅니다. <b>어학실 이용 시간이 겹치지 않는 학생</b>은 같은 학년·같은 반이어도 옆자리에 앉을 수 있고, 한 자리(컴퓨터)를 시간대별로 나눠 써도 돼요(자리 칸 안에 학생이 여러 명 보여요). 수동으로는 학생을 눌러 고른 뒤 자리나 다른 학생을 누르면 옮기거나 서로 바꿔요. 빨간 테두리(⚠)는 규칙에 걸린 곳입니다.</div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:10px 0 0;font-size:.84rem"><b>📅 기간</b>
       <select data-csperiod style="padding:5px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${periods.map(x=>`<option value="${esc(x[0])}" ${x[0]===pkey?'selected':''}>${esc(x[1])}</option>`).join('')}</select>
@@ -9923,8 +10206,8 @@ function yearlyPivot(a){
     (dataFor(a,m)||[]).forEach(c=>{
       (c.subjects||[]).forEach(s=>{
         if(!s.subject && !s.book) return;
-        const key=c.name+'|'+(s.subject||'-');
-        if(!rows[key]){ rows[key]={name:c.name, dept:c.dept, subject:s.subject||'-', months:{}}; order.push(key); }
+        const key=yrKey(c.name, s.subject||'-');
+        if(!rows[key]){ rows[key]={name:c.name, dept:c.dept, subject:String(s.subject||'-').trim(), months:{}}; order.push(key); }
         let b=s.book||'';
         if(b.startsWith('〃')){
           const prev=ms.filter(x=>x<m).reverse().map(x=>rows[key].months[x]).find(Boolean);
@@ -9939,13 +10222,20 @@ function yearlyPivot(a){
   for(const ek in store.bookedit){
     const [ea,nm,sj,m]=ek.split('|');
     if(ea!==a) continue;
-    const key=nm+'|'+sj;
-    if(!rows[key]){ rows[key]={name:nm, dept:'', subject:sj, months:{}}; order.push(key); }
-    rows[key].months[m]=store.bookedit[ek];
+    const key=yrKey(nm, sj);
+    if(!rows[key]){ rows[key]={name:nm, dept:'', subject:String(sj).trim(), months:{}}; order.push(key); }
+    if(rows[key].months[m]==null || sj===rows[key].subject) rows[key].months[m]=store.bookedit[ek];
     allMs.add(m);
   }
-  return {ms:[...allMs].sort(), rows, order};
+  // 반 순서(사용자가 정한 순서 → 기본 부서 순서)대로 정렬하고, 같은 반의 과목은 붙어서 나오게 묶는다
+  const nameDept={}; order.forEach(k=>{ const r=rows[k]; if(nameDept[r.name]==null||!nameDept[r.name]) nameDept[r.name]=r.dept||''; });
+  const clsObjs=Object.keys(nameDept).map(n=>({name:n, dept:nameDept[n], academy:a}));
+  const sortedNames=sortClassesByDept(clsObjs).map(c=>c.name);
+  const byName={}; order.forEach(k=>{ (byName[rows[k].name]=byName[rows[k].name]||[]).push(k); });
+  const order2=[]; sortedNames.forEach(n=>{ (byName[n]||[]).forEach(k=>order2.push(k)); });
+  return {ms:[...allMs].sort(), rows, order:order2};
 }
+function yrKey(name, subj){ return name+'|'+String(subj==null?'-':subj).trim().toLowerCase(); }
 function ydKey(a,name,subj,m){ return a+'|'+name+'|'+subj+'|'+m; }
 function classesMatchingName(a, month, className){
   // 합반 표시용 이름("JB1,2")으로는 실제 반 목록에 정확히 일치하는 반이 없으므로,
@@ -9966,7 +10256,7 @@ function syncBookToClass(a,className,subject,month,value,wd){
     // 어느 줄을 읽어오든 항상 최신값이 보이도록 이름이 같은 줄 전부에 반영한다.
     // 일치하는 과목 줄이 아예 없으면(이름·설명을 자유롭게 고쳐 적은 경우 등) 새 과목을 만들지 않고 건너뛴다 —
     // 안 그러면 "수업" 칸에 적은 내용(페이지 범위 등)이 매번 새 과목으로 잘못 추가돼버린다
-    const cands=c.subjects.filter(x=>String(x.subject||'-').trim()===subj);
+    const cands=c.subjects.filter(x=>String(x.subject||'-').trim().toLowerCase()===subj.toLowerCase());
     cands.forEach(s=>{ s.book=value; });
   });
   return true;
@@ -9979,7 +10269,7 @@ function syncProgressToClass(a,className,subject,month,value,wd){
   if(!subj) return false;
   list.forEach(c=>{
     c.subjects=c.subjects||[];
-    const cands=c.subjects.filter(x=>String(x.subject||'-').trim()===subj);
+    const cands=c.subjects.filter(x=>String(x.subject||'-').trim().toLowerCase()===subj.toLowerCase());
     cands.forEach(s=>{ s.progress=value; });
   });
   return true;
@@ -10067,11 +10357,12 @@ function renderYearly(){
     if(state.yactive){ const act=activeNames(a); keys=keys.filter(k=>act.has(rows[k].name)); }
     if(state.q) keys=keys.filter(k=>matches(rows[k].name)||matches(rows[k].subject)||Object.values(rows[k].months).some(matches));
     if(!keys.length) continue;
+    const yGrp={}; keys.forEach(k=>{ yGrp[rows[k].name]=(yGrp[rows[k].name]||0)+1; });
     let prevName='';
     h+=`<div class="ysec"><h3>${AC[a].label} <span class="badge ${AC[a].cls}">반별 연간 교재${state.yactive?' — '+mLabel(state.month)+' 운영 반':''}</span></h3><div class="ywrap"><table class="ytable"><thead><tr><th>반</th><th>과목</th>${ms.map(m=>`<th>${Number(m.slice(5))}월</th>`).join('')}</tr></thead><tbody>`;
     keys.forEach(k=>{
       const r=rows[k]; let prevBook='';
-      h+=`<tr><td class="cn">${r.name===prevName?'':hl(r.name)}</td><td class="sj">${hl(r.subject)}</td>`;
+      h+=`<tr>${r.name===prevName?'':`<td class="cn" rowspan="${yGrp[r.name]}">${hl(r.name)}</td>`}<td class="sj">${hl(r.subject)}</td>`;
       ms.forEach(m=>{
         const b=r.months[m]||'';
         const dk=ydKey(a,r.name,r.subject,m);
@@ -10123,7 +10414,7 @@ function bindYearly(){
   if(isAdminRole()) v.querySelectorAll('[data-ye]').forEach(td=>td.onclick=e=>{
     if(e.target.closest('.ychk')) return;
     const k=td.dataset.ye; const [a,nm,sj,m]=k.split('|');
-    const cur = store.bookedit[k] != null ? store.bookedit[k] : (yearlyPivot(a).rows[nm+'|'+sj]||{months:{}}).months[m]||'';
+    const cur = store.bookedit[k] != null ? store.bookedit[k] : (yearlyPivot(a).rows[yrKey(nm,sj)]||{months:{}}).months[m]||'';
     const nv=prompt(`${nm} · ${sj} · ${mLabel(m)} 교재 입력/수정`, cur);
     if(nv===null) return;
     const val=nv.trim();
@@ -15593,6 +15884,12 @@ function render(keepOpen){
   }catch(e){}
   try{ renderInner(keepOpen); }finally{
     _lastRenderTab=state.tab;
+    // 내신분석 메뉴는 열었을 때 처음 한 번만 서버 자료를 불러온다(그 전엔 동기화에서 제외)
+    try{
+      if(state.tab==='examrpt' && syncOn() && !(lazyLoaded.examAnalysis && lazyLoaded.examTrends) && !lazyBusy){
+        ensureLazy(LAZY_FIELDS).then(ok=>{ if(ok && state.tab==='examrpt' && !isEditingNow()) render(true); });
+      }
+    }catch(e){}
     try{
       if(same && v){
         const seen={};
@@ -15708,6 +16005,7 @@ function renderInner(keepOpen){
   mountAI();
   renderBell();
 }
+if(subjCaseNormalize()) persistStoreLocal();
 startSyncLoop();
 setTimeout(()=>{ try{ sylAutoMigrate(); }catch(e){} }, 6000); // 열 때마다 이 기기에 남아있는 큰 Syllabus 자료는 자동으로 서버로 옮긴다
 let qRenderTimer=null;
