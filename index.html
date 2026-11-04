@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>이베스트 (본관) — 선생님용 대시보드 · v1104-e</title>
+<title>이베스트 (본관) — 선생님용 대시보드 · v1104-f</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%96%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">
@@ -651,7 +651,7 @@ store.syllabusSeeded=true; // 예전에 기본으로 들어있던 'Spider Phonic
 if(!store.examAnalysis) store.examAnalysis=[]; // 내신 분석 — {id, academy, school, grade, examTitle, examRange, examDate, prepStart, prepEnd, teacherLecture, teacherIBT, note, categories:[{name,count,questions:[{id,no,question,points,difficulty}]}], updatedAt, updatedBy} · 월 상관없이 항상 보임, 모든 선생님 열람·수정 가능(Syllabus처럼 보관용)
 if(!store.absentNotes) store.absentNotes={}; // 날짜별 결석생 요약의 '특이사항' 자유 메모 {YYYY-MM-DD: text}
 if(!store.examTrends) store.examTrends=[]; // 동향 분석 리포트 — {id, academy, school, grade, title, memo, source:'ai'|'upload', entryIds, snaps, files, report:{headline,strategy,metrics,changes,teaching}, aiModel, createdAt, updatedAt, createdBy, _deleted} · 내신 분석 탭 안의 두 번째 탭, AI로 만든 리포트는 자동 저장
-const SHARE_FIELDS=['bookGiveLog','wordBooks','uploads','bookedit','bookdone','daysedit','timeedit','calendar','calendarTombstones','calCatColors','meetings','teachers','adminEmail','enrollment','newStudents','dropouts','compSeats','classOrder','consultRoles','students','admissionConsults','wordTests','attend','homework','stayback','bookGiven','uploadTombstones','uploadStamps','wordbookOptions','testPaperOptions','giveSel','consultRequests','records','assign','cmemo','worklog','weekplan','submits','handover','boardPosts','handoverGrid','monthOverride','examAnalysis','examTrends','absentNotes','bookCatalog','tuitionCatalog','papercheckEnabled','papercheckCols','papercheckData','worklogMonthly','worklogWeekly'];
+const SHARE_FIELDS=['bookGiveLog','wordBooks','uploads','bookedit','bookdone','daysedit','timeedit','calendar','calendarTombstones','calCatColors','meetings','teachers','adminEmail','enrollment','newStudents','dropouts','compSeats','classOrder','consultRoles','students','admissionConsults','wordTests','attend','homework','stayback','bookGiven','uploadTombstones','uploadStamps','wordbookOptions','testPaperOptions','giveSel','consultRequests','records','assign','cmemo','worklog','weekplan','submits','handover','boardPosts','handoverGrid','monthOverride','examAnalysis','examTrends','absentNotes','bookCatalog','tuitionCatalog','papercheckEnabled','papercheckCols','papercheckData','worklogMonthly','worklogWeekly','wlMemo'];
 // syllabus(실러버스)는 PDF/한글/워드 첨부가 커서 별도 경로(/syllabus)로, 낮은 빈도로만 동기화합니다 — 그래야 매 5초/매 입력마다 전체를 전송하지 않습니다.
 // 반 자료·학생 명단처럼 "삭제"가 중요한 항목은 병합하지 않고 통째로 교체한다(마지막 저장이 우선).
 // 병합 방식(mergeById)에는 삭제라는 개념이 없어서, 지운 반·학생이 다른 기기 자료와 합쳐지며 계속 되살아나기 때문.
@@ -6663,7 +6663,7 @@ function renderSeat(){
   const noLevel=store.students.filter(st=>st.academy===a && !st._deleted && (st.status||'재원')==='재원' && !['초','중'].includes(csLevelOf(st)) && csLevelOf(st)!=='고').length;
   const labNone=csLabClassNames(a).size===0;
   return `<div class="setsec" style="border:2px solid #2e5fb7">
-    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1104-e · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
+    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1104-f · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
     <div class="desc">학원 전체 <b>초·중등 재원생 중 강의실이 '어학실'인 수업을 듣는 학생</b>(${cand.length}명, 어학실 수업이 있는 반 ${csLabClassNames(a).size}개)을 자리 ${seatCount}개에 자동으로 배치합니다. <b>같은 학년끼리</b>, <b>같은 반끼리</b>는 옆·앞뒤 자리에 앉지 않게 짜고, 학년·반은 학생 명단과 시간표(반)를 그대로 따릅니다. <b>어학실 이용 시간이 겹치지 않는 학생</b>은 같은 학년·같은 반이어도 옆자리에 앉을 수 있고, 한 자리(컴퓨터)를 시간대별로 나눠 써도 돼요(자리 칸 안에 학생이 여러 명 보여요). 수동으로는 학생을 눌러 고른 뒤 자리나 다른 학생을 누르면 옮기거나 서로 바꿔요. 빨간 테두리(⚠)는 규칙에 걸린 곳입니다.</div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:10px 0 0;font-size:.84rem"><b>📅 기간</b>
       <select data-csperiod style="padding:5px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${periods.map(x=>`<option value="${esc(x[0])}" ${x[0]===pkey?'selected':''}>${esc(x[1])}</option>`).join('')}</select>
@@ -8929,6 +8929,7 @@ if(!store.worklog) store.worklog={};
 // 그 기간 안 어느 날짜에서 고치든 즉시 같은 기간의 다른 날짜에도 그대로 보인다.
 if(!store.worklogMonthly) store.worklogMonthly={};
 if(!store.worklogWeekly) store.worklogWeekly={};
+if(!store.wlMemo) store.wlMemo={}; // 업무일지 옆 개인 메모(제출되지 않음) — {선생님키:{text,updatedAt}}
 const RESULTS=['','완료','O','△','X','예정'];
 function whoKey(lt){ return lt.a+'|'+lt.i; }
 function curWho(){
@@ -9013,18 +9014,13 @@ function wlWeekKey(date){
   d.setDate(d.getDate()-dow);
   return ymd(d);
 }
-// 월간 업무: 그 달 전체가 공유하는 살아있는 목록. 이번 달 자료가 아직 없으면(이번 달 첫 접근) 가장 최근 달의
-// 내용·체크 상태를 그대로 이어받는다(월이 바뀌어도 계속 이어가는 업무이므로).
+// 월간 업무: 그 달 전체가 공유하는 살아있는 목록. 매달 빈 목록으로 새로 시작한다(지난달 내용은 이어받지 않음).
 function wlMonthlyRec(who, date){
   store.worklogMonthly[who]=store.worklogMonthly[who]||{};
   const mk=wlMonthKey(date);
   if(!store.worklogMonthly[who][mk]){
-    const prevKeys=Object.keys(store.worklogMonthly[who]).filter(k=>k<mk).sort();
-    const prev=prevKeys.length?store.worklogMonthly[who][prevKeys[prevKeys.length-1]]:null;
-    store.worklogMonthly[who][mk]={
-      items: prev? prev.items.filter(x=>x.t).map(x=>({t:x.t,r:x.r||''})) : [],
-      updatedAt: 0
-    };
+    // 월간 업무는 매달 새로 시작한다 — 지난달 내용·체크를 이어받지 않고 빈 목록에서 시작
+    store.worklogMonthly[who][mk]={ items:[], updatedAt:0 };
   }
   const rec=store.worklogMonthly[who][mk];
   rec.items=pad(rec.items,3,()=>({t:'',r:''}));
@@ -9168,11 +9164,27 @@ function journalForm(who, date, readOnly){
   });
   h+=`</tbody></table></div>${readOnly?'':'<button class="btn small" id="wlLadd">+ 수업 줄 추가</button>'}`;
   h+=`</div>`;
-  return h;
+  if(readOnly) return h;
+  const memo=((store.wlMemo||{})[who]||{}).text||'';
+  return `<div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap"><div style="flex:1 1 640px;min-width:0">${h}</div>
+    <aside style="flex:1 1 230px;max-width:340px;min-width:210px;position:sticky;top:12px;background:#fffdf3;border:1px solid #f0e3a5;border-radius:12px;padding:12px 13px;box-shadow:var(--shadow)">
+      <div style="font-weight:800;font-size:.88rem">📝 내 메모 <span style="font-weight:500;font-size:.7rem;color:var(--sub)">제출되지 않는 개인 메모</span></div>
+      <textarea id="wlMemo" placeholder="자유롭게 메모하세요 (업무일지 제출에는 포함되지 않아요)" style="width:100%;min-height:340px;margin-top:8px;border:1px solid #ecdf9c;border-radius:8px;padding:8px 9px;font-family:inherit;font-size:.83rem;line-height:1.5;background:#fffef8;resize:vertical;box-sizing:border-box">${esc(memo)}</textarea>
+      <div id="wlMemoSt" style="font-size:.68rem;color:var(--sub);margin-top:4px">입력하면 자동 저장돼요</div>
+    </aside></div>`;
 }
 function bindJournal(who, date, readOnly){
   const v=document.getElementById('view'); const e=wlGet(who,date);
   if(readOnly) return; // 조회 전용 — 편집 이벤트 바인딩하지 않음
+  const memoEl=v.querySelector('#wlMemo');
+  if(memoEl){
+    let mt=null;
+    memoEl.addEventListener('input',()=>{
+      store.wlMemo=store.wlMemo||{}; store.wlMemo[who]={text:memoEl.value, updatedAt:Date.now()};
+      const st=v.querySelector('#wlMemoSt'); if(st) st.textContent='저장 중…';
+      clearTimeout(mt); mt=setTimeout(()=>{ save(); const st2=document.getElementById('wlMemoSt'); if(st2) st2.textContent='저장됨 ✓'; },700);
+    });
+  }
   const touch=()=>{ e.updatedAt=Date.now(); };
   // 월간·주간은 이제 그 기간(달/주) 전체가 공유하는 별도 자료(worklogMonthly/worklogWeekly)라, 그쪽을 고칠 때는
   // 그 기간 자료 자체의 updatedAt도 같이 갱신해야 다른 기기와 동기화할 때 최신 내용이 정확히 반영된다.
