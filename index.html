@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>이베스트 (본관) — 선생님용 대시보드 · v1105-h</title>
+<title>이베스트 (본관) — 선생님용 대시보드 · v1105-k</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%96%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">
@@ -3307,15 +3307,97 @@ function renderTimetableBulk(){
   </table></div>`;
 }
 // 🕒 전체 시간표 — 엑셀로 내려받는 "그리드 시간표"와 같은 모양(요일별 표 · 가로=반 · 세로=시간대 · 선생님 색)으로 화면에 보여준다
+/* ---------- 그리드 시간표 수정모드 (관리자·실장) — 칸을 눌러 선생님(색)·과목·강의실을 넣으면 해당 반 과목 자료에 바로 반영 ---------- */
+let ttgEdReg=[];
+function ttgDayList(c,s){ const d=String(s.day||'').split(',').map(x=>x.trim()).filter(Boolean); return d.length?d:String(cdays(c)||'').split(',').map(x=>x.trim()).filter(Boolean); }
+function ttgTeacherStats(classes){
+  // 선생님별 주간 수업 시간: 같은 요일·같은 시간대는 한 번만 센다(합반·같은 시간 중복 방지)
+  const st={}; const seen=new Set();
+  classes.forEach(c=>{ (c.subjects||[]).forEach(s=>{
+    const t=String(s.teacher||'').trim(); const r=parseRange(s.time); if(!t||!r||!s.subject) return;
+    ttgDayList(c,s).forEach(d=>{ const k=t+'|'+d+'|'+r[0]+'|'+r[1]; if(seen.has(k)) return; seen.add(k);
+      const o=st[t]=st[t]||{min:0,n:0,days:{}}; const m=Math.round((r[1]-r[0])*60); o.min+=m; o.n++; o.days[d]=(o.days[d]||0)+m; });
+  }); });
+  return st;
+}
+function ttgFmtMin(m){ const h=Math.floor(m/60), mm=m%60; return h?(h+'시간'+(mm?' '+mm+'분':'')):(mm+'분'); }
+function ttgTeacherPanel(a,cls){
+  const st=ttgTeacherStats(cls); const names=Object.keys(st); if(!names.length) return '';
+  const rows=(store.teachers[a]||[]).map(t=>t.name).filter(n=>st[n]).concat(names.filter(n=>!(store.teachers[a]||[]).some(t=>t.name===n)));
+  return `<div style="background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:12px"><b style="font-size:.88rem">⏱ 선생님별 주간 수업 시간</b> <span style="font-size:.72rem;color:var(--sub)">(같은 시간대는 한 번만 계산 · 수정하면 바로 갱신)</span>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">${rows.map(n=>{ const o=st[n]; const hex=ttgTeacherColorHex(a,n)||'#e5e7eb'; const fg=ttgIsDarkColor(hex)?'#fff':'#000';
+      return `<div style="border:1px solid var(--line);border-radius:10px;padding:6px 10px;min-width:150px"><span style="background:${hex};color:${fg};font-weight:800;font-size:.8rem;border-radius:999px;padding:2px 10px">${esc(n)}</span>
+        <div style="font-weight:800;margin-top:4px">${ttgFmtMin(o.min)} <span style="font-weight:600;color:var(--sub);font-size:.74rem">· ${o.n}타임</span></div>
+        <div style="font-size:.7rem;color:var(--sub)">${TTG_DAYS.filter(d=>o.days[d]).map(d=>d+' '+ttgFmtMin(o.days[d])).join(' · ')}</div></div>`; }).join('')}</div></div>`;
+}
+function ttgEdClose(){ const m=document.getElementById('ttgEdModal'); if(m) m.remove(); }
+function ttgOpenEditor(i){
+  const d=ttgEdReg[i]; if(!d) return; ttgEdClose();
+  const h0=d.hits[0]; const a=d.a;
+  const teachers=(store.teachers[a]||[]).map(t=>t.name);
+  const curT=h0?(h0.teacher||''):''; const subj=h0?h0.subject:(d.isWt?'단어시험':''); const room=h0?(h0.room||''):'';
+  const timeVal=h0?(fmtH(h0.start)+'-'+fmtH(h0.end)):(fmtH(d.s0)+'-'+fmtH(d.s1));
+  const multiDay=h0 && ttgDayList(h0.own,h0.ref).length>1;
+  const allSubj=[...new Set(d.objs.concat([]).flatMap(c=>(c.subjects||[]).map(x=>x.subject)).filter(Boolean))];
+  const m=document.createElement('div'); m.id='ttgEdModal';
+  m.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:3000;display:flex;align-items:center;justify-content:center;padding:16px';
+  m.innerHTML=`<div style="background:#fff;border-radius:14px;padding:16px 18px;width:min(380px,100%);box-shadow:0 12px 40px rgba(0,0,0,.25)">
+    <div style="font-weight:800;margin-bottom:2px">${esc(d.names.join(', '))} · ${d.day}요일</div>
+    <div style="font-size:.76rem;color:var(--sub);margin-bottom:10px">${h0?'칸 내용 수정':'새 수업 추가'} — 저장하면 해당 반 과목에 바로 반영돼요</div>
+    <label style="font-size:.76rem;font-weight:700">과목</label><input id="tgeSub" list="tgeSubL" value="${esc(subj)}" style="width:100%;box-sizing:border-box;margin:3px 0 8px;padding:7px;border:1px solid var(--line);border-radius:8px"><datalist id="tgeSubL">${allSubj.map(x=>`<option value="${esc(x)}">`).join('')}</datalist>
+    <div style="display:flex;gap:8px"><div style="flex:1"><label style="font-size:.76rem;font-weight:700">강의실</label><input id="tgeRoom" value="${esc(room)}" placeholder="예: 3 / 어학실" style="width:100%;box-sizing:border-box;margin:3px 0 8px;padding:7px;border:1px solid var(--line);border-radius:8px"></div>
+    <div style="flex:1"><label style="font-size:.76rem;font-weight:700">시간</label><input id="tgeTime" value="${esc(timeVal)}" style="width:100%;box-sizing:border-box;margin:3px 0 8px;padding:7px;border:1px solid var(--line);border-radius:8px"></div></div>
+    <label style="font-size:.76rem;font-weight:700">선생님 (색)</label>
+    <div id="tgeTea" style="display:flex;flex-wrap:wrap;gap:5px;margin:4px 0 8px">${['',...teachers].map(n=>{ const hex=n?(ttgTeacherColorHex(a,n)||'#e5e7eb'):'#f1f3f8'; const fg=ttgIsDarkColor(hex)?'#fff':'#000'; return `<button type="button" data-tgeT="${esc(n)}" style="border:2px solid ${n===curT?'#111':'transparent'};background:${hex};color:${fg};font-weight:800;font-size:.78rem;border-radius:999px;padding:4px 11px;cursor:pointer">${n?esc(n):'없음'}</button>`; }).join('')}</div>
+    ${multiDay?`<label style="font-size:.78rem;display:flex;gap:6px;align-items:center;margin-bottom:8px"><input type="checkbox" id="tgeAll"> 이 과목의 다른 요일(${esc(ttgDayList(h0.own,h0.ref).join(','))})에도 똑같이 적용</label>`:''}
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">${h0?`<button class="btn small" id="tgeDel" style="color:#c02b2b;margin-right:auto">삭제</button>`:''}<button class="btn small" id="tgeCancel">취소</button><button class="btn primary small" id="tgeSave">저장</button></div></div>`;
+  document.body.appendChild(m);
+  let tSel=curT;
+  m.querySelectorAll('[data-tgeT]').forEach(b=>b.onclick=()=>{ tSel=b.dataset.tget!==undefined?b.dataset.tget:b.getAttribute('data-tgeT'); m.querySelectorAll('[data-tgeT]').forEach(x=>x.style.borderColor=(x.getAttribute('data-tgeT')===tSel)?'#111':'transparent'); });
+  m.onclick=e=>{ if(e.target===m) ttgEdClose(); };
+  m.querySelector('#tgeCancel').onclick=ttgEdClose;
+  const owner=h=>findClassById(h.own.academy,h.own._src,h.own._id);
+  const locate=(oc,h)=>{ if(!oc) return null; let i=(oc.subjects||[]).indexOf(h.ref); if(i<0) i=(oc.subjects||[]).findIndex(x=>x.subject===h.ref.subject&&x.time===h.ref.time&&x.day===h.ref.day); return i<0?null:oc.subjects[i]; };
+  const splitDay=(oc,sb,all)=>{ // 이 요일만 바꾸는 경우: 여러 요일 과목이면 이 요일만 따로 떼어낸 복사본을 돌려준다
+    const days=ttgDayList(oc,sb); if(all||days.length<=1) return sb;
+    sb.day=days.filter(x=>x!==d.day).join(',');
+    const cp=Object.assign({},sb,{day:d.day}); oc.subjects.push(cp); return cp; };
+  m.querySelector('#tgeSave').onclick=()=>{
+    const subject=m.querySelector('#tgeSub').value.trim(), roomV=m.querySelector('#tgeRoom').value.trim(), timeV=m.querySelector('#tgeTime').value.trim();
+    if(!subject){ alert('과목을 입력해주세요.'); return; }
+    const tr=parseRange(timeV); if(!tr){ alert('시간은 6:05-6:45 처럼 입력해주세요.'); return; }
+    const all=!!(m.querySelector('#tgeAll')&&m.querySelector('#tgeAll').checked);
+    if(d.hits.length){
+      d.hits.forEach(h=>{ const oc=owner(h); const sb=locate(oc,h); if(!sb) return; const t=splitDay(oc,sb,all);
+        t.subject=subject; t.room=roomV; t.teacher=tSel; t.time=timeV.replace(/\s/g,''); oc.updatedAt=Date.now(); });
+    } else {
+      const c0=d.objs[0]; const oc=findClassById(c0.academy,c0._src,c0._id); if(!oc){ alert('반을 찾지 못했어요.'); return; }
+      oc.subjects=oc.subjects||[]; oc.subjects.push({subject,book:'',teacher:tSel,hw:'',progress:'',note:'',room:roomV,day:d.day,time:timeV.replace(/\s/g,'')});
+      const ds=String(cdays(oc)||'').split(',').map(x=>x.trim()).filter(Boolean); if(!ds.includes(d.day)){ ds.push(d.day); ds.sort((x,y)=>TTG_DAYS.indexOf(x)-TTG_DAYS.indexOf(y)); oc.days=ds.join(','); if(store.daysedit&&store.daysedit[ckey(oc)]!=null) store.daysedit[ckey(oc)]=ds.join(','); }
+      oc.updatedAt=Date.now();
+    }
+    save(); ttgEdClose(); render(true);
+  };
+  const del=m.querySelector('#tgeDel'); if(del) del.onclick=()=>{
+    if(!confirm('이 칸의 수업을 삭제할까요?')) return;
+    const all=!!(m.querySelector('#tgeAll')&&m.querySelector('#tgeAll').checked);
+    d.hits.forEach(h=>{ const oc=owner(h); const sb=locate(oc,h); if(!sb) return;
+      const days=ttgDayList(oc,sb);
+      if(all||days.length<=1){ oc.subjects.splice(oc.subjects.indexOf(sb),1); } else { sb.day=days.filter(x=>x!==d.day).join(','); }
+      oc.updatedAt=Date.now(); });
+    save(); ttgEdClose(); render(true);
+  };
+}
 function renderTimetableGrid(list){
-  const admin=isAdminRole();
+  const admin=isAdminRole(); const edit=admin && !!state.ttEdit; ttgEdReg=[];
   const classes=list.filter(c=>!c.examOnly && !c._deleted);
   const acs=academies().filter(a=>classes.some(c=>c.academy===a));
   const gd=state.ttGridDay||'all';
   const chips=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;align-items:center">
     <button class="chip ${gd==='all'?'on':''}" data-ttgday="all">전체 요일</button>
     ${TTG_DAYS.map(d=>`<button class="chip ${gd===d?'on':''}" data-ttgday="${d}">${d}요일</button>`).join('')}
-  </div>`;
+    ${admin?`<button class="chip ${edit?'on':''}" data-ttedit="1" style="margin-left:auto;font-weight:800">✎ 수정모드 ${edit?'ON':''}</button>`:''}
+  </div>${edit?'<div style="font-size:.78rem;color:#6d28d9;font-weight:700;margin:-4px 0 10px">✎ 수정모드 — 칸을 누르면 선생님(색)·과목·강의실을 바로 바꿀 수 있고, 빈 칸을 누르면 새 수업을 넣어요. 해당 반 과목에 자동 반영돼요.</div>':''}`;
   const css=`<style>
     .ttgw{margin-bottom:22px}
     .ttgw h3{margin:0 0 8px;font-size:.95rem}
@@ -3324,15 +3406,16 @@ function renderTimetableGrid(list){
     .ttgday{margin-bottom:16px}
     .ttgday .dn{display:inline-block;background:var(--ink);color:#fff;font-weight:800;font-size:.84rem;padding:3px 14px;border-radius:8px 8px 0 0}
     .ttgsc{overflow:auto;border:1px solid #bfc6d4;border-radius:0 8px 8px 8px}
-    .ttgt{border-collapse:collapse;width:100%}
-    .ttgt th,.ttgt td{border:1px solid #cfd5e1;padding:6px 4px;text-align:center;font-size:.78rem;line-height:1.25;min-width:68px}
+    .ttgt{border-collapse:collapse;width:max-content;min-width:100%}
+    .ttgt th,.ttgt td{border:1px solid #cfd5e1;padding:6px 4px;text-align:center;font-size:.78rem;line-height:1.25;min-width:96px;white-space:nowrap}
     .ttgt th{background:#f1f4fa;font-weight:800;white-space:nowrap}
     .ttgt td.tm{background:#fafbfd;font-weight:800;color:var(--sub);white-space:nowrap;position:sticky;left:0;z-index:1;min-width:92px}
     .ttgt th:first-child{position:sticky;left:0;z-index:2}
     .ttgt td.rc{color:#e11d1d;font-weight:800;letter-spacing:.08em;background:#fff}
     .ttgt td.hit{font-weight:800}
     .ttgt td[data-ttjump]{cursor:pointer}
-    @media print{.ttgsc{overflow:visible}}
+    .ttgt td[data-tted]{cursor:cell}.ttgt td[data-tted]:hover{outline:2px solid #6d28d9;outline-offset:-2px}
+    @media print{.ttgsc{overflow:visible}.ttgt{width:100%}.ttgt th,.ttgt td{min-width:0;white-space:normal}}
   </style>`;
   if(!acs.length) return css+chips+'<div class="empty">시간이 입력된 반이 없습니다.</div>';
   const parts=acs.map(a=>{
@@ -3341,12 +3424,12 @@ function renderTimetableGrid(list){
       const entries=[]; const deptOf={}; const idOf={}; const objOf={};
       cls.filter(c=>cdays(c).includes(day)).forEach(c=>{
         deptOf[c.name]=c.dept||''; idOf[c.name]=c._id; objOf[c.name]=c;
-        let subs=(c.subjects||[]).filter(s=>subjOnDay(s,day) && s.subject && s.time && parseRange(s.time));
+        let subs=(c.subjects||[]).filter(s=>subjOnDay(s,day) && s.subject && s.time && parseRange(s.time)); let ownC=c;
         if(!subs.length){ // 합반 상대 반에 과목이 몰려 있으면 그 시간·담당을 따라온다
           const mp=mergedCounterpart(c);
-          if(mp) subs=(mp.subjects||[]).filter(s=>subjOnDay(s,day) && s.subject && s.time && parseRange(s.time));
+          if(mp){ subs=(mp.subjects||[]).filter(s=>subjOnDay(s,day) && s.subject && s.time && parseRange(s.time)); ownC=mp; }
         }
-        subs.forEach(s=>{ const r=parseRange(s.time); entries.push({className:c.name, subject:s.subject, teacher:s.teacher||'', room:s.room||'', start:r[0], end:r[1], isWordTest:isWordTestSubject(s)}); });
+        subs.forEach(s=>{ const r=parseRange(s.time); entries.push({className:c.name, subject:s.subject, teacher:s.teacher||'', room:s.room||'', start:r[0], end:r[1], isWordTest:isWordTestSubject(s), ref:s, own:ownC}); });
       });
       if(!entries.length) return '';
       const classNames=[...new Set(entries.map(e=>e.className))].sort((x,y)=>{
@@ -3385,13 +3468,14 @@ function renderTimetableGrid(list){
         let tds='';
         groups.forEach(g=>{
           const gh=g.map(nm=>({nm, h:hits.find(e=>e.className===nm)})).filter(x=>x.h);
-          const jump=admin&&idOf[g[0]]?` data-ttjump="${day}|${esc(idOf[g[0]])}"`:'';
-          if(!gh.length){ tds+=`<td${isWt?' style="background:#d9d9d9"':''}></td>`; return; }
+          const ed=edit?(()=>{ ttgEdReg.push({a,day,names:g,objs:g.map(nm=>objOf[nm]),hits:gh.map(x=>x.h),s0,s1,isWt}); return ` data-tted="${ttgEdReg.length-1}"`; })():'';
+          const jump=(!edit&&admin&&idOf[g[0]])?` data-ttjump="${day}|${esc(idOf[g[0]])}"`:'';
+          if(!gh.length){ tds+=`<td${ed}${isWt?' style="background:#d9d9d9"':''}></td>`; return; }
           if(gh.length===1 || gh.every(x=>sameHit(gh[0].h, x.h))){
             const h=gh[0].h, pt=paint(h);
-            tds+=`<td class="hit"${jump} style="${pt.bg?`background:${pt.bg};color:${pt.fg}`:''}" title="${esc(g.join(', '))} · ${esc(h.subject)}${h.teacher?' · '+esc(h.teacher):''}${h.room?' · '+esc(h.room):''}">${esc(pt.txt)}${(g.length>1&&gh.length===1)?`<div style="font-size:.64rem;font-weight:600;opacity:.8">${esc(gh[0].nm)}만</div>`:''}</td>`;
+            tds+=`<td class="hit"${jump}${ed} style="${pt.bg?`background:${pt.bg};color:${pt.fg}`:''}" title="${esc(g.join(', '))} · ${esc(h.subject)}${h.teacher?' · '+esc(h.teacher):''}${h.room?' · '+esc(h.room):''}">${esc(pt.txt)}${(g.length>1&&gh.length===1)?`<div style="font-size:.64rem;font-weight:600;opacity:.8">${esc(gh[0].nm)}만</div>`:''}</td>`;
           } else {
-            tds+=`<td class="hit"${jump} style="padding:0"><div style="display:flex;flex-direction:column;height:100%">${gh.map(x=>{ const pt=paint(x.h); return `<div style="flex:1;padding:4px;${pt.bg?`background:${pt.bg};color:${pt.fg}`:''}">${esc(pt.txt)}<div style="font-size:.64rem;font-weight:600;opacity:.8">${esc(x.nm)}</div></div>`; }).join('')}</div></td>`;
+            tds+=`<td class="hit"${jump}${ed} style="padding:0"><div style="display:flex;flex-direction:column;height:100%">${gh.map(x=>{ const pt=paint(x.h); return `<div style="flex:1;padding:4px;${pt.bg?`background:${pt.bg};color:${pt.fg}`:''}">${esc(pt.txt)}<div style="font-size:.64rem;font-weight:600;opacity:.8">${esc(x.nm)}</div></div>`; }).join('')}</div></td>`;
           }
         });
         rows+=`<tr>${tm}${tds}</tr>`;
@@ -3399,7 +3483,7 @@ function renderTimetableGrid(list){
       return `<div class="ttgday"><span class="dn">${day}요일</span><div class="ttgsc"><table class="ttgt"><thead><tr><th>시간</th>${groups.map(g=>`<th>${esc(groupLabel(g))}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div></div>`;
     }).join('');
     const legend=(store.teachers[a]||[]).map(t=>{ const hex=t.ttColor||ttgDefaultTt(a,t).color; const code=t.ttCode||ttgDefaultTt(a,t).code||''; return `<span style="background:${hex||'#eee'};color:${hex&&ttgIsDarkColor(hex)?'#fff':'#000'}">${esc(t.name)}${code?' · '+esc(code):''}</span>`; }).join('');
-    return `<div class="ttgw">${acs.length>1||MODE==='all'?`<h3>${bdg(a)} ${AC[a].label}</h3>`:''}<div class="ttgleg"><span style="background:#d9d9d9">단어시험</span>${legend}</div>${dayBlocks||'<div class="empty">이 요일에 시간이 입력된 수업이 없습니다.</div>'}</div>`;
+    return `<div class="ttgw">${acs.length>1||MODE==='all'?`<h3>${bdg(a)} ${AC[a].label}</h3>`:''}<div class="ttgleg"><span style="background:#d9d9d9">단어시험</span>${legend}</div>${edit?ttgTeacherPanel(a,cls):''}${dayBlocks||'<div class="empty">이 요일에 시간이 입력된 수업이 없습니다.</div>'}</div>`;
   }).join('');
   return css+chips+parts;
 }
@@ -3550,6 +3634,8 @@ function bindClassEdit(){
   });
   v.querySelectorAll('[data-ttday]').forEach(b=>b.onclick=()=>{ state.ttDay=b.dataset.ttday; render(true); });
   v.querySelectorAll('[data-ttgday]').forEach(b=>b.onclick=()=>{ state.ttGridDay=b.dataset.ttgday; render(true); });
+  v.querySelectorAll('[data-ttedit]').forEach(b=>b.onclick=()=>{ state.ttEdit=!state.ttEdit; render(true); });
+  v.querySelectorAll('[data-tted]').forEach(td=>td.onclick=()=>ttgOpenEditor(+td.dataset.tted));
   v.querySelectorAll('[data-addclass]').forEach(b=>b.onclick=()=>addClassAction(b.dataset.addclass, state.month, b.dataset.presetdays||''));
   v.querySelectorAll('[data-cdaycb]').forEach(cb=>cb.onchange=()=>{
     const c=findClassById(cb.dataset.a,cb.dataset.src,cb.dataset.id); if(!c) return;
@@ -6682,7 +6768,7 @@ function renderSeat(){
   const noLevel=store.students.filter(st=>st.academy===a && !st._deleted && (st.status||'재원')==='재원' && !['초','중'].includes(csLevelOf(st)) && csLevelOf(st)!=='고').length;
   const labNone=csLabClassNames(a).size===0;
   return `<div class="setsec" style="border:2px solid #2e5fb7">
-    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1105-h · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
+    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1105-k · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
     <div class="desc">학원 전체 <b>초·중등 재원생 중 강의실이 '어학실'인 수업을 듣는 학생</b>(${cand.length}명, 어학실 수업이 있는 반 ${csLabClassNames(a).size}개)을 자리 ${seatCount}개에 자동으로 배치합니다. <b>같은 학년끼리</b>, <b>같은 반끼리</b>는 옆·앞뒤 자리에 앉지 않게 짜고, 학년·반은 학생 명단과 시간표(반)를 그대로 따릅니다. <b>어학실 이용 시간이 겹치지 않는 학생</b>은 같은 학년·같은 반이어도 옆자리에 앉을 수 있고, 한 자리(컴퓨터)를 시간대별로 나눠 써도 돼요(자리 칸 안에 학생이 여러 명 보여요). 수동으로는 학생을 눌러 고른 뒤 자리나 다른 학생을 누르면 옮기거나 서로 바꿔요. 빨간 테두리(⚠)는 규칙에 걸린 곳입니다.</div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:10px 0 0;font-size:.84rem"><b>📅 기간</b>
       <select data-csperiod style="padding:5px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${periods.map(x=>`<option value="${esc(x[0])}" ${x[0]===pkey?'selected':''}>${esc(x[1])}</option>`).join('')}</select>
@@ -14886,115 +14972,83 @@ async function exportTtGrid(academy){
     const ExcelJSLib=await ttgLoadLib();
     if(statusEl) statusEl.textContent='시간표 구성 중…';
     const wb=new ExcelJSLib.Workbook();
-    const ws=wb.addWorksheet('시간표');
-    const cls=classesFor(state.month).filter(c=>c.academy===academy);
+    const [yy,mm]=String(state.month).split('-');
+    const ws=wb.addWorksheet(String(yy).slice(2)+'.'+mm,{views:[{showGridLines:false}]});
+    const cls=classesFor(state.month).filter(c=>c.academy===academy && !c.examOnly && !c._deleted);
+    const FONT='Malgun Gothic';
     const CENTER={horizontal:'center', vertical:'middle'};
-    const bordered=(cell)=>{ cell.border=TTG_THIN_BORDER; return cell; };
-    // 1차: 요일별로 반·과목 자료를 먼저 모아둔다 — 선생님 범례 칸 위치를 정하려면 반이 가장 많은 요일의 개수를 먼저 알아야 겹치지 않는다
+    const MAGENTA='FFD76DCC', GREY='FFBFBFBF', RECESS_FILL='FFFAE2D5';
+    const PAL=['FFD9D2E9','FFFCE5CD','FFD9EAD3','FFF5A5D3','FFE6B8AF','FFCFE2F3','FFFFF2CC','FFD0E0E3','FFEAD1DC'];
+    const prefOf=nm=>String(nm).replace(/[\d\s,()_·].*$/,'').toLowerCase()||String(nm);
+    const prefColor={}; let palN=0; const colorOfClass=nm=>{ const p=prefOf(nm); if(!prefColor[p]) prefColor[p]=PAL[(palN++)%PAL.length]; return prefColor[p]; };
+    const fill=(cell,argb)=>{ cell.fill={type:'pattern',pattern:'solid',fgColor:{argb}}; };
+    const put=(r,c,v,o={})=>{ const cell=ws.getCell(r,c); if(v!==undefined&&v!==null) cell.value=v; cell.alignment=CENTER; cell.border=TTG_THIN_BORDER; cell.font={name:FONT,bold:true,size:11,color:{argb:o.fg||'FF000000'}}; if(o.bg) fill(cell,o.bg); return cell; };
+    // 요일별 자료 수집
+    const LEFT_END=18.75+1e-6, EVE_START=18+5/60-1e-6; // 왼쪽(오후) 칸: ~6:45까지 / 오른쪽(저녁) 칸: 6:05부터
     const dayData=[];
     TTG_DAYS.forEach(day=>{
-      const dayClasses=cls.filter(c=>cdays(c).includes(day));
-      if(!dayClasses.length) return;
-      const entries=[]; const deptOf={};
-      dayClasses.forEach(c=>{
-        deptOf[c.name]=c.dept||'';
-        (c.subjects||[]).filter(s=>subjOnDay(s,day) && s.subject && s.time && parseRange(s.time)).forEach(s=>{
-          const r=parseRange(s.time);
-          entries.push({className:c.name, subject:s.subject, teacher:s.teacher||'', room:s.room||'', start:r[0], end:r[1], isWordTest:isWordTestSubject(s)});
-        });
-      });
+      const dayClasses=cls.filter(c=>cdays(c).includes(day)); if(!dayClasses.length) return;
+      const entries=[]; const objOf={}; const deptOf={};
+      dayClasses.forEach(c=>{ objOf[c.name]=c; deptOf[c.name]=c.dept||'';
+        let subs=(c.subjects||[]).filter(x=>subjOnDay(x,day)&&x.subject&&x.time&&parseRange(x.time));
+        if(!subs.length){ const mp=mergedCounterpart(c); if(mp) subs=(mp.subjects||[]).filter(x=>subjOnDay(x,day)&&x.subject&&x.time&&parseRange(x.time)); }
+        subs.forEach(x=>{ const r=parseRange(x.time); entries.push({className:c.name,subject:x.subject,teacher:x.teacher||'',room:x.room||'',start:r[0],end:r[1],isWordTest:isWordTestSubject(x)}); }); });
       if(!entries.length) return;
-      // 왼쪽부터 초등부 → 중등부 → 고등부 순, 부서 안에서는 정해진 반 앞글자 순서(EC,RC,RG,PJ / JM,JF,JB)로 배열
-      const classNames=[...new Set(entries.map(e=>e.className))].sort((a,b)=>{
-        const ra=DEPT_SORT_ORDER[deptOf[a]]!=null?DEPT_SORT_ORDER[deptOf[a]]:99;
-        const rb=DEPT_SORT_ORDER[deptOf[b]]!=null?DEPT_SORT_ORDER[deptOf[b]]:99;
-        if(ra!==rb) return ra-rb;
-        const pa=String(a).match(/^[^\d]*/)[0], pb=String(b).match(/^[^\d]*/)[0];
-        const pra=CLASS_PREFIX_ORDER[pa]!=null?CLASS_PREFIX_ORDER[pa]:99;
-        const prb=CLASS_PREFIX_ORDER[pb]!=null?CLASS_PREFIX_ORDER[pb]:99;
-        if(pra!==prb) return pra-prb;
-        return a.localeCompare(b,'ko',{numeric:true});
-      });
+      const order=[...new Set(entries.map(e=>e.className))].sort((x,y)=>{ const oc=classOrderCmp(academy,x,y); if(oc) return oc;
+        const rx=DEPT_SORT_ORDER[deptOf[x]]!=null?DEPT_SORT_ORDER[deptOf[x]]:99, ry=DEPT_SORT_ORDER[deptOf[y]]!=null?DEPT_SORT_ORDER[deptOf[y]]:99; if(rx!==ry) return rx-ry;
+        const px=String(x).match(/^[^\d]*/)[0], py=String(y).match(/^[^\d]*/)[0]; const qx=CLASS_PREFIX_ORDER[px]!=null?CLASS_PREFIX_ORDER[px]:99, qy=CLASS_PREFIX_ORDER[py]!=null?CLASS_PREFIX_ORDER[py]:99; if(qx!==qy) return qx-qy;
+        return String(x).localeCompare(String(y),'ko',{numeric:true}); });
       const bounds=new Set(); entries.forEach(e=>{ bounds.add(e.start); bounds.add(e.end); });
-      const sorted=[...bounds].sort((a,b)=>a-b);
-      dayData.push({day, entries, classNames, sorted});
+      const sorted=[...bounds].sort((x,y)=>x-y);
+      const slots=[]; for(let i=0;i<sorted.length-1;i++){ const s0=sorted[i], s1=sorted[i+1]; slots.push({s0,s1,hits:entries.filter(e=>e.start<=s0+1e-6&&e.end>=s1-1e-6)}); }
+      const L=slots.filter(sl=>sl.s1<=LEFT_END), E=slots.filter(sl=>sl.s0>=EVE_START);
+      const colsOf=sls=>order.filter(nm=>sls.some(sl=>sl.hits.some(h=>h.className===nm)));
+      dayData.push({day,objOf,L,E,Lc:colsOf(L),Ec:colsOf(E)});
     });
     if(!dayData.length){ if(statusEl) statusEl.textContent='이번 달 자료에 요일·시간이 입력된 과목이 없습니다.'; return; }
-    const maxClasses=Math.max(...dayData.map(d=>d.classNames.length));
-    const legendCol=Math.max(14, 2+maxClasses+1); // 반이 가장 많은 요일 기준으로 선생님 범례 칸이 겹치지 않는 위치를 정함
-    let maxColUsed=legendCol+1;
-    // 2차: 실제로 시트에 기록
-    let rowIdx=1, legendPlaced=false;
-    dayData.forEach(({day, entries, classNames, sorted})=>{
-      const lastClassCol=1+classNames.length; // 반 칸은 B(2)열부터 바로 시작 (시간 칸 다음에 빈 칸 없음)
-      maxColUsed=Math.max(maxColUsed, lastClassCol);
-      bordered(ws.getCell(rowIdx,1)).value=day; ws.getCell(rowIdx,1).alignment=CENTER; rowIdx++;
-      const headRow=rowIdx;
-      bordered(ws.getCell(rowIdx,1)).value='시간'; ws.getCell(rowIdx,1).alignment=CENTER;
-      classNames.forEach((nm,i)=>{ const hc=ws.getCell(rowIdx, 2+i); hc.value=nm; hc.alignment=CENTER; bordered(hc); });
-      if(!legendPlaced){
-        // 선생님 색상·단어시험용 약자 범례는 첫 요일 블록 옆에 한 번만 표시 (반이 가장 많은 요일과 겹치지 않는 칸에 위치)
-        const lc=ws.getCell(headRow,legendCol); lc.value='선생님'; lc.alignment=CENTER; bordered(lc);
-        (store.teachers[academy]||[]).forEach((t,i)=>{
-          const r=headRow+1+i;
-          const nmCell=ws.getCell(r,legendCol); nmCell.value=t.name; nmCell.alignment=CENTER; bordered(nmCell);
-          const tColor=t.ttColor||ttgDefaultTt(academy,t).color;
-          if(tColor){
-            const hex='FF'+tColor.replace('#','').toUpperCase();
-            nmCell.fill={type:'pattern', pattern:'solid', fgColor:{argb:hex}};
-            nmCell.font={color:{argb: ttgIsDarkColor(tColor) ? 'FFFFFFFF' : 'FF000000'}};
-          }
-          const codeCell=ws.getCell(r,legendCol+1); codeCell.value=t.ttCode||ttgDefaultTt(academy,t).code||''; codeCell.alignment=CENTER; bordered(codeCell);
+    const nL=Math.max(4,...dayData.map(d=>d.Lc.length)), nE=Math.max(5,...dayData.map(d=>d.Ec.length));
+    const cL0=3, cSp1=cL0+nL, cET=cSp1+1, cE0=cET+1, cSp2=cE0+nE, cLeg=cSp2+2; // A=요일 B=시간 | 왼쪽반들 | 스페이서 | 저녁 시간 | 저녁 반들 | 스페이서 | 범례
+    const lastCol=cSp2;
+    // 열 너비
+    ws.getColumn(1).width=3.7; ws.getColumn(2).width=12.5; for(let c=cL0;c<cSp1;c++) ws.getColumn(c).width=11;
+    ws.getColumn(cSp1).width=0.6; ws.getColumn(cET).width=11.5; for(let c=cE0;c<cSp2;c++) ws.getColumn(c).width=16.1; ws.getColumn(cSp2).width=1; ws.getColumn(cLeg).width=10.7; ws.getColumn(cLeg+1).width=13.6;
+    // 제목 + 구분 줄
+    ws.mergeCells(1,1,1,lastCol); const tc=ws.getCell(1,1); tc.value=`${yy}.${Number(mm)}.`; tc.alignment=CENTER; tc.font={name:FONT,bold:true,size:20,color:{argb:'FFFFFFFF'}}; fill(tc,'FF225BCE'); ws.getRow(1).height=37.5;
+    ws.mergeCells(2,1,2,lastCol); fill(ws.getCell(2,1),MAGENTA); ws.getRow(2).height=7.5;
+    let r=3, legendHead=null;
+    const roomOf=(c,sls)=>{ const cnt={}; (c.subjects||[]).forEach(x=>{ const rm=String(x.room||'').replace(/강의실|호|\s/g,''); if(rm&&!rm.includes('어학실')&&!isLabSubject(x.subject)) cnt[rm]=(cnt[rm]||0)+1; }); const k=Object.keys(cnt).sort((p,q)=>cnt[q]-cnt[p])[0]; return k==null?'':(/^\d+$/.test(k)?Number(k):k); };
+    const nStu=c=>{ try{ return activeStudents(c).length; }catch(e){ return (c.students||[]).length; } };
+    dayData.forEach(dd=>{
+      const nRows=Math.max(dd.L.length,dd.E.length,1); const top=r, bot=r+1+nRows;
+      if(legendHead==null) legendHead=top;
+      ws.mergeCells(top,1,bot,1); put(top,1,dd.day);
+      for(let rr=top;rr<=bot;rr++){ ws.getRow(rr).height=18.75; fill(ws.getCell(rr,cSp1),MAGENTA); fill(ws.getCell(rr,cSp2),MAGENTA); }
+      const panel=(sls,cols,tCol,c0,nCols,isEve)=>{
+        put(top,tCol,'반',{bg:GREY}); put(top+1,tCol,'강의실',{bg:GREY});
+        for(let i=0;i<nCols;i++){ const nm=cols[i]; const col=c0+i;
+          if(nm){ put(top,col,nm,{bg:colorOfClass(nm)}); const c=dd.objOf[nm]; const rm=roomOf(c); put(top+1,col,isEve?(rm===''?`(${nStu(c)}명)`:`${rm} (${nStu(c)}명)`):rm); }
+          else { put(top,col,null); put(top+1,col,null); } }
+        sls.forEach((sl,k)=>{ const row=top+2+k; const label=isEve?`${fmtH(sl.s0)}~${fmtH(sl.s1)}`:`${fmtH(sl.s0)} ~ ${fmtH(sl.s1)}`;
+          if(!sl.hits.length){ put(row,tCol,label,{bg:RECESS_FILL}); for(let i=0;i<nCols;i++) put(row,c0+i,i===0?'RECESS':null,{bg:RECESS_FILL,fg:'FFFF0000'}); if(nCols>1) ws.mergeCells(row,c0,row,c0+nCols-1); return; }
+          put(row,tCol,label);
+          const isWt=sl.hits.some(h=>h.isWordTest);
+          for(let i=0;i<nCols;i++){ const nm=cols[i]; const h=nm&&sl.hits.find(e=>e.className===nm); const cell=put(row,c0+i,null);
+            if(h){ if(h.isWordTest){ const code=ttgTeacherCode(academy,h.teacher); cell.value=h.room?(code?`${h.room}(${code})`:h.room):(code?`단어시험(${code})`:'단어시험'); fill(cell,'FFBFBFBF'); }
+              else { cell.value=(String(h.subject).toUpperCase()==='IBT')?'L/C':h.subject; const hex=ttgTeacherColorHex(academy,h.teacher); if(hex){ fill(cell,'FF'+hex.replace('#','').toUpperCase()); cell.font={name:FONT,bold:true,size:11,color:{argb:ttgIsDarkColor(hex)?'FFFFFFFF':'FF000000'}}; } } }
+            else if(isWt) fill(cell,'FFBFBFBF'); }
         });
-        legendPlaced=true;
-      }
-      rowIdx++;
-      for(let i=0;i<sorted.length-1;i++){
-        const s0=sorted[i], s1=sorted[i+1];
-        const hitsInSlot=entries.filter(e=>e.start<=s0+1e-6 && e.end>=s1-1e-6);
-        const tCell=ws.getCell(rowIdx,1); tCell.value=fmtH(s0)+'~'+fmtH(s1); tCell.alignment=CENTER; bordered(tCell);
-        if(!hitsInSlot.length){
-          // 쉬는 시간 — 반 칸 전체를 하나로 합쳐서 빨간 글씨로 표시
-          const rc=ws.getCell(rowIdx,2);
-          rc.value='RECESS'; rc.alignment=CENTER; rc.font={color:{argb:'FFFF0000'}}; bordered(rc);
-          if(lastClassCol>2) ws.mergeCells(rowIdx,2,rowIdx,lastClassCol);
-        } else {
-          const isWtRow=hitsInSlot.some(e=>e.isWordTest);
-          classNames.forEach((nm,ci)=>{
-            const col=2+ci;
-            const cell=bordered(ws.getCell(rowIdx, col));
-            cell.alignment=CENTER;
-            const hit=hitsInSlot.find(e=>e.className===nm);
-            if(hit){
-              if(hit.isWordTest){
-                // 단어시험은 강의실(선생님 약자)로 표시하고, 색은 연한 회색으로 고정한다
-                const code=ttgTeacherCode(academy, hit.teacher);
-                cell.value = hit.room ? (code?`${hit.room}(${code})`:hit.room) : (code?`단어시험(${code})`:'단어시험');
-                cell.fill={type:'pattern', pattern:'solid', fgColor:{argb:TTG_WORDTEST_FILL}};
-                cell.font={bold:true, color:{argb:'FF000000'}};
-              } else {
-                // 일반 과목은 가운데 정렬 + 선생님 색상으로 담당이 구분되므로 과목명만 적는다
-                cell.value=hit.subject;
-                const hex=ttgTeacherColorHex(academy, hit.teacher);
-                if(hex){
-                  cell.fill={type:'pattern', pattern:'solid', fgColor:{argb:'FF'+hex.replace('#','').toUpperCase()}};
-                  cell.font={bold:true, color:{argb: ttgIsDarkColor(hex) ? 'FFFFFFFF' : 'FF000000'}};
-                } else {
-                  cell.font={bold:true};
-                }
-              }
-            } else if(isWtRow){
-              // 단어시험 시간대는 그 시간에 기록이 없는 반 칸도 연한 회색으로 채워준다
-              cell.fill={type:'pattern', pattern:'solid', fgColor:{argb:TTG_WORDTEST_FILL}};
-            }
-          });
-        }
-        rowIdx++;
-      }
-      rowIdx++;
+        for(let k=sls.length;k<nRows;k++){ const row=top+2+k; put(row,tCol,null); for(let i=0;i<nCols;i++) put(row,c0+i,null); }
+      };
+      panel(dd.L,dd.Lc,2,cL0,nL,false);
+      panel(dd.E,dd.Ec,cET,cE0,nE,true);
+      r=bot+1; ws.mergeCells(r,1,r,lastCol); fill(ws.getCell(r,1),MAGENTA); ws.getRow(r).height=7.5; r++;
     });
-    // 열 너비를 전부 10으로 고정
-    for(let c=1;c<=maxColUsed;c++){ ws.getColumn(c).width=10; }
+    // 선생님 범례(색 + 단어시험 약자)
+    { const h0=legendHead||3; put(h0,cLeg,'선생님'); put(h0,cLeg+1,'코드');
+      (store.teachers[academy]||[]).forEach((t,i)=>{ const row=h0+1+i; const hex=t.ttColor||ttgDefaultTt(academy,t).color;
+        const nc=put(row,cLeg,t.name); if(hex){ fill(nc,'FF'+hex.replace('#','').toUpperCase()); nc.font={name:FONT,bold:true,size:11,color:{argb:ttgIsDarkColor(hex)?'FFFFFFFF':'FF000000'}}; }
+        put(row,cLeg+1,t.ttCode||ttgDefaultTt(academy,t).code||''); }); }
+    const maxColUsed=cLeg+1;
     const buf=await wb.xlsx.writeBuffer();
     const blob=new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
     const u=URL.createObjectURL(blob);
