@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>이베스트 (본관) — 선생님용 대시보드 · v1104-m</title>
+<title>이베스트 (본관) — 선생님용 대시보드 · v1105-d</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%96%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">
@@ -651,11 +651,11 @@ store.syllabusSeeded=true; // 예전에 기본으로 들어있던 'Spider Phonic
 if(!store.examAnalysis) store.examAnalysis=[]; // 내신 분석 — {id, academy, school, grade, examTitle, examRange, examDate, prepStart, prepEnd, teacherLecture, teacherIBT, note, categories:[{name,count,questions:[{id,no,question,points,difficulty}]}], updatedAt, updatedBy} · 월 상관없이 항상 보임, 모든 선생님 열람·수정 가능(Syllabus처럼 보관용)
 if(!store.absentNotes) store.absentNotes={}; // 날짜별 결석생 요약의 '특이사항' 자유 메모 {YYYY-MM-DD: text}
 if(!store.examTrends) store.examTrends=[]; // 동향 분석 리포트 — {id, academy, school, grade, title, memo, source:'ai'|'upload', entryIds, snaps, files, report:{headline,strategy,metrics,changes,teaching}, aiModel, createdAt, updatedAt, createdBy, _deleted} · 내신 분석 탭 안의 두 번째 탭, AI로 만든 리포트는 자동 저장
-const SHARE_FIELDS=['bookGiveLog','wordBooks','uploads','bookedit','bookdone','daysedit','timeedit','calendar','calendarTombstones','calCatColors','meetings','teachers','adminEmail','enrollment','newStudents','dropouts','compSeats','classOrder','consultRoles','students','admissionConsults','wordTests','attend','homework','stayback','bookGiven','uploadTombstones','uploadStamps','wordbookOptions','testPaperOptions','giveSel','consultRequests','records','assign','cmemo','worklog','weekplan','submits','handover','boardPosts','handoverGrid','monthOverride','examAnalysis','examTrends','absentNotes','bookCatalog','tuitionCatalog','papercheckEnabled','papercheckCols','papercheckData','worklogMonthly','worklogWeekly','wlMemo'];
+const SHARE_FIELDS=['bookGiveLog','wordBooks','uploads','bookedit','bookdone','daysedit','timeedit','calendar','calendarTombstones','calCatColors','meetings','teachers','adminEmail','enrollment','newStudents','dropouts','compSeats','classOrder','consultRoles','students','admissionConsults','wordTests','attend','homework','stayback','bookGiven','uploadTombstones','uploadStamps','wordbookOptions','testPaperOptions','giveSel','consultRequests','records','assign','cmemo','worklog','weekplan','submits','handover','boardPosts','handoverGrid','monthOverride','examAnalysis','examTrends','absentNotes','bookCatalog','tuitionCatalog','papercheckEnabled','papercheckCols','papercheckData','worklogMonthly','worklogWeekly','wlMemo','yearSched'];
 // syllabus(실러버스)는 PDF/한글/워드 첨부가 커서 별도 경로(/syllabus)로, 낮은 빈도로만 동기화합니다 — 그래야 매 5초/매 입력마다 전체를 전송하지 않습니다.
 // 반 자료·학생 명단처럼 "삭제"가 중요한 항목은 병합하지 않고 통째로 교체한다(마지막 저장이 우선).
 // 병합 방식(mergeById)에는 삭제라는 개념이 없어서, 지운 반·학생이 다른 기기 자료와 합쳐지며 계속 되살아나기 때문.
-const REPLACE_FIELDS=['wordBooks','papercheckEnabled','papercheckCols','papercheckData','compSeats','classOrder','uploads','students','teachers','bookedit','bookdone','daysedit','timeedit','wordbookOptions','testPaperOptions','handoverGrid'];
+const REPLACE_FIELDS=['wordBooks','papercheckEnabled','papercheckCols','papercheckData','yearSched','compSeats','classOrder','uploads','students','teachers','bookedit','bookdone','daysedit','timeedit','wordbookOptions','testPaperOptions','handoverGrid'];
 // 출결·숙제 등은 여러 선생님이 동시에 서로 다른 학생을 입력하므로 기존처럼 병합해야 안전하다.
 function isReplaceField(f){ return REPLACE_FIELDS.includes(f); }
 // 각 항목을 마지막으로 편집한 시각 — 교체 방식에서 "누가 더 최신인지" 판단에 사용
@@ -1813,7 +1813,7 @@ let state = {tab:(localStorage.getItem(LASTTAB_KEY)||'today'), sub:'class', toda
 /* ---------- 탭별 주소 (예: /EBEST/students_list, /EBEST/schedule) ----------
    GitHub Pages에서 주소를 직접 열거나 새로고침해도 열리도록, 저장소 맨 위에 404.html(함께 드린 파일)을 같이 올려둔다.
    그 파일이 /EBEST/schedule 같은 주소를 /EBEST/?go=schedule 로 되돌려주면, 이 앱이 그 탭을 열고 주소를 다시 /EBEST/schedule 로 바꿔 보여준다. */
-var ROUTE_SLUGS={today:'home',consult:'consult',report:'work_report',dash:'classes',bookgive:'book_delivery',wordrange:'words',hwrange:'homework',syllabus:'syllabus',examrpt:'exam_analysis',roster:'students_list',timetable:'schedule',seat:'computer_seats',attend:'attendance',yearly:'yearly_books',cal:'calendar',board:'board',archive:'archive',stats:'student_stats',set:'settings'};
+var ROUTE_SLUGS={today:'home',consult:'consult',report:'work_report',dash:'classes',bookgive:'book_delivery',wordrange:'words',hwrange:'homework',syllabus:'syllabus',examrpt:'exam_analysis',roster:'students_list',timetable:'schedule',seat:'computer_seats',attend:'attendance',yearly:'yearly_books',yearsched:'year_schedule',cal:'calendar',board:'board',archive:'archive',stats:'student_stats',set:'settings'};
 var ROUTE_TABS=(function(){ const o={}; for(const k in ROUTE_SLUGS) o[ROUTE_SLUGS[k]]=k; return o; })();
 // 탭 안에서 버튼으로 바뀌는 화면은 /탭/화면 형태로 주소를 따로 갖는다 (예: /EBEST/words/make)
 var ROUTE_SUBS={
@@ -1821,7 +1821,8 @@ var ROUTE_SUBS={
   wordrange:{prop:'wrMode',def:'range',map:{range:'range',make:'make',manage:'manage'}},
   hwrange:{prop:'hwMode',def:'hw',map:{check:'hw',paper:'pc'}},
   timetable:{prop:'ttView',def:'day',map:{week:'week',card:'weekcard',day:'day',bulk:'bulk'}},
-  roster:{prop:'rosterView',def:'all',map:{all:'all',class:'class',school:'school',stats:'stats'}}
+  roster:{prop:'rosterView',def:'all',map:{all:'all',class:'class',school:'school',stats:'stats'}},
+  yearsched:{prop:'ysView',def:'cal',map:{calendar:'cal',list:'table'}}
 };
 // 예전 주소(단어 범위·숙제 체크표·과제검사표를 따로 쓰던 때)도 계속 열리게
 var ROUTE_LEGACY={word_range:['wordrange','range'],homework_check:['hwrange','check'],paper_check:['hwrange','paper']};
@@ -2004,7 +2005,7 @@ function sortClassesByDeptBase(list){
   }).map(o=>o.c);
 }
 function filtered(){
-  const deptChipShown = state.tab!=='yearly' && state.tab!=='roster' && state.tab!=='timetable' && state.tab!=='report';
+  const deptChipShown = state.tab!=='yearly' && state.tab!=='yearsched' && state.tab!=='roster' && state.tab!=='timetable' && state.tab!=='report';
   return classesFor(state.month).filter(c=>{
     if(c.examOnly) return false; // 내신전용반은 일반 탭에는 안 보이고 [🎓 내신] 탭에서만 관리·조회한다
     if(state.ac!=='all' && c.academy!==state.ac) return false;
@@ -2107,15 +2108,18 @@ function tabDefsBase(){
   const lt=loginTeacher();
   if(lt && !isMgr()){
     return {main:[['today','🏠 홈'],['consult','상담'],['report','업무일지'],['dash','반 · 교재']],
-            more:[['bookgive','📦 교재배부'],['wordrange','📝 단어'],['hwrange','✅ 숙제·과제검사'],['syllabus','📘 Syllabus'],['examrpt','📊 내신분석'],['roster','학생 명단'],['timetable','🕒 시간표'],['yearly','연간 교재'],['cal','일정 · 회의'],['board','📋 게시판'],['archive','전체 기록'],['set','설정']]};
+            more:[['bookgive','📦 교재배부'],['wordrange','📝 단어'],['hwrange','✅ 숙제·과제검사'],['syllabus','📘 Syllabus'],['examrpt','📊 내신분석'],['roster','학생 명단'],['timetable','🕒 시간표'],['cal','📅 일정 · 연간'],['board','📋 게시판'],['archive','전체 기록'],['set','설정']]};
   }
   if(isMgr()){
     return {main:[['today','🏠 홈'],['consult','상담'],['report','업무보고'],['dash','반 · 교재']],
-            more:[['bookgive','📦 교재배부'],['wordrange','📝 단어'],['hwrange','✅ 숙제·과제검사'],['syllabus','📘 Syllabus'],['examrpt','📊 내신분석'],['roster','학생 명단'],['timetable','🕒 시간표'],['attend','출결 (월별)'],['yearly','연간 교재'],['cal','일정 · 회의'],['board','📋 게시판'],['archive','전체 기록'],['set','설정']]};
+            more:[['bookgive','📦 교재배부'],['wordrange','📝 단어'],['hwrange','✅ 숙제·과제검사'],['syllabus','📘 Syllabus'],['examrpt','📊 내신분석'],['roster','학생 명단'],['timetable','🕒 시간표'],['attend','출결 (월별)'],['cal','📅 일정 · 연간'],['board','📋 게시판'],['archive','전체 기록'],['set','설정']]};
   }
   return {main:[['today','오늘 수업'],['consult','상담 관리'],['report','업무보고'],['dash','반 · 교재']],
-          more:[['bookgive','📦 교재배부'],['wordrange','📝 단어'],['hwrange','✅ 숙제·과제검사'],['syllabus','📘 Syllabus'],['examrpt','📊 내신분석'],['roster','학생 명단'],['timetable','🕒 시간표'],['attend','출결 (월별)'],['yearly','연간 교재'],['cal','일정 · 회의'],['board','📋 게시판'],['archive','전체 기록'],['set','설정 · 업로드']]};
+          more:[['bookgive','📦 교재배부'],['wordrange','📝 단어'],['hwrange','✅ 숙제·과제검사'],['syllabus','📘 Syllabus'],['examrpt','📊 내신분석'],['roster','학생 명단'],['timetable','🕒 시간표'],['attend','출결 (월별)'],['cal','📅 일정 · 연간'],['board','📋 게시판'],['archive','전체 기록'],['set','설정 · 업로드']]};
 }
+const PLAN_TABS=['cal','yearsched','yearly'];
+function planBarHTML(){ return `<div class="ysbar" style="margin-bottom:12px">${[['cal','🗓 일정 · 회의'],['yearsched','📅 연간 일정'],['yearly','📚 연간 교재']].map(([k,l])=>`<button class="chip ${state.tab===k?'on':''}" data-plan="${k}" style="font-size:.88rem;padding:6px 14px">${l}</button>`).join('')}</div>`; }
+function bindPlanBar(){ document.querySelectorAll('[data-plan]').forEach(b=>b.onclick=()=>{ if(b.dataset.plan!==state.tab) goTab(b.dataset.plan); }); }
 function goTab(t){
   state.tab=t;
   try{ localStorage.setItem(LASTTAB_KEY, t); }catch(e){}
@@ -2128,10 +2132,10 @@ function buildTabs(){
   const {main,more}=tabDefs();
   const all=[...main,...more];
   const valid=all.map(x=>x[0]);
-  if(!valid.includes(state.tab)) state.tab=valid[0];
+  if(!valid.includes(state.tab) && !PLAN_TABS.includes(state.tab)) state.tab=valid[0];
   const nav=document.getElementById('tabsnav');
   // 평소엔(화면이 좁아지기 전까진) 전부 한 줄에 직접 보여주고, 실제로 넘칠 때만 자바스크립트가 뒤쪽 탭들을 "더보기"로 옮긴다
-  let hh=all.map(([k,l])=>`<button class="tab ${state.tab===k?'on':''}" data-tab="${k}">${l}${k==='consult'?'<span class="dot" id="pending" style="display:none"></span>':''}</button>`).join('');
+  let hh=all.map(([k,l])=>`<button class="tab ${(state.tab===k||(k==='cal'&&PLAN_TABS.includes(state.tab)))?'on':''}" data-tab="${k}">${l}${k==='consult'?'<span class="dot" id="pending" style="display:none"></span>':''}</button>`).join('');
   hh+=`<span class="morewrap" id="moreWrap" style="display:none"><button class="tab" id="moreBtn">≡ 더보기</button>
     <span class="moremenu" id="moreMenu"></span></span>`;
   nav.innerHTML=hh;
@@ -2234,7 +2238,7 @@ function buildFilters(){
         <button class="chip eb ${state.ac==='ebest'?'on':''}" data-ac="ebest">이베스트</button>
         <button class="chip ic ${state.ac==='icon'?'on':''}" data-ac="icon">아이콘</button><span class="sep"></span>`;
   }
-  if(state.tab!=='yearly' && state.tab!=='roster' && state.tab!=='timetable' && state.tab!=='report'){
+  if(state.tab!=='yearly' && state.tab!=='yearsched' && state.tab!=='roster' && state.tab!=='timetable' && state.tab!=='report'){
     ['all','초등','중등','고등'].forEach(d=>{
       h+=`<button class="chip ${state.dept===d?'on':''}" data-dept="${d}">${d==='all'?'전 부서':d}</button>`;});
   }
@@ -6675,7 +6679,7 @@ function renderSeat(){
   const noLevel=store.students.filter(st=>st.academy===a && !st._deleted && (st.status||'재원')==='재원' && !['초','중'].includes(csLevelOf(st)) && csLevelOf(st)!=='고').length;
   const labNone=csLabClassNames(a).size===0;
   return `<div class="setsec" style="border:2px solid #2e5fb7">
-    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1104-m · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
+    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1105-d · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
     <div class="desc">학원 전체 <b>초·중등 재원생 중 강의실이 '어학실'인 수업을 듣는 학생</b>(${cand.length}명, 어학실 수업이 있는 반 ${csLabClassNames(a).size}개)을 자리 ${seatCount}개에 자동으로 배치합니다. <b>같은 학년끼리</b>, <b>같은 반끼리</b>는 옆·앞뒤 자리에 앉지 않게 짜고, 학년·반은 학생 명단과 시간표(반)를 그대로 따릅니다. <b>어학실 이용 시간이 겹치지 않는 학생</b>은 같은 학년·같은 반이어도 옆자리에 앉을 수 있고, 한 자리(컴퓨터)를 시간대별로 나눠 써도 돼요(자리 칸 안에 학생이 여러 명 보여요). 수동으로는 학생을 눌러 고른 뒤 자리나 다른 학생을 누르면 옮기거나 서로 바꿔요. 빨간 테두리(⚠)는 규칙에 걸린 곳입니다.</div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:10px 0 0;font-size:.84rem"><b>📅 기간</b>
       <select data-csperiod style="padding:5px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${periods.map(x=>`<option value="${esc(x[0])}" ${x[0]===pkey?'selected':''}>${esc(x[1])}</option>`).join('')}</select>
@@ -8941,6 +8945,7 @@ if(!store.worklog) store.worklog={};
 // 그 기간 안 어느 날짜에서 고치든 즉시 같은 기간의 다른 날짜에도 그대로 보인다.
 if(!store.worklogMonthly) store.worklogMonthly={};
 if(!store.worklogWeekly) store.worklogWeekly={};
+if(!store.yearSched) store.yearSched={}; // 연간 일정 — {edited, groups:[{id,dept,days,start,total}], extra:[{date,label}], updatedAt}
 if(!store.wlMemo) store.wlMemo={}; // 업무일지 옆 개인 메모(제출되지 않음) — {선생님키:{text,updatedAt}}
 const RESULTS=['','완료','O','△','X','예정'];
 function whoKey(lt){ return lt.a+'|'+lt.i; }
@@ -10460,6 +10465,196 @@ function activeNames(a){
   (dataFor(a,use)||[]).forEach(c=>{ if((c.students&&c.students.length)||c.count) s.add(c.name); });
   return s;
 }
+
+/* ---------- 연간 일정 ----------
+   부서·요일 묶음(초·중등: 월수금/화목금, 고등: 월수금/화목/월수)마다 "시작일 + 총 회차"를 넣으면
+   법정 공휴일·학원 휴원일·추가 휴일을 건너뛰며 요일 패턴대로 1~N회차 날짜가 자동으로 채워진다. 달력에는 회차의 시작과 끝만 표시한다. */
+const YS_DEFAULT_GROUPS=[
+  {id:'ys_e_mwf',dept:'초등',days:[1,3,5],start:'',total:0},{id:'ys_e_tts',dept:'초등',days:[2,4,5],start:'',total:0},
+  {id:'ys_m_mwf',dept:'중등',days:[1,3,5],start:'',total:0},{id:'ys_m_tts',dept:'중등',days:[2,4,5],start:'',total:0},
+  {id:'ys_h_mwf',dept:'고등',days:[1,3,5],start:'',total:0},{id:'ys_h_tt',dept:'고등',days:[2,4],start:'',total:0},{id:'ys_h_mw',dept:'고등',days:[1,3],start:'',total:0}
+];
+const YS_DEFAULT_EXTRA=[{date:'2026-06-03',label:'지방선거(임시공휴일)'}];
+const YS_WD=['일','월','화','수','목','금','토'];
+const YS_COL={'초등':['#15803d','#e6f6ec'],'중등':['#1d4ed8','#e6eefd'],'고등':['#7c3aed','#f0e8fd']};
+function ysGroups(){ const y=store.yearSched||{}; return y.edited?(y.groups||[]):YS_DEFAULT_GROUPS; }
+function ysExtra(){ const y=store.yearSched||{}; return y.edited?(y.extra||[]):YS_DEFAULT_EXTRA; }
+function ysEdit(){ const y=store.yearSched; if(!y.edited){ y.groups=JSON.parse(JSON.stringify(YS_DEFAULT_GROUPS)); y.extra=JSON.parse(JSON.stringify(YS_DEFAULT_EXTRA)); y.edited=true; } return y; }
+function ysTouch(){ store.yearSched.updatedAt=Date.now(); save(); }
+function ysAdd(iso,n){ const d=new Date(iso+'T00:00:00'); d.setDate(d.getDate()+n); return ymd(d); }
+function ysDow(iso){ return new Date(iso+'T00:00:00').getDay(); }
+function ysFmt(iso){ return Number(iso.slice(5,7))+'/'+Number(iso.slice(8))+'('+YS_WD[ysDow(iso)]+')'; }
+function ysLunarDates(y){
+  // 음력 기준 공휴일(설날·부처님오신날·추석)의 양력 날짜 — 브라우저의 음력 달력으로 계산
+  const f=new Intl.DateTimeFormat('en-u-ca-chinese',{month:'numeric',day:'numeric',timeZone:'UTC'}); const o={};
+  const d=new Date(Date.UTC(y,0,1));
+  while(d.getUTCFullYear()===y){
+    const p=f.formatToParts(d); const m=(p.find(x=>x.type==='month')||{}).value, dd=(p.find(x=>x.type==='day')||{}).value; const iso=d.toISOString().slice(0,10);
+    if(m==='1'&&dd==='1') o.seol=iso; else if(m==='8'&&dd==='15') o.chu=iso; else if(m==='4'&&dd==='8') o.bud=iso;
+    d.setUTCDate(d.getUTCDate()+1);
+  }
+  return o;
+}
+const _ysHolCache={};
+function ysHolidays(y){
+  if(_ysHolCache[y]) return _ysHolCache[y];
+  const map=new Map(); const p=(m,d)=>y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+  let lu={}; try{ lu=ysLunarDates(y); }catch(e){}
+  // 항목: [시작,끝,이름,대체공휴일 대상 여부]
+  const E=[[p(1,1),p(1,1),'신정',false],[p(3,1),p(3,1),'삼일절',true],[p(5,5),p(5,5),'어린이날',true],[p(6,6),p(6,6),'현충일',false],[p(8,15),p(8,15),'광복절',true],[p(10,3),p(10,3),'개천절',true],[p(10,9),p(10,9),'한글날',true],[p(12,25),p(12,25),'성탄절',true]];
+  if(lu.bud) E.push([lu.bud,lu.bud,'부처님오신날',true]);
+  if(lu.seol) E.push([ysAdd(lu.seol,-1),ysAdd(lu.seol,1),'설날',true]);
+  if(lu.chu) E.push([ysAdd(lu.chu,-1),ysAdd(lu.chu,1),'추석',true]);
+  const cnt={};
+  E.forEach(e=>{ for(let d=e[0];d<=e[1];d=ysAdd(d,1)){ cnt[d]=(cnt[d]||0)+1; const nm=(e[2]==='설날'||e[2]==='추석')?(d===ysAdd(e[0],1)?e[2]:e[2]+' 연휴'):e[2]; if(!map.has(d)) map.set(d,nm); } });
+  E.slice().sort((a,b)=>a[0]<b[0]?-1:1).forEach(e=>{
+    if(!e[3]) return;
+    const multi=(e[2]==='설날'||e[2]==='추석');
+    let need=false;
+    for(let d=e[0];d<=e[1];d=ysAdd(d,1)){ const w=ysDow(d); if(multi? w===0 : (w===0||w===6)) need=true; if(cnt[d]>1) need=true; }
+    if(!need) return;
+    let d=ysAdd(e[1],1); while(map.has(d)||ysDow(d)===0||ysDow(d)===6) d=ysAdd(d,1);
+    map.set(d,'대체공휴일('+e[2]+')');
+  });
+  return (_ysHolCache[y]=map);
+}
+function ysOffReason(iso){
+  const hn=ysHolidays(+iso.slice(0,4)).get(iso); if(hn) return hn;
+  const ex=ysExtra().find(e=>e&&e.date===iso); if(ex) return ex.label||'휴일';
+  const ac=academies(); if(ac.length && ac.every(a=>isClosedDay(a,iso))) return '학원 휴원일';
+  return '';
+}
+function ysCompute(g){
+  // total = 월 회차(한 달에 몇 회), months = 몇 개월치. 한 달 회차를 다 채우면 다음 달 1회차로 이어짐.
+  if(!g||!g.start||!(+g.total>0)||!(g.days||[]).length) return null;
+  const per=+g.total, nM=+g.months>0?+g.months:12; const days=new Set((g.days||[]).map(Number));
+  const cycles=[], skipped=[]; let cur=[]; let iso=g.start, guard=0; const sh=g.shifts||{}, done={};
+  while(cycles.length<nM && guard++<2500){
+    if(!cur.length && sh[cycles.length] && !done[cycles.length]){ done[cycles.length]=1; if(sh[cycles.length]>iso) iso=sh[cycles.length]; }
+    if(days.has(ysDow(iso))){ const why=ysOffReason(iso); if(why) skipped.push({date:iso,reason:why}); else { cur.push(iso); if(cur.length===per){ cycles.push(cur); cur=[]; } } }
+    iso=ysAdd(iso,1);
+  }
+  const dates=[].concat(...cycles);
+  return {cycles,dates,skipped};
+}
+function ysGroupLabel(g){ const order=[1,2,3,4,5,6,0]; return (g.dept||'')+' '+order.filter(d=>(g.days||[]).map(Number).includes(d)).map(d=>YS_WD[d]).join(''); }
+function ysMarks(year){
+  const marks={};
+  ysGroups().forEach(g=>{ const c=ysCompute(g); if(!c) return;
+    c.cycles.forEach((cy,i)=>{ const a=cy[0], b=cy[cy.length-1]; const mm=Number(a.slice(5,7));
+      (marks[a]=marks[a]||[]).push({g,kind:'start',n:1,mo:mm,i});
+      (marks[b]=marks[b]||[]).push({g,kind:'end',n:cy.length,mo:mm,i}); });
+  });
+  return marks;
+}
+function ysChip(m){ const col=YS_COL[m.g.dept]||['#444','#eee']; return `<div class="yschip" ${(m.kind==='start'&&isAdminRole())?`draggable="true" data-ysdrag="${esc(m.g.id)}|${m.i}"`:''} style="color:${col[0]};background:${col[1]};border-color:${col[0]}55" title="${esc(ysGroupLabel(m.g))} ${m.mo}월분 ${m.n}회차 ${m.kind==='start'?'시작 — 관리자는 다른 날짜로 끌어다 놓으면 시작일이 바뀌어요':'끝'}">${m.kind==='start'?'▶':'■'} ${esc(ysGroupLabel(m.g))} ${m.mo}월분 ${m.kind==='start'?'1회':m.n+'회 끝'}</div>`; }
+function ysMonthHTML(year,mi,marks){
+  const first=new Date(year,mi,1); const lastDay=new Date(year,mi+1,0).getDate(); const todayIso=todayISO();
+  let h=`<div class="ysm"><div class="ysmh">${mi+1}월</div><table class="ystb"><thead><tr>${YS_WD.map((w,i)=>`<th class="${i===0?'su':i===6?'sa':''}">${w}</th>`).join('')}</tr></thead><tbody>`;
+  let d=1-first.getDay();
+  while(d<=lastDay){
+    h+='<tr>';
+    for(let w=0;w<7;w++,d++){
+      if(d<1||d>lastDay){ h+='<td class="ysx"></td>'; continue; }
+      const iso=year+'-'+String(mi+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+      const off=ysOffReason(iso); const mk=marks[iso]||[];
+      h+=`<td data-ysiso="${iso}" class="${w===0?'su':w===6?'sa':''}${off?' off':''}${iso===todayIso?' today':''}"><div class="ysd">${d}${off?`<span class="ysh">${esc(off)}</span>`:''}</div>${mk.map(ysChip).join('')}</td>`;
+    }
+    h+='</tr>';
+  }
+  return h+'</tbody></table></div>';
+}
+const YS_CSS=`<style>
+.ysbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.ysgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(430px,1fr));gap:14px}
+.ysm{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 10px 8px;box-shadow:var(--shadow)}
+.ysmh{font-weight:800;font-size:.95rem;margin-bottom:6px}
+.ystb{width:100%;border-collapse:collapse;table-layout:fixed}
+.ystb th{font-size:.7rem;color:var(--sub);padding:3px 0;border-bottom:1px solid var(--line)}
+.ystb th.su,.ystb td.su .ysd{color:#d64545}.ystb th.sa,.ystb td.sa .ysd{color:#2f6fd6}
+.ystb td{border:1px solid #eef0f6;height:58px;vertical-align:top;padding:2px 3px;font-size:.72rem;overflow:hidden}
+.ystb td.ysx{background:#fafbfd;border-color:transparent}
+.ystb td.off{background:#fff3f3}.ystb td.off .ysd{color:#d64545}
+.ystb td.today{outline:2px solid #6d28d9;outline-offset:-2px}
+.ysd{font-weight:700;font-size:.74rem;display:flex;gap:4px;align-items:baseline;flex-wrap:wrap}
+.ysh{font-size:.58rem;font-weight:600;color:#d64545;line-height:1.1}
+.yschip[draggable=true]{cursor:grab}.ystb td.ysover{background:#ede9fe}
+.yschip{font-size:.6rem;font-weight:800;border:1px solid;border-radius:5px;padding:1px 3px;margin-top:2px;line-height:1.2;white-space:normal}
+.yssum{width:100%;border-collapse:collapse;background:#fff;font-size:.84rem}
+.yssum th,.yssum td{border:1px solid var(--line);padding:7px 10px;text-align:left}
+.yssum th{background:#f4f6fb;color:var(--sub);font-size:.74rem}
+.ysset{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:14px}
+.ysset input,.ysset select{border:1px solid var(--line);border-radius:7px;padding:5px 7px;font-family:inherit;font-size:.82rem}
+.ysdays label{display:inline-flex;align-items:center;gap:2px;margin-right:6px;font-size:.8rem;cursor:pointer}
+</style>`;
+function renderYearSched(printMode){
+  const admin=isAdminRole(); if(state.ysYear==null) state.ysYear=new Date().getFullYear(); if(!state.ysView) state.ysView='cal';
+  const year=state.ysYear; const groups=ysGroups();
+  let h=YS_CSS;
+  if(!printMode){
+    h+=`<div class="ysbar"><button class="btn small" id="ysPrev">◀</button><b style="font-size:1.05rem">${year}년</b><button class="btn small" id="ysNext">▶</button><span class="sep"></span>
+      <button class="chip ${state.ysView==='cal'?'on':''}" data-ysv="cal">📅 달력</button><button class="chip ${state.ysView==='table'?'on':''}" data-ysv="table">📋 표</button>
+      ${admin?`<button class="btn small" id="ysSetBtn" style="margin-left:auto">⚙ 요일 묶음 · 회차 · 휴일 설정</button>`:''}
+      <span style="font-size:.74rem;color:var(--sub)${admin?'':';margin-left:auto'}">달력에는 각 묶음의 회차 <b>시작과 끝</b>만 표시 (관리자: ▶시작 칩을 끌어서 옮기면 그 달부터 다시 시작) · 빨간 날은 휴일(자동 제외)</span></div>`;
+    if(admin && state.ysSet){
+      const dayChk=(g)=>[1,2,3,4,5,6,0].map(d=>`<label><input type="checkbox" data-ysd="${d}" data-ysg="${esc(g.id)}" ${(g.days||[]).map(Number).includes(d)?'checked':''}>${YS_WD[d]}</label>`).join('');
+      h+=`<div class="ysset"><b style="font-size:.9rem">부서 · 요일 묶음별 회차</b> <span style="font-size:.74rem;color:var(--sub)">시작일과 월 회차(한 달 수업 횟수)를 넣으면 휴일을 건너뛰며 월별 1~N회차가 자동으로 이어져요</span>
+        <table class="yssum" style="margin-top:8px"><thead><tr><th>부서</th><th>수업 요일</th><th>시작일</th><th>월 회차</th><th>개월 수</th><th></th></tr></thead><tbody>`+
+        groups.map(g=>`<tr><td><select data-ysf="dept" data-ysg="${esc(g.id)}">${['초등','중등','고등'].map(d=>`<option ${g.dept===d?'selected':''}>${d}</option>`).join('')}</select></td>
+          <td class="ysdays">${dayChk(g)}</td><td><input type="date" data-ysf="start" data-ysg="${esc(g.id)}" value="${esc(g.start||'')}"></td>
+          <td><input type="number" min="0" max="400" style="width:74px" data-ysf="total" data-ysg="${esc(g.id)}" value="${+g.total||''}" placeholder="예:12"></td>
+          <td><input type="number" min="1" max="24" style="width:60px" data-ysf="months" data-ysg="${esc(g.id)}" value="${+g.months||12}"></td>
+          <td><button class="btn small" data-ysdel="${esc(g.id)}">삭제</button></td></tr>`).join('')+
+        `</tbody></table><button class="btn small" id="ysAddG" style="margin-top:8px">+ 묶음 추가</button>
+        <div style="margin-top:14px"><b style="font-size:.9rem">추가 휴일</b> <span style="font-size:.74rem;color:var(--sub)">법정 공휴일(대체공휴일 포함)은 자동이에요. 선거일 같은 임시공휴일이나 학원 자체 휴일을 여기 추가하세요. (일정·회의 탭의 「휴원」 일정도 자동 반영)</span>
+        <div style="margin-top:6px">${ysExtra().map((e,i)=>`<div style="margin:4px 0"><input type="date" data-yse="date" data-i="${i}" value="${esc(e.date||'')}"> <input type="text" data-yse="label" data-i="${i}" value="${esc(e.label||'')}" placeholder="휴일 이름" style="width:180px"> <button class="btn small" data-ysedel="${i}">삭제</button></div>`).join('')}
+        <button class="btn small" id="ysAddE">+ 휴일 추가</button></div></div></div>`;
+    }
+  }
+  if(state.ysView==='cal' || printMode===true && false){
+    const marks=ysMarks(year);
+    h+=`<div class="ysgrid">${[...Array(12)].map((_,i)=>ysMonthHTML(year,i,marks)).join('')}</div>`;
+    if(!groups.some(g=>g.start&&+g.total>0)) h+=`<div class="empty" style="margin-top:12px">${admin?'위의 ⚙ 설정에서 시작일과 총 회차를 넣으면 달력에 자동으로 표시돼요.':'아직 입력된 연간 일정이 없어요. 관리자가 시작일·회차를 입력하면 표시돼요.'}</div>`;
+  } else {
+    h+=`<table class="yssum"><thead><tr><th>묶음</th><th>월 (회차)</th><th>시작 (1회차)</th><th>끝 (마지막 회차)</th></tr></thead><tbody>`+
+      groups.map(g=>{ const c=ysCompute(g); const col=(YS_COL[g.dept]||['#444'])[0];
+        if(!c||!c.cycles.length) return `<tr><td style="font-weight:800;color:${col}">${esc(ysGroupLabel(g))}</td><td colspan="3" style="color:var(--sub)">시작일·월 회차 입력 필요</td></tr>`;
+        return c.cycles.map((cy,i)=>`<tr>${i===0?`<td rowspan="${c.cycles.length}" style="font-weight:800;color:${col};vertical-align:top">${esc(ysGroupLabel(g))}</td>`:''}<td>${i+1}번째 달 · ${Number(cy[0].slice(5,7))}월분 (${cy.length}회)</td><td>${ysFmt(cy[0])}</td><td>${ysFmt(cy[cy.length-1])}</td></tr>`).join(''); }).join('')+`</tbody></table>`;
+    if(!printMode) h+=groups.map(g=>{ const c=ysCompute(g); if(!c) return ''; const col=(YS_COL[g.dept]||['#444'])[0];
+      return `<details style="margin-top:10px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 12px"><summary style="cursor:pointer;font-weight:800;color:${col}">${esc(ysGroupLabel(g))} · 전체 회차 보기</summary>
+        ${c.cycles.map(cy=>`<div style="margin-top:8px;font-size:.78rem"><b>${Number(cy[0].slice(5,7))}월분</b> ${cy.map((d,i)=>`<span style="margin-right:8px"><b>${i+1}회</b> ${ysFmt(d)}</span>`).join('')}</div>`).join('')}
+        ${c.skipped.length?`<div style="margin-top:8px;font-size:.76rem;color:#d64545"><b>건너뛴 날</b> ${c.skipped.map(x=>ysFmt(x.date)+' '+esc(x.reason)).join(' · ')}</div>`:''}</details>`; }).join('');
+  }
+  return h;
+}
+function bindYearSched(){
+  const v=document.getElementById('view');
+  const yp=v.querySelector('#ysPrev'); if(yp) yp.onclick=()=>{ state.ysYear--; render(true); };
+  const yn=v.querySelector('#ysNext'); if(yn) yn.onclick=()=>{ state.ysYear++; render(true); };
+  v.querySelectorAll('[data-ysv]').forEach(b=>b.onclick=()=>{ state.ysView=b.dataset.ysv; if(typeof routeSync==='function') try{ routeSync(); }catch(e){} render(true); });
+  const sb=v.querySelector('#ysSetBtn'); if(sb) sb.onclick=()=>{ state.ysSet=!state.ysSet; render(true); };
+  if(!isAdminRole()) return;
+  v.querySelectorAll('[data-ysdrag]').forEach(c=>c.addEventListener('dragstart',e=>{ e.dataTransfer.setData('text/plain',c.dataset.ysdrag); e.dataTransfer.effectAllowed='move'; }));
+  v.querySelectorAll('td[data-ysiso]').forEach(td=>{
+    td.addEventListener('dragover',e=>{ e.preventDefault(); td.classList.add('ysover'); });
+    td.addEventListener('dragleave',()=>td.classList.remove('ysover'));
+    td.addEventListener('drop',e=>{ e.preventDefault(); td.classList.remove('ysover');
+      const t=(e.dataTransfer.getData('text/plain')||'').split('|'); if(t.length!==2) return;
+      const y=ysEdit(); const g=y.groups.find(x=>x.id===t[0]); if(!g) return; const i=+t[1];
+      if(i===0){ g.start=td.dataset.ysiso; g.shifts={}; } else { g.shifts=g.shifts||{}; g.shifts[i]=td.dataset.ysiso; }
+      ysTouch(); render(true); });
+  });
+  const gOf=id=>ysEdit().groups.find(g=>g.id===id);
+  v.querySelectorAll('[data-ysf]').forEach(el=>el.onchange=()=>{ const g=gOf(el.dataset.ysg); if(!g) return; const f=el.dataset.ysf; g[f]=(f==='total'||f==='months')?(+el.value||0):el.value; ysTouch(); render(true); });
+  v.querySelectorAll('[data-ysd]').forEach(el=>el.onchange=()=>{ const g=gOf(el.dataset.ysg); if(!g) return; const d=+el.dataset.ysd; const set=new Set((g.days||[]).map(Number)); el.checked?set.add(d):set.delete(d); g.days=[...set].sort(); ysTouch(); render(true); });
+  v.querySelectorAll('[data-ysdel]').forEach(b=>b.onclick=()=>{ if(!confirm('이 묶음을 삭제할까요?')) return; const y=ysEdit(); y.groups=y.groups.filter(g=>g.id!==b.dataset.ysdel); ysTouch(); render(true); });
+  const ag=v.querySelector('#ysAddG'); if(ag) ag.onclick=()=>{ const y=ysEdit(); y.groups.push({id:'ys_'+Date.now().toString(36),dept:'고등',days:[1,3,5],start:'',total:0}); ysTouch(); render(true); };
+  v.querySelectorAll('[data-yse]').forEach(el=>el.onchange=()=>{ const y=ysEdit(); const e=y.extra[+el.dataset.i]; if(!e) return; e[el.dataset.yse]=el.value; ysTouch(); render(true); });
+  v.querySelectorAll('[data-ysedel]').forEach(b=>b.onclick=()=>{ const y=ysEdit(); y.extra.splice(+b.dataset.ysedel,1); ysTouch(); render(true); });
+  const ae=v.querySelector('#ysAddE'); if(ae) ae.onclick=()=>{ const y=ysEdit(); y.extra.push({date:'',label:''}); ysTouch(); render(true); };
+}
+function yrPrefs(){ try{ const p=JSON.parse(localStorage.getItem('yr_prefs')||'{}'); return {hide:p.hide||[],col:p.col||[]}; }catch(e){ return {hide:[],col:[]}; } }
+function yrSavePrefs(p){ try{ localStorage.setItem('yr_prefs',JSON.stringify(p)); }catch(e){} }
 function renderYearly(){
   if(state.yactive==null) state.yactive=true;
   let h=`<div class="todaybar">
@@ -10467,12 +10662,17 @@ function renderYearly(){
     <button class="chip ${!state.yactive?'on':''}" id="yAll">전체 반</button>
     <span style="font-size:.8rem;color:var(--sub)">○ 클릭: 🟢새교재 → 🔴완료(새 교재 필요) → 해제${(isAdminRole())?' · 교재명을 누르면 직접 입력':''}</span>
     <button class="btn small" id="yXlsx">✎ 편집용 엑셀 다운로드</button>
+    <button class="btn small" id="yColAll" title="모든 반을 한 줄로 접기">▸ 반 모두 접기</button><button class="btn small" id="yExpAll">▾ 모두 펼치기</button>
     ${Object.keys(store.bookedit).length?`<button class="btn small" id="yReset">직접 입력 초기화 (${Object.keys(store.bookedit).length}건)</button>`:''}
     <span style="font-size:.72rem;color:#8b93a7;margin-left:auto">편집용 엑셀에 교재를 채워 [설정 · 업로드]로 올리면 그대로 반영됩니다</span>
   </div>`;
+  const yp=yrPrefs(); const hiddenM=new Set(yp.hide); const colSet=new Set(yp.col);
+  { const allM=new Set(); academies().forEach(a=>{ if(state.ac==='all'||a===state.ac) yearlyPivot(a).ms.forEach(m=>allM.add(m)); });
+    const arr=[...allM].sort();
+    if(arr.length) h=h.replace('</div>',`</div><div class="todaybar" style="gap:5px"><span style="font-size:.76rem;color:var(--sub);font-weight:700">월 표시 (눌러서 숨기기)</span>${arr.map(m=>`<button class="chip ${hiddenM.has(m)?'':'on'}" data-ymon="${m}" style="padding:3px 9px;font-size:.76rem">${Number(m.slice(5))}월</button>`).join('')}</div>`); }
   for(const a of academies()){
     if(state.ac!=='all' && a!==state.ac) continue;
-    const {ms,rows,order}=yearlyPivot(a);
+    const {ms:msAll,rows,order}=yearlyPivot(a); const ms=msAll.filter(m=>!hiddenM.has(m));
     let keys=order;
     if(state.yactive){ const act=activeNames(a); keys=keys.filter(k=>act.has(rows[k].name)); }
     if(state.q) keys=keys.filter(k=>matches(rows[k].name)||matches(rows[k].subject)||Object.values(rows[k].months).some(matches));
@@ -10482,7 +10682,12 @@ function renderYearly(){
     h+=`<div class="ysec"><h3>${AC[a].label} <span class="badge ${AC[a].cls}">반별 연간 교재${state.yactive?' — '+mLabel(state.month)+' 운영 반':''}</span></h3><div class="ywrap"><table class="ytable"><thead><tr><th>반</th><th>과목</th>${ms.map(m=>`<th>${Number(m.slice(5))}월</th>`).join('')}</tr></thead><tbody>`;
     keys.forEach(k=>{
       const r=rows[k]; let prevBook='';
-      h+=`<tr>${r.name===prevName?'':`<td class="cn" rowspan="${yGrp[r.name]}">${hl(r.name)}</td>`}<td class="sj">${hl(r.subject)}</td>`;
+      const colKey=a+'|'+r.name;
+      if(colSet.has(colKey)){ // 접힌 반 — 한 줄로만 표시
+        if(r.name!==prevName){ h+=`<tr><td class="cn" data-ycol="${esc(colKey)}" style="cursor:pointer" title="눌러서 펼치기">▸ ${hl(r.name)}</td><td class="sj" colspan="${1+ms.length}" style="color:#9aa3b8;font-weight:600">과목 ${yGrp[r.name]}개 · 접힘</td></tr>`; prevName=r.name; }
+        return;
+      }
+      h+=`<tr>${r.name===prevName?'':`<td class="cn" data-ycol="${esc(colKey)}" rowspan="${yGrp[r.name]}" style="cursor:pointer" title="눌러서 접기">▾ ${hl(r.name)}</td>`}<td class="sj">${hl(r.subject)}</td>`;
       ms.forEach(m=>{
         const b=r.months[m]||'';
         const dk=ydKey(a,r.name,r.subject,m);
@@ -10522,6 +10727,10 @@ function bindYearly(){
   const v=document.getElementById('view');
   const ya=v.querySelector('#yAct'); if(ya) ya.onclick=()=>{state.yactive=true; render(true);};
   const yl=v.querySelector('#yAll'); if(yl) yl.onclick=()=>{state.yactive=false; render(true);};
+  v.querySelectorAll('[data-ycol]').forEach(td=>td.onclick=e=>{ if(e.target.closest('.ychk')) return; const p=yrPrefs(); const k=td.dataset.ycol; const i=p.col.indexOf(k); if(i>=0) p.col.splice(i,1); else p.col.push(k); yrSavePrefs(p); render(true); });
+  v.querySelectorAll('[data-ymon]').forEach(b=>b.onclick=()=>{ const p=yrPrefs(); const m=b.dataset.ymon; const i=p.hide.indexOf(m); if(i>=0) p.hide.splice(i,1); else p.hide.push(m); yrSavePrefs(p); render(true); });
+  const yca=v.querySelector('#yColAll'); if(yca) yca.onclick=()=>{ const p=yrPrefs(); const set=new Set(p.col); v.querySelectorAll('[data-ycol]').forEach(td=>set.add(td.dataset.ycol)); p.col=[...set]; yrSavePrefs(p); render(true); };
+  const yea=v.querySelector('#yExpAll'); if(yea) yea.onclick=()=>{ const p=yrPrefs(); p.col=[]; yrSavePrefs(p); render(true); };
   v.querySelectorAll('.ychk').forEach(b=>b.onclick=e=>{
     e.stopPropagation();
     const k=b.dataset.yd;
@@ -15896,7 +16105,7 @@ function reportHTML(){
     if(whoTeacher(who)) return state.rkind==='weekly' ? repWeekPlan(who, weekOf(state.date)) : repDailyJournal(who, state.date);
   }
   const date=todayISO();
-  const tabName={seat:'컴퓨터 자리 배치표',dash:'반 · 교재 현황',today:'수업 일지 (출석 · 숙제)',consult:'상담 기록',attend:'월별 출결부',report:(state.rkind==='weekly'?'주간 진도계획표':'업무일지'),roster:'학교 · 학년별 명단',yearly:'연간 교재 내역',stats:'학생 통계',cal:'학사일정 · 회의록',board:'게시판',syllabus:'Syllabus',examrpt:'내신 분석',archive:'전체 기록 모아보기',set:'선생님 설정'}[state.tab];
+  const tabName={yearsched:'연간 일정',seat:'컴퓨터 자리 배치표',dash:'반 · 교재 현황',today:'수업 일지 (출석 · 숙제)',consult:'상담 기록',attend:'월별 출결부',report:(state.rkind==='weekly'?'주간 진도계획표':'업무일지'),roster:'학교 · 학년별 명단',yearly:'연간 교재 내역',stats:'학생 통계',cal:'학사일정 · 회의록',board:'게시판',syllabus:'Syllabus',examrpt:'내신 분석',archive:'전체 기록 모아보기',set:'선생님 설정'}[state.tab];
   let extra='';
   if(state.tab==='consult'&&state.tf) extra=' — '+store.teachers[state.tf.a][state.tf.i].name+' 선생님';
   const lt=loginTeacher();
@@ -15926,6 +16135,7 @@ function reportHTML(){
   else if(state.tab==='report'){ body = state.rkind==='weekly' ? repWorkWeekly(state.date) : repWorkDaily(state.date); }
   else if(state.tab==='roster'){ body=repRosterSchoolGrade(); }
   else if(state.tab==='yearly'){ body=repYearly(); }
+  else if(state.tab==='yearsched'){ body=renderYearSched(true); }
   else if(state.tab==='stats'){ body=repStats(); }
   else if(state.tab==='cal'){ body=repCal(); }
   else if(state.tab==='archive'){ body=repArchive(); }
@@ -15970,7 +16180,7 @@ document.getElementById('printBtn').onclick=()=>{
 document.getElementById('xlsBtn').onclick=()=>{
   const html=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>보고서</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head><body>${reportHTML()}</body></html>`;
   const blob=new Blob(['\uFEFF'+html],{type:'application/vnd.ms-excel'});
-  const tabName={seat:'컴퓨터자리',dash:'반교재',today:'수업일지',consult:'상담기록',attend:'출결부',report:(state.rkind==='weekly'?'주간진도계획표':'업무일지'),roster:'학교학년별명단',yearly:'연간교재',stats:'학생통계',cal:'일정회의',archive:'전체기록',set:'설정'}[state.tab];
+  const tabName={yearsched:'연간일정',seat:'컴퓨터자리',dash:'반교재',today:'수업일지',consult:'상담기록',attend:'출결부',report:(state.rkind==='weekly'?'주간진도계획표':'업무일지'),roster:'학교학년별명단',yearly:'연간교재',stats:'학생통계',cal:'일정회의',archive:'전체기록',set:'설정'}[state.tab];
   let who = (state.tab==='consult'&&state.tf) ? '_'+store.teachers[state.tf.a][state.tf.i].name : '';
   const lt=loginTeacher();
   if((state.tab==='today'||state.tab==='attend')&&lt&&state.myOnly) who='_'+lt.t.name;
@@ -16083,12 +16293,14 @@ function renderInner(keepOpen){
     v.innerHTML=hwModeBarHTML()+(state.hwMode==='pc'?renderPaperCheck(list):renderHwRange(list)); bindHwModeBar(); if(state.hwMode==='pc') bindPaperCheck(); else bindHwRange();
   } else if(state.tab==='papercheck'){
     v.innerHTML=renderPaperCheck(list); bindPaperCheck();
+  } else if(state.tab==='yearsched'){
+    v.innerHTML=planBarHTML()+renderYearSched(); bindPlanBar(); bindYearSched();
   } else if(state.tab==='yearly'){
-    v.innerHTML=renderYearly(); bindYearly();
+    v.innerHTML=planBarHTML()+renderYearly(); bindPlanBar(); bindYearly();
   } else if(state.tab==='stats'){
     v.innerHTML=renderStats(); bindStats();
   } else if(state.tab==='cal'){
-    v.innerHTML=renderCal(); bindCal();
+    v.innerHTML=planBarHTML()+renderCal(); bindPlanBar(); bindCal();
   } else if(state.tab==='archive'){
     v.innerHTML=renderArchive(); bindArchive();
   } else if(state.tab==='board'){
