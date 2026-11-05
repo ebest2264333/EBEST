@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>이베스트 (본관) — 선생님용 대시보드 · v1105-k</title>
+<title>이베스트 (본관) — 선생님용 대시보드 · v1105-l</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%96%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">
@@ -3330,6 +3330,28 @@ function ttgTeacherPanel(a,cls){
         <div style="font-weight:800;margin-top:4px">${ttgFmtMin(o.min)} <span style="font-weight:600;color:var(--sub);font-size:.74rem">· ${o.n}타임</span></div>
         <div style="font-size:.7rem;color:var(--sub)">${TTG_DAYS.filter(d=>o.days[d]).map(d=>d+' '+ttgFmtMin(o.days[d])).join(' · ')}</div></div>`; }).join('')}</div></div>`;
 }
+function ttgDragMove(fi,ti){
+  const F=ttgEdReg[fi], T=ttgEdReg[ti]; if(!F||!T||F===T||!F.hits.length) return;
+  if(F.names.join('|')!==T.names.join('|')){ alert('같은 반 칸끼리만 옮기거나 바꿀 수 있어요.'); return; }
+  const owner=h=>findClassById(h.own.academy,h.own._src,h.own._id);
+  const locate=(oc,h)=>{ if(!oc) return null; let i=(oc.subjects||[]).indexOf(h.ref); if(i<0) i=(oc.subjects||[]).findIndex(x=>x.subject===h.ref.subject&&x.time===h.ref.time&&x.day===h.ref.day); return i<0?null:oc.subjects[i]; };
+  const only=(oc,sb,day)=>{ const days=ttgDayList(oc,sb); if(days.length<=1) return sb; sb.day=days.filter(x=>x!==day).join(','); const cp=Object.assign({},sb,{day}); oc.subjects.push(cp); return cp; };
+  if(T.hits.some(th=>F.hits.some(fh=>fh.ref===th.ref))) return; // 같은 수업의 다른 줄
+  const fs=F.hits.map(h=>{ const oc=owner(h); const sb=locate(oc,h); return sb?{oc,sb,h}:null; }).filter(Boolean);
+  const ts=T.hits.map(h=>{ const oc=owner(h); const sb=locate(oc,h); return sb?{oc,sb,h}:null; }).filter(Boolean);
+  if(!fs.length) return;
+  const fd=fs.map(x=>only(x.oc,x.sb,F.day)); const td=ts.map(x=>only(x.oc,x.sb,T.day));
+  const addDay=(oc,day)=>{ const ds=String(cdays(oc)||'').split(',').map(x=>x.trim()).filter(Boolean); if(!ds.includes(day)){ ds.push(day); ds.sort((x,y)=>TTG_DAYS.indexOf(x)-TTG_DAYS.indexOf(y)); oc.days=ds.join(','); if(store.daysedit&&store.daysedit[ckey(oc)]!=null) store.daysedit[ckey(oc)]=ds.join(','); } };
+  if(td.length){ // 이미 수업이 있는 칸 → 서로 시간(요일 포함)을 맞바꾼다
+    const ft=fd[0].time, fday=F.day, tt=td[0].time, tday=T.day;
+    fd.forEach((sb,i)=>{ sb.time=tt; sb.day=tday; addDay(fs[i].oc,tday); fs[i].oc.updatedAt=Date.now(); });
+    td.forEach((sb,i)=>{ sb.time=ft; sb.day=fday; addDay(ts[i].oc,fday); ts[i].oc.updatedAt=Date.now(); });
+  } else { // 빈 칸 → 그 칸 시작 시각으로 옮긴다(수업 길이는 유지)
+    const dur=F.hits[0].end-F.hits[0].start; const nt=fmtH(T.s0)+'-'+fmtH(T.s0+dur);
+    fd.forEach((sb,i)=>{ sb.time=nt; sb.day=T.day; addDay(fs[i].oc,T.day); fs[i].oc.updatedAt=Date.now(); });
+  }
+  save(); render(true);
+}
 function ttgEdClose(){ const m=document.getElementById('ttgEdModal'); if(m) m.remove(); }
 function ttgOpenEditor(i){
   const d=ttgEdReg[i]; if(!d) return; ttgEdClose();
@@ -3397,7 +3419,7 @@ function renderTimetableGrid(list){
     <button class="chip ${gd==='all'?'on':''}" data-ttgday="all">전체 요일</button>
     ${TTG_DAYS.map(d=>`<button class="chip ${gd===d?'on':''}" data-ttgday="${d}">${d}요일</button>`).join('')}
     ${admin?`<button class="chip ${edit?'on':''}" data-ttedit="1" style="margin-left:auto;font-weight:800">✎ 수정모드 ${edit?'ON':''}</button>`:''}
-  </div>${edit?'<div style="font-size:.78rem;color:#6d28d9;font-weight:700;margin:-4px 0 10px">✎ 수정모드 — 칸을 누르면 선생님(색)·과목·강의실을 바로 바꿀 수 있고, 빈 칸을 누르면 새 수업을 넣어요. 해당 반 과목에 자동 반영돼요.</div>':''}`;
+  </div>${edit?'<div style="font-size:.78rem;color:#6d28d9;font-weight:700;margin:-4px 0 10px">✎ 수정모드 — 칸을 누르면 선생님(색)·과목·강의실을 바로 바꿀 수 있고, 빈 칸을 누르면 새 수업을 넣어요. 수업 칸을 같은 반의 다른 칸으로 끌면 이동(빈 칸) 또는 시간 맞바꿈(수업이 있는 칸)이에요. 해당 반 과목에 자동 반영돼요.</div>':''}`;
   const css=`<style>
     .ttgw{margin-bottom:22px}
     .ttgw h3{margin:0 0 8px;font-size:.95rem}
@@ -3468,7 +3490,7 @@ function renderTimetableGrid(list){
         let tds='';
         groups.forEach(g=>{
           const gh=g.map(nm=>({nm, h:hits.find(e=>e.className===nm)})).filter(x=>x.h);
-          const ed=edit?(()=>{ ttgEdReg.push({a,day,names:g,objs:g.map(nm=>objOf[nm]),hits:gh.map(x=>x.h),s0,s1,isWt}); return ` data-tted="${ttgEdReg.length-1}"`; })():'';
+          const ed=edit?(()=>{ ttgEdReg.push({a,day,names:g,objs:g.map(nm=>objOf[nm]),hits:gh.map(x=>x.h),s0,s1,isWt}); return ` data-tted="${ttgEdReg.length-1}"${gh.length?' draggable="true"':''}`; })():'';
           const jump=(!edit&&admin&&idOf[g[0]])?` data-ttjump="${day}|${esc(idOf[g[0]])}"`:'';
           if(!gh.length){ tds+=`<td${ed}${isWt?' style="background:#d9d9d9"':''}></td>`; return; }
           if(gh.length===1 || gh.every(x=>sameHit(gh[0].h, x.h))){
@@ -3635,7 +3657,11 @@ function bindClassEdit(){
   v.querySelectorAll('[data-ttday]').forEach(b=>b.onclick=()=>{ state.ttDay=b.dataset.ttday; render(true); });
   v.querySelectorAll('[data-ttgday]').forEach(b=>b.onclick=()=>{ state.ttGridDay=b.dataset.ttgday; render(true); });
   v.querySelectorAll('[data-ttedit]').forEach(b=>b.onclick=()=>{ state.ttEdit=!state.ttEdit; render(true); });
-  v.querySelectorAll('[data-tted]').forEach(td=>td.onclick=()=>ttgOpenEditor(+td.dataset.tted));
+  v.querySelectorAll('[data-tted]').forEach(td=>{ td.onclick=()=>ttgOpenEditor(+td.dataset.tted);
+    td.addEventListener('dragstart',e=>{ e.dataTransfer.setData('text/plain','tted:'+td.dataset.tted); e.dataTransfer.effectAllowed='move'; });
+    td.addEventListener('dragover',e=>{ e.preventDefault(); td.style.outline='2px dashed #6d28d9'; });
+    td.addEventListener('dragleave',()=>{ td.style.outline=''; });
+    td.addEventListener('drop',e=>{ e.preventDefault(); td.style.outline=''; const t=(e.dataTransfer.getData('text/plain')||''); if(t.startsWith('tted:')) ttgDragMove(+t.slice(5),+td.dataset.tted); }); });
   v.querySelectorAll('[data-addclass]').forEach(b=>b.onclick=()=>addClassAction(b.dataset.addclass, state.month, b.dataset.presetdays||''));
   v.querySelectorAll('[data-cdaycb]').forEach(cb=>cb.onchange=()=>{
     const c=findClassById(cb.dataset.a,cb.dataset.src,cb.dataset.id); if(!c) return;
@@ -6768,7 +6794,7 @@ function renderSeat(){
   const noLevel=store.students.filter(st=>st.academy===a && !st._deleted && (st.status||'재원')==='재원' && !['초','중'].includes(csLevelOf(st)) && csLevelOf(st)!=='고').length;
   const labNone=csLabClassNames(a).size===0;
   return `<div class="setsec" style="border:2px solid #2e5fb7">
-    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1105-k · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
+    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1105-l · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
     <div class="desc">학원 전체 <b>초·중등 재원생 중 강의실이 '어학실'인 수업을 듣는 학생</b>(${cand.length}명, 어학실 수업이 있는 반 ${csLabClassNames(a).size}개)을 자리 ${seatCount}개에 자동으로 배치합니다. <b>같은 학년끼리</b>, <b>같은 반끼리</b>는 옆·앞뒤 자리에 앉지 않게 짜고, 학년·반은 학생 명단과 시간표(반)를 그대로 따릅니다. <b>어학실 이용 시간이 겹치지 않는 학생</b>은 같은 학년·같은 반이어도 옆자리에 앉을 수 있고, 한 자리(컴퓨터)를 시간대별로 나눠 써도 돼요(자리 칸 안에 학생이 여러 명 보여요). 수동으로는 학생을 눌러 고른 뒤 자리나 다른 학생을 누르면 옮기거나 서로 바꿔요. 빨간 테두리(⚠)는 규칙에 걸린 곳입니다.</div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:10px 0 0;font-size:.84rem"><b>📅 기간</b>
       <select data-csperiod style="padding:5px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${periods.map(x=>`<option value="${esc(x[0])}" ${x[0]===pkey?'selected':''}>${esc(x[1])}</option>`).join('')}</select>
