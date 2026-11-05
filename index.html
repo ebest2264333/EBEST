@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>이베스트 (본관) — 선생님용 대시보드 · v1105-d</title>
+<title>이베스트 (본관) — 선생님용 대시보드 · v1105-h</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%96%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">
@@ -3377,7 +3377,10 @@ function renderTimetableGrid(list){
         const sameHit=(h1,h2)=>{ if(!h1||!h2) return false; const q1=paint(h1), q2=paint(h2); return q1.txt===q2.txt && q1.bg===q2.bg; }; // 화면에 똑같이 보이면 같은 칸으로 본다 (단어시험은 강의실·담당 약자만 같으면 합침)
         const paint=(h)=>{
           if(h.isWordTest){ const code=ttgTeacherCode(a, h.teacher); const txt=h.room?(code?`${h.room}(${code})`:h.room):(code?`단어시험(${code})`:'단어시험'); return {bg:'#d9d9d9', fg:'#000', txt}; }
-          const hex=ttgTeacherColorHex(a, h.teacher); return {bg:hex||'', fg:hex?(ttgIsDarkColor(hex)?'#fff':'#000'):'', txt:h.subject};
+          const hex=ttgTeacherColorHex(a, h.teacher);
+          // 강의실이 있는 수업은 "(강의실)과목"으로 표시 — 어학실에서 하는 수업(IBT·L/C 등)은 강의실 표기 없이 과목만
+          const rm=String(h.room||'').replace(/강의실|호|\s/g,''); const showRm=rm && !rm.includes('어학실') && !isLabSubject(h.subject);
+          return {bg:hex||'', fg:hex?(ttgIsDarkColor(hex)?'#fff':'#000'):'', txt:(showRm?'('+rm+')':'')+h.subject};
         };
         let tds='';
         groups.forEach(g=>{
@@ -6679,7 +6682,7 @@ function renderSeat(){
   const noLevel=store.students.filter(st=>st.academy===a && !st._deleted && (st.status||'재원')==='재원' && !['초','중'].includes(csLevelOf(st)) && csLevelOf(st)!=='고').length;
   const labNone=csLabClassNames(a).size===0;
   return `<div class="setsec" style="border:2px solid #2e5fb7">
-    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1105-d · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
+    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1105-h · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
     <div class="desc">학원 전체 <b>초·중등 재원생 중 강의실이 '어학실'인 수업을 듣는 학생</b>(${cand.length}명, 어학실 수업이 있는 반 ${csLabClassNames(a).size}개)을 자리 ${seatCount}개에 자동으로 배치합니다. <b>같은 학년끼리</b>, <b>같은 반끼리</b>는 옆·앞뒤 자리에 앉지 않게 짜고, 학년·반은 학생 명단과 시간표(반)를 그대로 따릅니다. <b>어학실 이용 시간이 겹치지 않는 학생</b>은 같은 학년·같은 반이어도 옆자리에 앉을 수 있고, 한 자리(컴퓨터)를 시간대별로 나눠 써도 돼요(자리 칸 안에 학생이 여러 명 보여요). 수동으로는 학생을 눌러 고른 뒤 자리나 다른 학생을 누르면 옮기거나 서로 바꿔요. 빨간 테두리(⚠)는 규칙에 걸린 곳입니다.</div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:10px 0 0;font-size:.84rem"><b>📅 기간</b>
       <select data-csperiod style="padding:5px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${periods.map(x=>`<option value="${esc(x[0])}" ${x[0]===pkey?'selected':''}>${esc(x[1])}</option>`).join('')}</select>
@@ -10477,6 +10480,8 @@ const YS_DEFAULT_GROUPS=[
 const YS_DEFAULT_EXTRA=[{date:'2026-06-03',label:'지방선거(임시공휴일)'}];
 const YS_WD=['일','월','화','수','목','금','토'];
 const YS_COL={'초등':['#15803d','#e6f6ec'],'중등':['#1d4ed8','#e6eefd'],'고등':['#7c3aed','#f0e8fd']};
+const YS_PAL={'초등':['#15803d','#0d9488','#65a30d','#047857'],'중등':['#1d4ed8','#0891b2','#4f46e5','#0369a1'],'고등':['#7c3aed','#db2777','#ea580c','#9333ea']};
+function ysColor(g){ let c=g.color; if(!c){ const same=ysGroups().filter(x=>x.dept===g.dept); const i=Math.max(0,same.findIndex(x=>x.id===g.id)); const pal=YS_PAL[g.dept]||['#444']; c=pal[i%pal.length]; } return [c,c+'22']; }
 function ysGroups(){ const y=store.yearSched||{}; return y.edited?(y.groups||[]):YS_DEFAULT_GROUPS; }
 function ysExtra(){ const y=store.yearSched||{}; return y.edited?(y.extra||[]):YS_DEFAULT_EXTRA; }
 function ysEdit(){ const y=store.yearSched; if(!y.edited){ y.groups=JSON.parse(JSON.stringify(YS_DEFAULT_GROUPS)); y.extra=JSON.parse(JSON.stringify(YS_DEFAULT_EXTRA)); y.edited=true; } return y; }
@@ -10547,8 +10552,11 @@ function ysMarks(year){
   });
   return marks;
 }
-function ysChip(m){ const col=YS_COL[m.g.dept]||['#444','#eee']; return `<div class="yschip" ${(m.kind==='start'&&isAdminRole())?`draggable="true" data-ysdrag="${esc(m.g.id)}|${m.i}"`:''} style="color:${col[0]};background:${col[1]};border-color:${col[0]}55" title="${esc(ysGroupLabel(m.g))} ${m.mo}월분 ${m.n}회차 ${m.kind==='start'?'시작 — 관리자는 다른 날짜로 끌어다 놓으면 시작일이 바뀌어요':'끝'}">${m.kind==='start'?'▶':'■'} ${esc(ysGroupLabel(m.g))} ${m.mo}월분 ${m.kind==='start'?'1회':m.n+'회 끝'}</div>`; }
+function ysChip(m){ const col=ysColor(m.g); return `<div class="yschip" ${(m.kind==='start'&&isAdminRole())?`draggable="true" data-ysdrag="${esc(m.g.id)}|${m.i}"`:''} style="color:${col[0]};background:${col[1]};border-color:${col[0]}55" title="${esc(ysGroupLabel(m.g))} ${m.mo}월분 ${m.n}회차 ${m.kind==='start'?'시작 — 관리자는 다른 날짜로 끌어다 놓으면 시작일이 바뀌어요':'끝'}">${m.kind==='start'?'▶':'■'} ${esc(ysGroupLabel(m.g))} ${m.kind==='start'?'시작':'끝'}</div>`; }
+function ysHiddenCats(){ try{ return JSON.parse(localStorage.getItem('ys_hidecat')||'[]'); }catch(e){ return []; } }
+function ysSetHiddenCats(a){ try{ localStorage.setItem('ys_hidecat',JSON.stringify(a)); }catch(e){} }
 function ysMonthHTML(year,mi,marks){
+  const ysHidden=new Set(ysHiddenCats());
   const first=new Date(year,mi,1); const lastDay=new Date(year,mi+1,0).getDate(); const todayIso=todayISO();
   let h=`<div class="ysm"><div class="ysmh">${mi+1}월</div><table class="ystb"><thead><tr>${YS_WD.map((w,i)=>`<th class="${i===0?'su':i===6?'sa':''}">${w}</th>`).join('')}</tr></thead><tbody>`;
   let d=1-first.getDay();
@@ -10557,8 +10565,8 @@ function ysMonthHTML(year,mi,marks){
     for(let w=0;w<7;w++,d++){
       if(d<1||d>lastDay){ h+='<td class="ysx"></td>'; continue; }
       const iso=year+'-'+String(mi+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
-      const off=ysOffReason(iso); const mk=marks[iso]||[];
-      h+=`<td data-ysiso="${iso}" class="${w===0?'su':w===6?'sa':''}${off?' off':''}${iso===todayIso?' today':''}"><div class="ysd">${d}${off?`<span class="ysh">${esc(off)}</span>`:''}</div>${mk.map(ysChip).join('')}</td>`;
+      const off=ysOffReason(iso); const mk=marks[iso]||[]; const hc=ysHidden; const evs=eventsOn(iso).filter(ev=>!hc.has(ev.cat));
+      h+=`<td data-ysiso="${iso}" class="${w===0?'su':w===6?'sa':''}${off?' off':''}${iso===todayIso?' today':''}"><div class="ysd">${d}${off?`<span class="ysh">${esc(off)}</span>`:''}</div>${mk.map(ysChip).join('')}${evs.map(ev=>`<div class="ysev" style="background:${catColor(ev.cat)}" title="[${esc(ev.cat)}] ${esc(ev.title)}">${esc(ev.title)}</div>`).join('')}</td>`;
     }
     h+='</tr>';
   }
@@ -10579,6 +10587,7 @@ const YS_CSS=`<style>
 .ysd{font-weight:700;font-size:.74rem;display:flex;gap:4px;align-items:baseline;flex-wrap:wrap}
 .ysh{font-size:.58rem;font-weight:600;color:#d64545;line-height:1.1}
 .yschip[draggable=true]{cursor:grab}.ystb td.ysover{background:#ede9fe}
+.ysev{font-size:.6rem;font-weight:700;color:#fff;border-radius:4px;padding:1px 4px;margin-top:2px;line-height:1.2;white-space:normal;word-break:keep-all}
 .yschip{font-size:.6rem;font-weight:800;border:1px solid;border-radius:5px;padding:1px 3px;margin-top:2px;line-height:1.2;white-space:normal}
 .yssum{width:100%;border-collapse:collapse;background:#fff;font-size:.84rem}
 .yssum th,.yssum td{border:1px solid var(--line);padding:7px 10px;text-align:left}
@@ -10594,14 +10603,15 @@ function renderYearSched(printMode){
   if(!printMode){
     h+=`<div class="ysbar"><button class="btn small" id="ysPrev">◀</button><b style="font-size:1.05rem">${year}년</b><button class="btn small" id="ysNext">▶</button><span class="sep"></span>
       <button class="chip ${state.ysView==='cal'?'on':''}" data-ysv="cal">📅 달력</button><button class="chip ${state.ysView==='table'?'on':''}" data-ysv="table">📋 표</button>
+ <span class="sep"></span><span style="font-size:.76rem;color:var(--sub);font-weight:700">학원 일정 표시</span>${CAL_CATS.map(c=>`<button class="chip ${ysHiddenCats().includes(c)?'':'on'}" data-yscat="${esc(c)}" style="padding:3px 10px;font-size:.76rem;${ysHiddenCats().includes(c)?'':'background:'+catColor(c)+';border-color:'+catColor(c)+';color:#fff'}">${esc(c)}</button>`).join('')}
       ${admin?`<button class="btn small" id="ysSetBtn" style="margin-left:auto">⚙ 요일 묶음 · 회차 · 휴일 설정</button>`:''}
       <span style="font-size:.74rem;color:var(--sub)${admin?'':';margin-left:auto'}">달력에는 각 묶음의 회차 <b>시작과 끝</b>만 표시 (관리자: ▶시작 칩을 끌어서 옮기면 그 달부터 다시 시작) · 빨간 날은 휴일(자동 제외)</span></div>`;
     if(admin && state.ysSet){
       const dayChk=(g)=>[1,2,3,4,5,6,0].map(d=>`<label><input type="checkbox" data-ysd="${d}" data-ysg="${esc(g.id)}" ${(g.days||[]).map(Number).includes(d)?'checked':''}>${YS_WD[d]}</label>`).join('');
       h+=`<div class="ysset"><b style="font-size:.9rem">부서 · 요일 묶음별 회차</b> <span style="font-size:.74rem;color:var(--sub)">시작일과 월 회차(한 달 수업 횟수)를 넣으면 휴일을 건너뛰며 월별 1~N회차가 자동으로 이어져요</span>
-        <table class="yssum" style="margin-top:8px"><thead><tr><th>부서</th><th>수업 요일</th><th>시작일</th><th>월 회차</th><th>개월 수</th><th></th></tr></thead><tbody>`+
+        <table class="yssum" style="margin-top:8px"><thead><tr><th>부서</th><th>수업 요일</th><th>색</th><th>시작일</th><th>월 회차</th><th>개월 수</th><th></th></tr></thead><tbody>`+
         groups.map(g=>`<tr><td><select data-ysf="dept" data-ysg="${esc(g.id)}">${['초등','중등','고등'].map(d=>`<option ${g.dept===d?'selected':''}>${d}</option>`).join('')}</select></td>
-          <td class="ysdays">${dayChk(g)}</td><td><input type="date" data-ysf="start" data-ysg="${esc(g.id)}" value="${esc(g.start||'')}"></td>
+          <td class="ysdays">${dayChk(g)}</td><td><input type="color" data-ysf="color" data-ysg="${esc(g.id)}" value="${ysColor(g)[0]}" title="이 묶음의 색" style="width:34px;padding:0;height:28px"></td><td><input type="date" data-ysf="start" data-ysg="${esc(g.id)}" value="${esc(g.start||'')}"></td>
           <td><input type="number" min="0" max="400" style="width:74px" data-ysf="total" data-ysg="${esc(g.id)}" value="${+g.total||''}" placeholder="예:12"></td>
           <td><input type="number" min="1" max="24" style="width:60px" data-ysf="months" data-ysg="${esc(g.id)}" value="${+g.months||12}"></td>
           <td><button class="btn small" data-ysdel="${esc(g.id)}">삭제</button></td></tr>`).join('')+
@@ -10617,10 +10627,10 @@ function renderYearSched(printMode){
     if(!groups.some(g=>g.start&&+g.total>0)) h+=`<div class="empty" style="margin-top:12px">${admin?'위의 ⚙ 설정에서 시작일과 총 회차를 넣으면 달력에 자동으로 표시돼요.':'아직 입력된 연간 일정이 없어요. 관리자가 시작일·회차를 입력하면 표시돼요.'}</div>`;
   } else {
     h+=`<table class="yssum"><thead><tr><th>묶음</th><th>월 (회차)</th><th>시작 (1회차)</th><th>끝 (마지막 회차)</th></tr></thead><tbody>`+
-      groups.map(g=>{ const c=ysCompute(g); const col=(YS_COL[g.dept]||['#444'])[0];
+      groups.map(g=>{ const c=ysCompute(g); const col=ysColor(g)[0];
         if(!c||!c.cycles.length) return `<tr><td style="font-weight:800;color:${col}">${esc(ysGroupLabel(g))}</td><td colspan="3" style="color:var(--sub)">시작일·월 회차 입력 필요</td></tr>`;
         return c.cycles.map((cy,i)=>`<tr>${i===0?`<td rowspan="${c.cycles.length}" style="font-weight:800;color:${col};vertical-align:top">${esc(ysGroupLabel(g))}</td>`:''}<td>${i+1}번째 달 · ${Number(cy[0].slice(5,7))}월분 (${cy.length}회)</td><td>${ysFmt(cy[0])}</td><td>${ysFmt(cy[cy.length-1])}</td></tr>`).join(''); }).join('')+`</tbody></table>`;
-    if(!printMode) h+=groups.map(g=>{ const c=ysCompute(g); if(!c) return ''; const col=(YS_COL[g.dept]||['#444'])[0];
+    if(!printMode) h+=groups.map(g=>{ const c=ysCompute(g); if(!c) return ''; const col=ysColor(g)[0];
       return `<details style="margin-top:10px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 12px"><summary style="cursor:pointer;font-weight:800;color:${col}">${esc(ysGroupLabel(g))} · 전체 회차 보기</summary>
         ${c.cycles.map(cy=>`<div style="margin-top:8px;font-size:.78rem"><b>${Number(cy[0].slice(5,7))}월분</b> ${cy.map((d,i)=>`<span style="margin-right:8px"><b>${i+1}회</b> ${ysFmt(d)}</span>`).join('')}</div>`).join('')}
         ${c.skipped.length?`<div style="margin-top:8px;font-size:.76rem;color:#d64545"><b>건너뛴 날</b> ${c.skipped.map(x=>ysFmt(x.date)+' '+esc(x.reason)).join(' · ')}</div>`:''}</details>`; }).join('');
@@ -10632,6 +10642,7 @@ function bindYearSched(){
   const yp=v.querySelector('#ysPrev'); if(yp) yp.onclick=()=>{ state.ysYear--; render(true); };
   const yn=v.querySelector('#ysNext'); if(yn) yn.onclick=()=>{ state.ysYear++; render(true); };
   v.querySelectorAll('[data-ysv]').forEach(b=>b.onclick=()=>{ state.ysView=b.dataset.ysv; if(typeof routeSync==='function') try{ routeSync(); }catch(e){} render(true); });
+  v.querySelectorAll('[data-yscat]').forEach(b=>b.onclick=()=>{ const a=ysHiddenCats(); const c=b.dataset.yscat; const i=a.indexOf(c); if(i>=0) a.splice(i,1); else a.push(c); ysSetHiddenCats(a); render(true); });
   const sb=v.querySelector('#ysSetBtn'); if(sb) sb.onclick=()=>{ state.ysSet=!state.ysSet; render(true); };
   if(!isAdminRole()) return;
   v.querySelectorAll('[data-ysdrag]').forEach(c=>c.addEventListener('dragstart',e=>{ e.dataTransfer.setData('text/plain',c.dataset.ysdrag); e.dataTransfer.effectAllowed='move'; }));
