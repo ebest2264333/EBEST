@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>이베스트 (본관) — 선생님용 대시보드 · v1106-a</title>
+<title>이베스트 (본관) — 선생님용 대시보드 · v1106-b</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%96%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">
@@ -7163,7 +7163,7 @@ function renderSeat(){
   const noLevel=store.students.filter(st=>st.academy===a && !st._deleted && (st.status||'재원')==='재원' && !['초','중'].includes(csLevelOf(st)) && csLevelOf(st)!=='고').length;
   const labNone=csLabClassNames(a).size===0;
   return `<div class="setsec" style="border:2px solid #2e5fb7">
-    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1106-a · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
+    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1106-b · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
     <div class="desc">학원 전체 <b>초·중등 재원생 중 강의실이 '어학실'인 수업을 듣는 학생</b>(${cand.length}명, 어학실 수업이 있는 반 ${csLabClassNames(a).size}개)을 자리 ${seatCount}개에 자동으로 배치합니다. <b>같은 학년끼리</b>, <b>같은 반끼리</b>는 옆·앞뒤 자리에 앉지 않게 짜고, 학년·반은 학생 명단과 시간표(반)를 그대로 따릅니다. <b>어학실 이용 시간이 겹치지 않는 학생</b>은 같은 학년·같은 반이어도 옆자리에 앉을 수 있고, 한 자리(컴퓨터)를 시간대별로 나눠 써도 돼요(자리 칸 안에 학생이 여러 명 보여요). 수동으로는 학생을 눌러 고른 뒤 자리나 다른 학생을 누르면 옮기거나 서로 바꿔요. 빨간 테두리(⚠)는 규칙에 걸린 곳입니다.</div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:10px 0 0;font-size:.84rem"><b>📅 기간</b>
       <select data-csperiod style="padding:5px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${periods.map(x=>`<option value="${esc(x[0])}" ${x[0]===pkey?'selected':''}>${esc(x[1])}</option>`).join('')}</select>
@@ -14997,7 +14997,9 @@ function ttgParseWorkbook(ws, colorMap, codeMap){
   }
   return {results, unresolved};
 }
+function ttgUpVer(){ return state.ttVer?(store.ttVersions||[]).find(x=>x.id===state.ttVer)||null:null; } // 시간표 버전을 고른 상태면 업로드는 그 버전에 들어간다
 function ttgExistingClasses(academy){
+  const v=ttgUpVer(); if(v) return v.classes.filter(c=>c.a===academy&&!c._deleted).map(c=>{ c.academy=c.a; return c; });
   return classesFor(state.month).filter(c=>c.academy===academy);
 }
 async function handleTtGridFile(file, academy, examOnly){
@@ -15514,7 +15516,8 @@ function renderTtGridPreview(){
     const d=ttgDiffForTargets(targetClses,x);
     if(d.status==='changed') changedN++; else if(d.status==='new') newN++; else sameN++;
   });
-  let h=`<div class="setsec" style="border:2px solid #6366f1;background:#f5f6ff"><h3>📋 ${g.examOnly?'내신반 ':''}그리드 시간표 미리보기 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">${AC[g.academy].label}${g.sheetName?' · 시트 '+esc(g.sheetName):''} · 반 ${rawNames.length}개(요일별 ${[...new Set(allKeys)].length}건) · 매칭됨 ${matchedN} · 항목 ${g.results.length}개</span></h3>
+  const upV0=ttgUpVer();
+  let h=`<div class="setsec" style="border:2px solid #6366f1;background:#f5f6ff">${upV0?`<div style="margin-bottom:8px;padding:7px 10px;background:#e8e4ff;border-radius:8px;font-weight:800;font-size:.84rem;color:#4c1d95">🗂 적용 대상: '${esc(upV0.name)}' 버전 — 현재 시간표는 바뀌지 않아요</div>`:''}<h3>📋 ${g.examOnly?'내신반 ':''}그리드 시간표 미리보기 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">${AC[g.academy].label}${g.sheetName?' · 시트 '+esc(g.sheetName):''} · 반 ${rawNames.length}개(요일별 ${[...new Set(allKeys)].length}건) · 매칭됨 ${matchedN} · 항목 ${g.results.length}개</span></h3>
     <div class="desc">이름마다 <b>요일별로 각각</b> 적용할 기존 반을 골라주세요 (이름이 정확히 같으면 자동으로 선택돼 있습니다). <b>한 요일에 여러 개를 동시에 선택하면 그 요일만 합반</b>으로 처리되어 선택한 반 전부에 똑같이 반영됩니다 — 다른 요일은 따로 선택할 수 있어요(Ctrl/Cmd 누르고 클릭하면 여러 개 선택). 아무것도 선택 안 하면 그 요일은 건너뜁니다. 적용을 누르면 선택된 반들의 <b>요일별 과목·시간·강의실·담당</b>만 갱신되고, 학생 명단·교재·진도·과제는 그대로 유지됩니다.</div>
     <div style="margin-bottom:10px;font-size:.8rem;font-weight:700"><span style="color:#c0392b">✏ 변경 ${changedN}건</span> · <span style="color:#2e7d32">🆕 신규 ${newN}건</span> · <span style="color:#8b93a7">변경없음 ${sameN}건</span></div>`;
   if(g.unresolved.length){
@@ -15562,7 +15565,7 @@ function renderTtGridPreview(){
     </div>`;
   });
   if(g.fromImage||g.canReplace){
-    h+=`<label style="display:flex;align-items:flex-start;gap:7px;margin:4px 0 10px;padding:9px 11px;background:#fff1f0;border:1.5px solid #f5b5b0;border-radius:10px;font-size:.82rem;font-weight:700;color:#b42318;cursor:pointer"><input type="checkbox" id="ttgReplaceAll" ${g.replaceAll?'checked':''} style="margin-top:3px"><span>적용할 때 <u>${esc(state.month)} ${esc(AC[g.academy].label)}의 기존 시간표를 모두 지우고</u> 이 시간표 내용으로 교체<br><span style="font-weight:400;color:#7a271a">이미지에 없는 반의 시간표(과목·시간·담당)도 비워집니다. 학생 명단·출결은 그대로 유지됩니다. 체크를 끄면 기존 시간표 위에 덮어쓰기만 합니다.</span></span></label>`;
+    h+=`<label style="display:flex;align-items:flex-start;gap:7px;margin:4px 0 10px;padding:9px 11px;background:#fff1f0;border:1.5px solid #f5b5b0;border-radius:10px;font-size:.82rem;font-weight:700;color:#b42318;cursor:pointer"><input type="checkbox" id="ttgReplaceAll" ${g.replaceAll?'checked':''} style="margin-top:3px"><span>적용할 때 <u>${upV0?esc(upV0.name)+' 버전':esc(state.month)} ${esc(AC[g.academy].label)}의 기존 시간표를 모두 지우고</u> 이 시간표 내용으로 교체<br><span style="font-weight:400;color:#7a271a">이미지에 없는 반의 시간표(과목·시간·담당)도 비워집니다. 학생 명단·출결은 그대로 유지됩니다. 체크를 끄면 기존 시간표 위에 덮어쓰기만 합니다.</span></span></label>`;
   }
   h+=`<div class="cbtns"><button class="btn primary" id="ttgApply">✅ 선택한 반에 적용</button><button class="btn" id="ttgCancel">취소</button></div></div>`;
   return h;
@@ -15591,7 +15594,7 @@ function applyTtGridUpdate(){
       });
     });
   });
-  const realArr=editArr(g.academy, state.month); // classesFor()가 넘겨주는 건 사본이라, 실제 저장 배열에서 같은 반을 다시 찾아 거기에 직접 반영한다
+  const upV=ttgUpVer(); const realArr=upV?upV.classes:editArr(g.academy, state.month); // (버전을 고른 상태면 그 버전의 반들) classesFor()가 넘겨주는 건 사본이라, 실제 저장 배열에서 같은 반을 다시 찾아 거기에 직접 반영한다
   // 이미지 업로드 + "기존 시간표 모두 지우기" 선택 시: 이 달·이 학원 모든 반의 과목(시간표)을 먼저 비운다.
   // 예전에 적어둔 교재·과제·진도는 아래 oldMatch가 이어받을 수 있도록 지우기 직전 사본(snapSubjects)을 따로 보관한다.
   const snapSubjects={}; let clearedN=0;
@@ -15658,10 +15661,11 @@ function applyTtGridUpdate(){
     c.updatedAt=Date.now();
   });
   const clsN=touchedClasses.size;
+  if(upV) upV.updatedAt=Date.now();
   save();
   state.ttGrid=null;
   render();
-  alert(`반영 완료! 반 ${clsN}개, 과목 항목 ${subN}개가 갱신됐습니다.`+(g.replaceAll?`\n(기존 시간표가 있던 반 ${clearedN}개는 먼저 비우고 새로 적용했습니다)`:''));
+  alert((upV?`[${upV.name}] 버전에 `:'')+`반영 완료! 반 ${clsN}개, 과목 항목 ${subN}개가 갱신됐습니다.`+(g.replaceAll?`\n(기존 시간표가 있던 반 ${clearedN}개는 먼저 비우고 새로 적용했습니다)`:''));
 }
 // 이 브라우저(기기)에 저장된 store의 항목별 크기를 대략 추정한다 — localStorage 저장 실패(용량 초과)를 진단할 때 사용
 function storeFieldSizes(){
@@ -16048,7 +16052,7 @@ function bindTtGrid(){
     const ra=document.getElementById('ttgReplaceAll'); if(ra && state.ttGrid) state.ttGrid.replaceAll=ra.checked;
     const gg=state.ttGrid;
     const msg=(gg&&gg.replaceAll)
-      ? `⚠ ${state.month} ${AC[gg.academy].label}의 기존 시간표를 전부 지우고 이 시간표 내용으로 교체할까요?\n(이미지에 없는 반의 시간표도 비워집니다. 학생 명단·출결은 유지됩니다)`
+      ? `⚠ ${ttgUpVer()?ttgUpVer().name+' 버전':state.month} ${AC[gg.academy].label}의 기존 시간표를 전부 지우고 이 시간표 내용으로 교체할까요?\n(이미지에 없는 반의 시간표도 비워집니다. 학생 명단·출결은 유지됩니다)`
       : '선택한 반들의 요일별 과목·시간·강의실·담당을 갱신할까요? (학생 명단·교재·진도는 그대로 유지됩니다)';
     if(!confirm(msg)) return;
     applyTtGridUpdate();
