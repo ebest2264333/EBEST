@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>이베스트 (본관) — 선생님용 대시보드 · v1106-f</title>
+<title>이베스트 (본관) — 선생님용 대시보드 · v1106-g</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%96%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">
@@ -7176,7 +7176,7 @@ function renderSeat(){
   const noLevel=store.students.filter(st=>st.academy===a && !st._deleted && (st.status||'재원')==='재원' && !['초','중'].includes(csLevelOf(st)) && csLevelOf(st)!=='고').length;
   const labNone=csLabClassNames(a).size===0;
   return `<div class="setsec" style="border:2px solid #2e5fb7">
-    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1106-f · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
+    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1106-g · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
     <div class="desc">학원 전체 <b>초·중등 재원생 중 강의실이 '어학실'인 수업을 듣는 학생</b>(${cand.length}명, 어학실 수업이 있는 반 ${csLabClassNames(a).size}개)을 자리 ${seatCount}개에 자동으로 배치합니다. <b>같은 학년끼리</b>, <b>같은 반끼리</b>는 옆·앞뒤 자리에 앉지 않게 짜고, 학년·반은 학생 명단과 시간표(반)를 그대로 따릅니다. <b>어학실 이용 시간이 겹치지 않는 학생</b>은 같은 학년·같은 반이어도 옆자리에 앉을 수 있고, 한 자리(컴퓨터)를 시간대별로 나눠 써도 돼요(자리 칸 안에 학생이 여러 명 보여요). 수동으로는 학생을 눌러 고른 뒤 자리나 다른 학생을 누르면 옮기거나 서로 바꿔요. 빨간 테두리(⚠)는 규칙에 걸린 곳입니다.</div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:10px 0 0;font-size:.84rem"><b>📅 기간</b>
       <select data-csperiod style="padding:5px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${periods.map(x=>`<option value="${esc(x[0])}" ${x[0]===pkey?'selected':''}>${esc(x[1])}</option>`).join('')}</select>
@@ -15398,49 +15398,56 @@ async function exportTtGrid(academy){
     const fill=(cell,argb)=>{ cell.fill={type:'pattern',pattern:'solid',fgColor:{argb}}; };
     const put=(r,c,v,o={})=>{ const cell=ws.getCell(r,c); if(v!==undefined&&v!==null) cell.value=v; cell.alignment=CENTER; cell.border=TTG_THIN_BORDER; cell.font={name:FONT,bold:true,size:11,color:{argb:o.fg||'FF000000'}}; if(o.bg) fill(cell,o.bg); return cell; };
     // 요일별 자료 수집
-    const LEFT_END=18.75+1e-6, EVE_START=18+5/60-1e-6; // 왼쪽(오후) 칸: ~6:45까지 / 오른쪽(저녁) 칸: 6:05부터
-    const dayData=[];
+    const LEFT_END=18.75+1e-6;
+    const dayData=[]; const objAll={}; const entAll={};
+    const cmpClass=(x,y)=>{ const dx=(objAll[x]||{}).dept||'', dy=(objAll[y]||{}).dept||''; const oc=classOrderCmp(academy,x,y); if(oc) return oc;
+      const rx=DEPT_SORT_ORDER[dx]!=null?DEPT_SORT_ORDER[dx]:99, ry=DEPT_SORT_ORDER[dy]!=null?DEPT_SORT_ORDER[dy]:99; if(rx!==ry) return rx-ry;
+      const px=String(x).match(/^[^\d]*/)[0], py=String(y).match(/^[^\d]*/)[0]; const qx=CLASS_PREFIX_ORDER[px]!=null?CLASS_PREFIX_ORDER[px]:99, qy=CLASS_PREFIX_ORDER[py]!=null?CLASS_PREFIX_ORDER[py]:99; if(qx!==qy) return qx-qy;
+      return String(x).localeCompare(String(y),'ko',{numeric:true}); };
     TTG_DAYS.forEach(day=>{
       const dayClasses=cls.filter(c=>cdays(c).includes(day)); if(!dayClasses.length) return;
-      const entries=[]; const objOf={}; const deptOf={};
-      dayClasses.forEach(c=>{ objOf[c.name]=c; deptOf[c.name]=c.dept||'';
+      const entries=[];
+      dayClasses.forEach(c=>{ objAll[c.name]=c;
         let subs=(c.subjects||[]).filter(x=>subjOnDay(x,day)&&x.subject&&x.time&&parseRange(x.time));
         if(!subs.length){ const mp=mergedCounterpart(c); if(mp) subs=(mp.subjects||[]).filter(x=>subjOnDay(x,day)&&x.subject&&x.time&&parseRange(x.time)); }
-        subs.forEach(x=>{ const r=parseRange(x.time); entries.push({className:c.name,subject:x.subject,teacher:x.teacher||'',room:x.room||'',start:r[0],end:r[1],isWordTest:isWordTestSubject(x)}); }); });
-      if(!entries.length) return;
-      const order=[...new Set(entries.map(e=>e.className))].sort((x,y)=>{ const oc=classOrderCmp(academy,x,y); if(oc) return oc;
-        const rx=DEPT_SORT_ORDER[deptOf[x]]!=null?DEPT_SORT_ORDER[deptOf[x]]:99, ry=DEPT_SORT_ORDER[deptOf[y]]!=null?DEPT_SORT_ORDER[deptOf[y]]:99; if(rx!==ry) return rx-ry;
-        const px=String(x).match(/^[^\d]*/)[0], py=String(y).match(/^[^\d]*/)[0]; const qx=CLASS_PREFIX_ORDER[px]!=null?CLASS_PREFIX_ORDER[px]:99, qy=CLASS_PREFIX_ORDER[py]!=null?CLASS_PREFIX_ORDER[py]:99; if(qx!==qy) return qx-qy;
-        return String(x).localeCompare(String(y),'ko',{numeric:true}); });
-      // 초등부(PJ까지)는 왼쪽(오후) 칸에만, 중등·고등부는 오른쪽(저녁) 칸에만 — 부서가 비어 있으면 수업 시간대로 판단
-      const isLeft=nm=>{ const d=deptOf[nm]; if(d==='초등') return true; if(d) return false; const es=entries.filter(e=>e.className===nm); return es.length>0&&es.every(e=>e.end<=LEFT_END); };
-      const mkSlots=ents=>{ const b=new Set(); ents.forEach(e=>{ b.add(e.start); b.add(e.end); }); const so=[...b].sort((x,y)=>x-y); const out=[]; for(let i=0;i<so.length-1;i++){ const s0=so[i], s1=so[i+1]; out.push({s0,s1,hits:ents.filter(e=>e.start<=s0+1e-6&&e.end>=s1-1e-6)}); } return out; };
-      const eL=entries.filter(e=>isLeft(e.className)), eE=entries.filter(e=>!isLeft(e.className));
-      const colsOf=ents=>order.filter(nm=>ents.some(h=>h.className===nm));
-      dayData.push({day,objOf,L:mkSlots(eL),E:mkSlots(eE),Lc:colsOf(eL),Ec:colsOf(eE)});
+        subs.forEach(x=>{ const r=parseRange(x.time); const e={className:c.name,subject:x.subject,teacher:x.teacher||'',room:x.room||'',start:r[0],end:r[1],isWordTest:isWordTestSubject(x)}; entries.push(e); (entAll[c.name]=entAll[c.name]||[]).push(e); }); });
+      if(entries.length) dayData.push({day,entries});
     });
     if(!dayData.length){ if(statusEl) statusEl.textContent='이번 달 자료에 요일·시간이 입력된 과목이 없습니다.'; return; }
-    const nL=Math.max(4,...dayData.map(d=>d.Lc.length)), nE=Math.max(5,...dayData.map(d=>d.Ec.length));
-    const cL0=3, cSp1=cL0+nL, cET=cSp1+1, cE0=cET+1, cSp2=cE0+nE, cLeg=cSp2+2; // A=요일 B=시간 | 왼쪽반들 | 스페이서 | 저녁 시간 | 저녁 반들 | 스페이서 | 범례
+    // 반마다 자리를 정해 둔다: 초등부(PJ까지)=왼쪽 오후 칸, 중등·고등부=오른쪽 저녁 칸. 저녁 칸은 요일 묶음별로 따로 — 월·수(·금) 반들과 화·목(·금) 반들은 같은 열에 놓이지 않는다
+    const sideOf=nm=>{ const d=(objAll[nm]||{}).dept; if(d==='초등') return 'L'; if(d) return 'E'; return (entAll[nm]||[]).every(e=>e.end<=LEFT_END)?'L':'E'; };
+    const grpOf=nm=>{ const ds=String(cdays(objAll[nm])||'').split(',').map(x=>x.trim()); const mw=ds.some(d=>d==='월'||d==='수'), tt=ds.some(d=>d==='화'||d==='목'); return (tt&&!mw)?'T':'M'; };
+    const allNames=Object.keys(entAll).sort(cmpClass);
+    const colsL=allNames.filter(nm=>sideOf(nm)==='L'), colsT=allNames.filter(nm=>sideOf(nm)==='E'&&grpOf(nm)==='T'), colsM=allNames.filter(nm=>sideOf(nm)==='E'&&grpOf(nm)==='M');
+    const nL=Math.max(4,colsL.length), nT=colsT.length, nM=colsM.length;
+    const cL0=3, cSp1=cL0+nL; let cc=cSp1+1;
+    const cTT=nT?cc:0, cT0=nT?cc+1:0; if(nT) cc+=1+nT; const cMT=nM?cc:0, cM0=nM?cc+1:0; if(nM) cc+=1+nM; const cSp2=cc, cLeg=cSp2+2; // A=요일 B=시간 | 왼쪽반들 | 스페이서 | (화·목 묶음 시간+반들) | (월·수 묶음 시간+반들) | 스페이서 | 범례
     const lastCol=cSp2;
     // 열 너비
     ws.getColumn(1).width=3.7; ws.getColumn(2).width=12.5; for(let c=cL0;c<cSp1;c++) ws.getColumn(c).width=11;
-    ws.getColumn(cSp1).width=0.6; ws.getColumn(cET).width=11.5; for(let c=cE0;c<cSp2;c++) ws.getColumn(c).width=16.1; ws.getColumn(cSp2).width=1; ws.getColumn(cLeg).width=10.7; ws.getColumn(cLeg+1).width=13.6;
+    ws.getColumn(cSp1).width=0.6; if(nT){ ws.getColumn(cTT).width=11.5; for(let c=cT0;c<cT0+nT;c++) ws.getColumn(c).width=16.1; } if(nM){ ws.getColumn(cMT).width=11.5; for(let c=cM0;c<cM0+nM;c++) ws.getColumn(c).width=16.1; }
+    ws.getColumn(cSp2).width=1; ws.getColumn(cLeg).width=10.7; ws.getColumn(cLeg+1).width=13.6;
     // 제목 + 구분 줄
     ws.mergeCells(1,1,1,lastCol); const tc=ws.getCell(1,1); tc.value=`${yy}.${Number(mm)}.`+(verObj?` (${safeNm(verObj.name)})`:''); tc.alignment=CENTER; tc.font={name:FONT,bold:true,size:20,color:{argb:'FFFFFFFF'}}; fill(tc,'FF225BCE'); ws.getRow(1).height=37.5;
     ws.mergeCells(2,1,2,lastCol); fill(ws.getCell(2,1),MAGENTA); ws.getRow(2).height=7.5;
     let r=3, legendHead=null;
     const roomOf=(c,sls)=>{ const cnt={}; (c.subjects||[]).forEach(x=>{ const rm=String(x.room||'').replace(/강의실|호|\s/g,''); if(rm&&!rm.includes('어학실')&&!isLabSubject(x.subject)) cnt[rm]=(cnt[rm]||0)+1; }); const k=Object.keys(cnt).sort((p,q)=>cnt[q]-cnt[p])[0]; return k==null?'':(/^\d+$/.test(k)?Number(k):k); };
     const nStu=c=>{ try{ return activeStudents(c).length; }catch(e){ return (c.students||[]).length; } };
+    const mkSlots=ents=>{ const b=new Set(); ents.forEach(e=>{ b.add(e.start); b.add(e.end); }); const so=[...b].sort((x,y)=>x-y); const out=[]; for(let i=0;i<so.length-1;i++){ const s0=so[i], s1=so[i+1]; out.push({s0,s1,hits:ents.filter(e=>e.start<=s0+1e-6&&e.end>=s1-1e-6)}); } return out; };
     dayData.forEach(dd=>{
-      const nRows=Math.max(dd.L.length,dd.E.length,1); const top=r, bot=r+1+nRows;
+      const day=dd.day; const act=new Set(dd.entries.map(e=>e.className));
+      const pan=[{ents:dd.entries.filter(e=>sideOf(e.className)==='L'),all:colsL,n:nL,tCol:2,c0:cL0,eve:false},
+                 {ents:dd.entries.filter(e=>sideOf(e.className)==='E'&&grpOf(e.className)==='T'),all:colsT,n:nT,tCol:cTT,c0:cT0,eve:true},
+                 {ents:dd.entries.filter(e=>sideOf(e.className)==='E'&&grpOf(e.className)==='M'),all:colsM,n:nM,tCol:cMT,c0:cM0,eve:true}].filter(p=>p.n>0&&p.ents.length);
+      pan.forEach(p=>{ p.sls=mkSlots(p.ents); p.cols=p.all.map(nm=>act.has(nm)&&p.ents.some(e=>e.className===nm)?nm:null); while(p.cols.length<p.n) p.cols.push(null); });
+      const nRows=Math.max(1,...pan.map(p=>p.sls.length)); const top=r, bot=r+1+nRows;
       if(legendHead==null) legendHead=top;
-      ws.mergeCells(top,1,bot,1); put(top,1,dd.day);
+      ws.mergeCells(top,1,bot,1); put(top,1,day);
       for(let rr=top;rr<=bot;rr++){ ws.getRow(rr).height=18.75; fill(ws.getCell(rr,cSp1),MAGENTA); fill(ws.getCell(rr,cSp2),MAGENTA); }
       const panel=(sls,cols,tCol,c0,nCols,isEve)=>{
         put(top,tCol,'반',{bg:GREY}); put(top+1,tCol,'강의실',{bg:GREY});
         for(let i=0;i<nCols;i++){ const nm=cols[i]; const col=c0+i;
-          if(nm){ put(top,col,nm,{bg:colorOfClass(nm)}); const c=dd.objOf[nm]; const rm=roomOf(c); put(top+1,col,isEve?(rm===''?`(${nStu(c)}명)`:`${rm} (${nStu(c)}명)`):rm); }
+          if(nm){ put(top,col,nm,{bg:colorOfClass(nm)}); const c=objAll[nm]; const rm=roomOf(c); put(top+1,col,isEve?(rm===''?`(${nStu(c)}명)`:`${rm} (${nStu(c)}명)`):rm); }
           else { put(top,col,null); put(top+1,col,null); } }
         sls.forEach((sl,k)=>{ const row=top+2+k; const label=isEve?`${fmtH(sl.s0)}~${fmtH(sl.s1)}`:`${fmtH(sl.s0)} ~ ${fmtH(sl.s1)}`;
           if(!sl.hits.length){ put(row,tCol,label,{bg:RECESS_FILL}); for(let i=0;i<nCols;i++) put(row,c0+i,i===0?'RECESS':null,{bg:RECESS_FILL,fg:'FFFF0000'}); if(nCols>1) ws.mergeCells(row,c0,row,c0+nCols-1); return; }
@@ -15453,8 +15460,7 @@ async function exportTtGrid(academy){
         });
         for(let k=sls.length;k<nRows;k++){ const row=top+2+k; put(row,tCol,null); for(let i=0;i<nCols;i++) put(row,c0+i,null); }
       };
-      panel(dd.L,dd.Lc,2,cL0,nL,false);
-      panel(dd.E,dd.Ec,cET,cE0,nE,true);
+      pan.forEach(p=>panel(p.sls,p.cols,p.tCol,p.c0,p.n,p.eve));
       r=bot+1; ws.mergeCells(r,1,r,lastCol); fill(ws.getCell(r,1),MAGENTA); ws.getRow(r).height=7.5; r++;
     });
     // 선생님 범례(색 + 단어시험 약자)
