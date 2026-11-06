@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>이베스트 (본관) — 선생님용 대시보드 · v1106-c</title>
+<title>이베스트 (본관) — 선생님용 대시보드 · v1106-d</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%96%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">
@@ -3375,6 +3375,7 @@ function rmRender(){
       <div style="flex:1;min-width:250px">
         <div style="font-size:.8rem;font-weight:700;margin-bottom:4px">① 지금 반</div>
         <select id="rmSrc" style="width:100%;padding:7px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-weight:700;margin-bottom:6px">${live.map(c=>`<option value="${esc(c.name)}" ${c.name===rmS.src?'selected':''}>${esc(c.name)} (${(c.students||[]).length}명)</option>`).join('')}</select>
+        <button type="button" id="rmRename" class="btn small" style="margin-bottom:6px" title="이 반 전체를 새 이름의 반으로 옮기고, 시간표도 새 반으로 옮겨요. 기간이 끝나면 원래 이름·원래 반으로 돌아와요">✎ 이 반을 새 이름으로 (기간 동안)</button>
         <div style="border:1px solid var(--line);border-radius:8px;max-height:340px;overflow:auto">
           <label style="display:flex;gap:8px;align-items:center;padding:6px 10px;background:#f7f8fc;border-bottom:1px solid var(--line);font-size:.8rem;font-weight:700;position:sticky;top:0"><input type="checkbox" id="rmAll" ${studs.length&&nSel===studs.length?'checked':''}> 전체 선택 <span style="margin-left:auto;color:var(--sub);font-weight:600">${nSel}/${studs.length}명</span></label>
           ${studs.map(n=>{ const d=rmS.dest[key(n)]; return `<label draggable="true" data-rmst="${esc(n)}" style="display:flex;gap:8px;align-items:center;padding:6px 10px;border-bottom:1px solid #f1f3f8;cursor:grab;font-size:.84rem;${d?'background:#f4f0ff':''}"><input type="checkbox" data-rmck="${esc(n)}" ${rmS.sel.has(n)?'checked':''}><b>${esc(n)}</b>${d?`<span style="margin-left:auto;font-size:.74rem;color:#6d28d9;font-weight:700">→ ${esc(lab(d))}</span>`:''}</label>`; }).join('')||'<div style="padding:12px;color:var(--sub);font-size:.8rem">학생이 없어요.</div>'}
@@ -3396,6 +3397,14 @@ function rmRender(){
   m.querySelector('#rmClose').onclick=()=>{ m.remove(); rmS=null; };
   const ac=m.querySelector('#rmAc'); if(ac) ac.onchange=()=>{ rmS.a=ac.value; rmS.src=''; rmS.sel=new Set(); rmRender(); };
   m.querySelector('#rmSrc').onchange=e=>{ rmS.src=e.target.value; rmS.sel=new Set(); rmRender(); };
+  m.querySelector('#rmRename').onclick=()=>{
+    if(!sc){ return; } const nn=(prompt(`'${sc.name}' 반을 이 기간 동안 어떤 이름으로 쓸까요?\n(새 이름의 반이 만들어지고 학생 전원이 그 반으로 옮겨가요. 시간표도 새 반으로 옮겨가고, 기간이 끝나면 원래대로 돌아와요)`)||'').trim();
+    if(!nn) return; if(nn===sc.name){ alert('지금 이름과 같아요.'); return; }
+    if(v.classes.some(c=>c.a===a&&c.name===nn)){ alert('이 기간에 이미 있는 반 이름이에요. 이 이름으로 옮기려면 오른쪽에서 그 반을 눌러 주세요.'); return; }
+    const sn=v.classes.find(c=>c.a===a&&c._id===sc._id);
+    v.classes.push({a,_id:genClassId(),name:nn,dept:sc.dept||'',days:sn?sn.days:cdays(sc),subjects:JSON.parse(JSON.stringify(sn?sn.subjects:(sc.subjects||[]))),isNew:true});
+    if(sn){ sn.subjects=[]; sn.days=''; } v.updatedAt=Date.now();
+    studs.forEach(n=>{ rmS.dest[key(n)]=nn; }); rmS.sel=new Set(); rmRender(); };
   m.querySelector('#rmAll').onchange=e=>{ studs.forEach(n=>e.target.checked?rmS.sel.add(n):rmS.sel.delete(n)); rmRender(); };
   m.querySelectorAll('[data-rmck]').forEach(cb=>cb.onchange=()=>{ cb.checked?rmS.sel.add(cb.dataset.rmck):rmS.sel.delete(cb.dataset.rmck); rmRender(); });
   m.querySelectorAll('[data-rmto]').forEach(b=>{
@@ -7163,7 +7172,7 @@ function renderSeat(){
   const noLevel=store.students.filter(st=>st.academy===a && !st._deleted && (st.status||'재원')==='재원' && !['초','중'].includes(csLevelOf(st)) && csLevelOf(st)!=='고').length;
   const labNone=csLabClassNames(a).size===0;
   return `<div class="setsec" style="border:2px solid #2e5fb7">
-    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1106-c · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
+    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1106-d · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
     <div class="desc">학원 전체 <b>초·중등 재원생 중 강의실이 '어학실'인 수업을 듣는 학생</b>(${cand.length}명, 어학실 수업이 있는 반 ${csLabClassNames(a).size}개)을 자리 ${seatCount}개에 자동으로 배치합니다. <b>같은 학년끼리</b>, <b>같은 반끼리</b>는 옆·앞뒤 자리에 앉지 않게 짜고, 학년·반은 학생 명단과 시간표(반)를 그대로 따릅니다. <b>어학실 이용 시간이 겹치지 않는 학생</b>은 같은 학년·같은 반이어도 옆자리에 앉을 수 있고, 한 자리(컴퓨터)를 시간대별로 나눠 써도 돼요(자리 칸 안에 학생이 여러 명 보여요). 수동으로는 학생을 눌러 고른 뒤 자리나 다른 학생을 누르면 옮기거나 서로 바꿔요. 빨간 테두리(⚠)는 규칙에 걸린 곳입니다.</div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:10px 0 0;font-size:.84rem"><b>📅 기간</b>
       <select data-csperiod style="padding:5px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${periods.map(x=>`<option value="${esc(x[0])}" ${x[0]===pkey?'selected':''}>${esc(x[1])}</option>`).join('')}</select>
