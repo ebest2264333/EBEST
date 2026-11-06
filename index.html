@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>이베스트 (본관) — 선생님용 대시보드 · v1106-d</title>
+<title>이베스트 (본관) — 선생님용 대시보드 · v1106-f</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%96%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">
@@ -3323,6 +3323,7 @@ function ttVerApply(id){
 }
 // ⏰ 기간 자동 전환: 오늘이 버전의 기간(·요일)에 들어오면 그 버전을 현재 시간표에 자동으로 적용하고, 기간이 끝나면 원래 시간표로 되돌린다 (관리자·실장 화면이 열려 있을 때 확인)
 let _ttAutoBusy=false;
+function ttVerKeep(v){ return !!(v&&v.end&&ysAdd(v.end,1).slice(0,7)!==String(v.end).slice(0,7)); } // 종료일이 그 달 마지막 날이면 기간이 끝나도 되돌리지 않고 다음 달로 그대로 넘어간다
 function ttVerAutoCheck(){
   if(_ttAutoBusy || !isAdminRole()) return; const au=store.ttVerAuto; if(!au||!au.on) return;
   const td=todayISO(); const month=td.slice(0,7);
@@ -3342,6 +3343,9 @@ function ttVerAutoCheck(){
         if(!oc && newSn[k]){ const r=ttVerEnsureClass(newSn[k],month); oc=r.oc; if(r.created&&!au.created.includes(oc._id)) au.created.push(oc._id); }
         if(oc) ttVerWrite(oc,res[k]); });
       ttVerRosterSync(act,month,td);
+    } else if(au.baseId && (()=>{ const ended=String(au.key||'').split(',').map(x=>x.split(':')[0]).filter(Boolean).map(id=>(store.ttVersions||[]).find(x=>x.id===id)).filter(Boolean); return ended.length&&ended.every(ttVerKeep); })()){
+      // 월말에 끝난 기간: 학생 이동·새 반·시간표를 되돌리지 않고 그대로 다음 달로 이어간다
+      au.rosterMap={}; store.ttVersions=store.ttVersions.filter(x=>x.id!==au.baseId); au.baseId=''; au.created=[];
     } else if(au.baseId){
       ttVerRosterSync([],month,td);
       const base=(store.ttVersions||[]).find(x=>x.id===au.baseId);
@@ -3369,13 +3373,13 @@ function rmRender(){
   const cnt=Object.keys(rmS.dest).length; const bs='padding:5px 10px;border:1.5px solid var(--line);border-radius:8px;background:#fff;font-family:inherit;font-size:.8rem;cursor:pointer';
   m.innerHTML=`<div style="background:#fff;border-radius:14px;padding:16px 18px;width:min(820px,100%);box-shadow:0 12px 40px rgba(0,0,0,.25)">
     <div style="display:flex;align-items:center;gap:8px"><b style="font-size:1rem">👥 '${esc(v.name)}' 기간의 반 명단 이동</b><button class="btn small" id="rmClose" style="margin-left:auto">닫기</button></div>
-    <div style="font-size:.76rem;color:var(--sub);margin:4px 0 10px">① 지금 반을 고르고 → ② 옮길 학생을 체크(또는 끌어서) → ③ 이동할 반을 누르면 돼요. 기간이 되어 이 버전이 적용되는 날 학생들이 옮겨 가고, 기간이 끝나면(자동 전환) 원래 반으로 돌아와요. 이동일 이전의 출결·기록은 옛 반에 남아요. 새 반은 「＋ 새 반 추가」로 먼저 만들어 두세요.</div>
+    <div style="font-size:.76rem;color:var(--sub);margin:4px 0 10px">① 지금 반을 고르고 → ② 옮길 학생을 체크(또는 끌어서) → ③ 이동할 반을 누르면 돼요. 기간이 되어 이 버전이 적용되는 날 학생들이 옮겨 가고, 기간이 끝나면(자동 전환) 원래 반으로 돌아와요. 단, 기간 종료일이 그 달 마지막 날이면 되돌리지 않고 다음 달로 그대로 이어져요. 이동일 이전의 출결·기록은 옛 반에 남아요. 새 반은 「＋ 새 반 추가」로 먼저 만들어 두세요.</div>
     ${academies().length>1?`<select id="rmAc" style="padding:6px;border:1px solid var(--line);border-radius:8px;margin-bottom:8px">${academies().map(x=>`<option value="${x}" ${a===x?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}
     <div style="display:flex;gap:14px;flex-wrap:wrap">
       <div style="flex:1;min-width:250px">
         <div style="font-size:.8rem;font-weight:700;margin-bottom:4px">① 지금 반</div>
         <select id="rmSrc" style="width:100%;padding:7px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-weight:700;margin-bottom:6px">${live.map(c=>`<option value="${esc(c.name)}" ${c.name===rmS.src?'selected':''}>${esc(c.name)} (${(c.students||[]).length}명)</option>`).join('')}</select>
-        <button type="button" id="rmRename" class="btn small" style="margin-bottom:6px" title="이 반 전체를 새 이름의 반으로 옮기고, 시간표도 새 반으로 옮겨요. 기간이 끝나면 원래 이름·원래 반으로 돌아와요">✎ 이 반을 새 이름으로 (기간 동안)</button>
+        <button type="button" id="rmRename" class="btn small" style="margin-bottom:6px" title="이 반 전체를 새 이름의 반으로 옮기고, 시간표도 새 반으로 옮겨요. 기간이 끝나면 원래 이름·원래 반으로 돌아와요 (종료일이 월말이면 그대로 다음 달로 이어져요)">✎ 이 반을 새 이름으로 (기간 동안)</button>
         <div style="border:1px solid var(--line);border-radius:8px;max-height:340px;overflow:auto">
           <label style="display:flex;gap:8px;align-items:center;padding:6px 10px;background:#f7f8fc;border-bottom:1px solid var(--line);font-size:.8rem;font-weight:700;position:sticky;top:0"><input type="checkbox" id="rmAll" ${studs.length&&nSel===studs.length?'checked':''}> 전체 선택 <span style="margin-left:auto;color:var(--sub);font-weight:600">${nSel}/${studs.length}명</span></label>
           ${studs.map(n=>{ const d=rmS.dest[key(n)]; return `<label draggable="true" data-rmst="${esc(n)}" style="display:flex;gap:8px;align-items:center;padding:6px 10px;border-bottom:1px solid #f1f3f8;cursor:grab;font-size:.84rem;${d?'background:#f4f0ff':''}"><input type="checkbox" data-rmck="${esc(n)}" ${rmS.sel.has(n)?'checked':''}><b>${esc(n)}</b>${d?`<span style="margin-left:auto;font-size:.74rem;color:#6d28d9;font-weight:700">→ ${esc(lab(d))}</span>`:''}</label>`; }).join('')||'<div style="padding:12px;color:var(--sub);font-size:.8rem">학생이 없어요.</div>'}
@@ -7172,7 +7176,7 @@ function renderSeat(){
   const noLevel=store.students.filter(st=>st.academy===a && !st._deleted && (st.status||'재원')==='재원' && !['초','중'].includes(csLevelOf(st)) && csLevelOf(st)!=='고').length;
   const labNone=csLabClassNames(a).size===0;
   return `<div class="setsec" style="border:2px solid #2e5fb7">
-    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1106-d · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
+    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1106-f · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
     <div class="desc">학원 전체 <b>초·중등 재원생 중 강의실이 '어학실'인 수업을 듣는 학생</b>(${cand.length}명, 어학실 수업이 있는 반 ${csLabClassNames(a).size}개)을 자리 ${seatCount}개에 자동으로 배치합니다. <b>같은 학년끼리</b>, <b>같은 반끼리</b>는 옆·앞뒤 자리에 앉지 않게 짜고, 학년·반은 학생 명단과 시간표(반)를 그대로 따릅니다. <b>어학실 이용 시간이 겹치지 않는 학생</b>은 같은 학년·같은 반이어도 옆자리에 앉을 수 있고, 한 자리(컴퓨터)를 시간대별로 나눠 써도 돼요(자리 칸 안에 학생이 여러 명 보여요). 수동으로는 학생을 눌러 고른 뒤 자리나 다른 학생을 누르면 옮기거나 서로 바꿔요. 빨간 테두리(⚠)는 규칙에 걸린 곳입니다.</div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:10px 0 0;font-size:.84rem"><b>📅 기간</b>
       <select data-csperiod style="padding:5px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${periods.map(x=>`<option value="${esc(x[0])}" ${x[0]===pkey?'selected':''}>${esc(x[1])}</option>`).join('')}</select>
@@ -15408,12 +15412,12 @@ async function exportTtGrid(academy){
         const rx=DEPT_SORT_ORDER[deptOf[x]]!=null?DEPT_SORT_ORDER[deptOf[x]]:99, ry=DEPT_SORT_ORDER[deptOf[y]]!=null?DEPT_SORT_ORDER[deptOf[y]]:99; if(rx!==ry) return rx-ry;
         const px=String(x).match(/^[^\d]*/)[0], py=String(y).match(/^[^\d]*/)[0]; const qx=CLASS_PREFIX_ORDER[px]!=null?CLASS_PREFIX_ORDER[px]:99, qy=CLASS_PREFIX_ORDER[py]!=null?CLASS_PREFIX_ORDER[py]:99; if(qx!==qy) return qx-qy;
         return String(x).localeCompare(String(y),'ko',{numeric:true}); });
-      const bounds=new Set(); entries.forEach(e=>{ bounds.add(e.start); bounds.add(e.end); });
-      const sorted=[...bounds].sort((x,y)=>x-y);
-      const slots=[]; for(let i=0;i<sorted.length-1;i++){ const s0=sorted[i], s1=sorted[i+1]; slots.push({s0,s1,hits:entries.filter(e=>e.start<=s0+1e-6&&e.end>=s1-1e-6)}); }
-      const L=slots.filter(sl=>sl.s1<=LEFT_END), E=slots.filter(sl=>sl.s0>=EVE_START);
-      const colsOf=sls=>order.filter(nm=>sls.some(sl=>sl.hits.some(h=>h.className===nm)));
-      dayData.push({day,objOf,L,E,Lc:colsOf(L),Ec:colsOf(E)});
+      // 초등부(PJ까지)는 왼쪽(오후) 칸에만, 중등·고등부는 오른쪽(저녁) 칸에만 — 부서가 비어 있으면 수업 시간대로 판단
+      const isLeft=nm=>{ const d=deptOf[nm]; if(d==='초등') return true; if(d) return false; const es=entries.filter(e=>e.className===nm); return es.length>0&&es.every(e=>e.end<=LEFT_END); };
+      const mkSlots=ents=>{ const b=new Set(); ents.forEach(e=>{ b.add(e.start); b.add(e.end); }); const so=[...b].sort((x,y)=>x-y); const out=[]; for(let i=0;i<so.length-1;i++){ const s0=so[i], s1=so[i+1]; out.push({s0,s1,hits:ents.filter(e=>e.start<=s0+1e-6&&e.end>=s1-1e-6)}); } return out; };
+      const eL=entries.filter(e=>isLeft(e.className)), eE=entries.filter(e=>!isLeft(e.className));
+      const colsOf=ents=>order.filter(nm=>ents.some(h=>h.className===nm));
+      dayData.push({day,objOf,L:mkSlots(eL),E:mkSlots(eE),Lc:colsOf(eL),Ec:colsOf(eE)});
     });
     if(!dayData.length){ if(statusEl) statusEl.textContent='이번 달 자료에 요일·시간이 입력된 과목이 없습니다.'; return; }
     const nL=Math.max(4,...dayData.map(d=>d.Lc.length)), nE=Math.max(5,...dayData.map(d=>d.Ec.length));
