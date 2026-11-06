@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>이베스트 (본관) — 선생님용 대시보드 · v1105-s</title>
+<title>이베스트 (본관) — 선생님용 대시보드 · v1106-a</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%96%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">
@@ -651,7 +651,7 @@ store.syllabusSeeded=true; // 예전에 기본으로 들어있던 'Spider Phonic
 if(!store.examAnalysis) store.examAnalysis=[]; // 내신 분석 — {id, academy, school, grade, examTitle, examRange, examDate, prepStart, prepEnd, teacherLecture, teacherIBT, note, categories:[{name,count,questions:[{id,no,question,points,difficulty}]}], updatedAt, updatedBy} · 월 상관없이 항상 보임, 모든 선생님 열람·수정 가능(Syllabus처럼 보관용)
 if(!store.absentNotes) store.absentNotes={}; // 날짜별 결석생 요약의 '특이사항' 자유 메모 {YYYY-MM-DD: text}
 if(!store.examTrends) store.examTrends=[]; // 동향 분석 리포트 — {id, academy, school, grade, title, memo, source:'ai'|'upload', entryIds, snaps, files, report:{headline,strategy,metrics,changes,teaching}, aiModel, createdAt, updatedAt, createdBy, _deleted} · 내신 분석 탭 안의 두 번째 탭, AI로 만든 리포트는 자동 저장
-const SHARE_FIELDS=['bookGiveLog','wordBooks','uploads','bookedit','bookdone','daysedit','timeedit','calendar','calendarTombstones','calCatColors','meetings','teachers','adminEmail','enrollment','newStudents','dropouts','compSeats','classOrder','consultRoles','students','admissionConsults','wordTests','attend','homework','stayback','bookGiven','uploadTombstones','uploadStamps','wordbookOptions','testPaperOptions','giveSel','consultRequests','records','assign','cmemo','worklog','weekplan','submits','handover','boardPosts','handoverGrid','monthOverride','examAnalysis','examTrends','absentNotes','bookCatalog','tuitionCatalog','papercheckEnabled','papercheckCols','papercheckData','worklogMonthly','worklogWeekly','wlMemo','yearSched','ttVersions','ttVerAuto'];
+const SHARE_FIELDS=['bookGiveLog','wordBooks','uploads','bookedit','bookdone','daysedit','timeedit','calendar','calendarTombstones','calCatColors','meetings','teachers','adminEmail','enrollment','newStudents','dropouts','compSeats','classOrder','consultRoles','students','admissionConsults','wordTests','attend','homework','stayback','bookGiven','uploadTombstones','uploadStamps','wordbookOptions','testPaperOptions','giveSel','consultRequests','records','assign','cmemo','worklog','weekplan','submits','handover','boardPosts','handoverGrid','monthOverride','examAnalysis','examTrends','absentNotes','bookCatalog','tuitionCatalog','papercheckEnabled','papercheckCols','papercheckData','worklogMonthly','worklogWeekly','wlMemo','yearSched','ttVersions','ttVerAuto','classMoves'];
 // syllabus(실러버스)는 PDF/한글/워드 첨부가 커서 별도 경로(/syllabus)로, 낮은 빈도로만 동기화합니다 — 그래야 매 5초/매 입력마다 전체를 전송하지 않습니다.
 // 반 자료·학생 명단처럼 "삭제"가 중요한 항목은 병합하지 않고 통째로 교체한다(마지막 저장이 우선).
 // 병합 방식(mergeById)에는 삭제라는 개념이 없어서, 지운 반·학생이 다른 기기 자료와 합쳐지며 계속 되살아나기 때문.
@@ -1649,7 +1649,21 @@ function addClassAction(a,m,presetDays){
 // [내신전용반 기능 폐지로 단순화] 예전엔 내신 기간 동안 내신전용반에 든 학생을 원래 반 명단에서 빼는 로직이 있었으나,
 // 그 기능 자체가 없어졌으므로 이제는 그냥 반의 활성 학생 명단을 그대로 돌려준다. (호출부가 많아 함수명은 그대로 유지)
 function activeStudentsForDate(c, dateStr){
-  return activeStudents(c);
+  // 날짜 기준 명단: 현재 명단에서 "그 날짜 이후에 일어난 반 이동"을 거꾸로 되돌려 계산한다
+  // (이동일 이전 날짜에는 옛 반에 그대로 있고, 새 반에는 이동일부터 들어온다)
+  let list=activeStudents(c);
+  const mvs=(store.classMoves||[]).filter(x=>x && !x.deleted && x.a===c.academy && x.date>String(dateStr||'') && (!c._src || c._src>=(x.month||'')) && (x.from===c.name||x.to===c.name))
+    .sort((p,q)=>String(q.date).localeCompare(String(p.date)) || (q.updatedAt||0)-(p.updatedAt||0));
+  mvs.forEach(x=>{ if(x.to===c.name) list=list.filter(n=>n!==x.name); if(x.from===c.name && !list.includes(x.name)) list=list.concat([x.name]); });
+  return list;
+}
+// 학생 한 명을 날짜 기준으로 다른 반으로 옮긴다 (학생 명단·반 명단 갱신 + 이동 기록). month: 반영할 달
+function ttMoveStudent(a,name,fromCls,toCls,date,month){
+  const st=matchStudentByRosterName(a,name,fromCls)||findStudentRecord(a,name,fromCls); if(!st) return false;
+  const sm=state.month; state.month=month||sm;
+  try{ const old=fromCls||st.className||''; st.className=toCls||''; st.updatedAt=Date.now(); syncStudentClassRoster(st,old,null); }finally{ state.month=sm; }
+  (store.classMoves=store.classMoves||[]).push({id:'cm'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),a,name:st.nameKo,from:fromCls||'',to:toCls||'',date:date||todayISO(),month:month||sm,updatedAt:Date.now()});
+  return true;
 }
 function deleteClassAction(a,m,id){
   const arr=editArr(a,m);
@@ -3279,15 +3293,33 @@ function ttVerWrite(oc,res){ // 결과를 실제 반 자료에 쓴다. 같은 �
   oc.subjects=res.subjects.map(x=>{ const m=old.find(o=>_ttNrm(o.subject)===_ttNrm(x.subject)); return Object.assign({book:'',hw:'',progress:'',note:''}, m?{book:m.book||'',hw:m.hw||'',progress:m.progress||'',note:m.note||''}:{}, {subject:x.subject,time:x.time,day:x.day,room:x.room||'',teacher:x.teacher||''}); });
   oc.days=res.days; if(store.daysedit&&store.daysedit[ckey(oc)]!=null) store.daysedit[ckey(oc)]=res.days; oc.updatedAt=Date.now();
 }
+function ttFindClassOf(name,month){ for(const c of classesFor(month)){ if(!c._deleted && !c.examOnly && (c.students||[]).includes(name)) return c; } return null; }
+function ttVerRosterApplyOnce(v,month,date){ let n=0; Object.entries(v.roster||{}).forEach(([k,to])=>{ const [a,name]=k.split('|'); const cur=ttFindClassOf(name,month); if(!cur||cur.academy!==a) return; const toName=to==='__none'?'':to; if(cur.name===toName) return; if(ttMoveStudent(a,name,cur.name,toName,date,month)) n++; }); return n; }
+function ttVerRosterSync(act,month,today){ // 자동 전환: 활성 버전들이 정한 명단 이동을 적용하고, 끝난 버전의 이동은 원래 반으로 되돌린다
+  const au=store.ttVerAuto; au.rosterMap=au.rosterMap||{}; const want={};
+  act.forEach(v=>Object.entries(v.roster||{}).forEach(([k,to])=>{ want[k]={to:to==='__none'?'':to,date:(v.start&&v.start<=today)?v.start:today}; }));
+  Object.keys(au.rosterMap).forEach(k=>{ if(want[k]) return; const r=au.rosterMap[k]; const [a,name]=k.split('|'); ttMoveStudent(a,name,r.to,r.from,today,month); delete au.rosterMap[k]; });
+  Object.keys(want).forEach(k=>{ const [a,name]=k.split('|'); const cur=au.rosterMap[k]; const to=want[k].to; if(cur&&cur.to===to) return;
+    if(cur){ if(ttMoveStudent(a,name,cur.to,to,want[k].date,month)) cur.to=to; return; }
+    const c=ttFindClassOf(name,month); if(!c||c.academy!==a||c.name===to) return;
+    if(ttMoveStudent(a,name,c.name,to,want[k].date,month)) au.rosterMap[k]={from:c.name,to}; });
+}
+function ttVerEnsureClass(sn,month){ // 버전에 '새 반'으로 넣어 둔 반이 아직 없으면 만든다 (같은 이름의 반이 이미 있으면 그 반을 쓴다)
+  const arr=editArr(sn.a,month); let oc=arr.find(c=>!c._deleted&&c.name===sn.name);
+  if(oc) return {oc,created:false};
+  oc={_id:sn._id,academy:sn.a,name:sn.name,dept:sn.dept||'',days:'',time:'',students:[],count:0,subjects:[],updatedAt:Date.now()}; arr.push(oc); return {oc,created:true};
+}
 function ttVerApply(id){
   const v=(store.ttVersions||[]).find(x=>x.id===id); if(!v) return;
   const part=(v.days&&v.days.length)?` (${v.days.join('')}요일 부분만)`:'';
-  if(!confirm(`'${v.name}'${part} 시간표를 현재 시간표로 적용할까요?\n지금 시간표의 과목·시간·강의실·담당이 이 버전 내용으로 바뀌어요. (교재·숙제·진도 기록은 같은 과목이면 그대로 이어져요)\n※ 적용 전 현재 시간표는 '적용 전 백업' 버전으로 자동 저장돼요.`)) return;
+  if(!confirm(`'${v.name}'${part} 시간표를 현재 시간표로 적용할까요?\n지금 시간표의 과목·시간·강의실·담당이 이 버전 내용으로 바뀌고, 버전에 정해 둔 학생 반 이동도 같이 적용돼요. (교재·숙제·진도 기록은 같은 과목이면 그대로 이어져요)\n※ 적용 전 현재 시간표는 '적용 전 백업' 버전으로 자동 저장돼요.`)) return;
   store.ttVersions.push(ttVerSnapshot('적용 전 백업 '+todayISO().slice(5),'','',state.month));
   const ds=(v.days&&v.days.length)?new Set(v.days):null; let miss=0;
-  v.classes.forEach(sn=>{ const oc=findClassById(sn.a,state.month,sn._id); if(!oc){ miss++; return; } ttVerWrite(oc,ttOverlay({days:cdays(oc),subjects:oc.subjects||[]},sn,ds)); });
+  let made=0;
+  v.classes.forEach(sn=>{ let oc=findClassById(sn.a,state.month,sn._id); if(!oc && sn.isNew){ const r=ttVerEnsureClass(sn,state.month); oc=r.oc; if(r.created) made++; } if(!oc){ miss++; return; } ttVerWrite(oc,ttOverlay({days:cdays(oc),subjects:oc.subjects||[]},sn,ds)); });
+  const mv=ttVerRosterApplyOnce(v,state.month,todayISO());
   state.ttVer=null; save(); render(true);
-  if(miss) alert(`${miss}개 반은 지금 목록에 없어서 건너뛰었어요.`);
+  if(miss||made||mv) alert((made?`새 반 ${made}개를 만들었어요.\n`:'')+(mv?`학생 ${mv}명의 반을 옮겼어요.\n`:'')+(miss?`${miss}개 반은 지금 목록에 없어서 건너뛰었어요.`:''));
 }
 // ⏰ 기간 자동 전환: 오늘이 버전의 기간(·요일)에 들어오면 그 버전을 현재 시간표에 자동으로 적용하고, 기간이 끝나면 원래 시간표로 되돌린다 (관리자·실장 화면이 열려 있을 때 확인)
 let _ttAutoBusy=false;
@@ -3304,14 +3336,97 @@ function ttVerAutoCheck(){
       const base=store.ttVersions.find(x=>x.id===au.baseId); const res={};
       base.classes.forEach(c=>{ res[c.a+'|'+c._id]={days:c.days,subjects:JSON.parse(JSON.stringify(c.subjects))}; });
       act.forEach(v=>{ const ds=(v.days&&v.days.length)?new Set(v.days):null; v.classes.forEach(sn=>{ const k=sn.a+'|'+sn._id; res[k]=ttOverlay(res[k]||{days:'',subjects:[]},sn,ds); }); });
-      Object.keys(res).forEach(k=>{ const [a,id]=k.split('|'); const oc=findClassById(a,month,id); if(oc) ttVerWrite(oc,res[k]); });
+      const newSn={}; act.forEach(v=>v.classes.forEach(sn=>{ if(sn.isNew) newSn[sn.a+'|'+sn._id]=sn; }));
+      au.created=au.created||[];
+      Object.keys(res).forEach(k=>{ const [a,id]=k.split('|'); let oc=findClassById(a,month,id);
+        if(!oc && newSn[k]){ const r=ttVerEnsureClass(newSn[k],month); oc=r.oc; if(r.created&&!au.created.includes(oc._id)) au.created.push(oc._id); }
+        if(oc) ttVerWrite(oc,res[k]); });
+      ttVerRosterSync(act,month,td);
     } else if(au.baseId){
+      ttVerRosterSync([],month,td);
       const base=(store.ttVersions||[]).find(x=>x.id===au.baseId);
       if(base){ base.classes.forEach(c=>{ const oc=findClassById(c.a,month,c._id); if(oc) ttVerWrite(oc,{days:c.days,subjects:JSON.parse(JSON.stringify(c.subjects))}); }); store.ttVersions=store.ttVersions.filter(x=>x.id!==au.baseId); }
       au.baseId='';
+      (au.created||[]).forEach(id=>{ academies().forEach(a=>{ const oc=findClassById(a,month,id); if(!oc) return; // 기간이 끝나면 자동으로 만든 새 반은 정리: 학생이 없으면 삭제, 학생이 들어가 있으면 반은 남기고 시간표만 비움
+        if((oc.students||[]).length){ oc.subjects=[]; oc.updatedAt=Date.now(); } else { oc._deleted=true; oc.updatedAt=Date.now(); } }); });
+      au.created=[];
     }
     au.key=key; au.at=Date.now(); save(); render(true);
   } finally { _ttAutoBusy=false; }
+}
+let rmS=null;
+function rmClassNames(v,a){ const set=new Set(); classesFor(state.month).filter(c=>c.academy===a&&!c._deleted).forEach(c=>set.add(c.name)); v.classes.filter(c=>c.a===a).forEach(c=>set.add(c.name)); return [...set].sort((x,y)=>classOrderCmp(a,x,y)||String(x).localeCompare(String(y),'ko',{numeric:true})); }
+function rmRender(){
+  const v=(store.ttVersions||[]).find(x=>x.id===state.ttVer); if(!v||!rmS) return; let m=document.getElementById('rmModal');
+  if(!m){ m=document.createElement('div'); m.id='rmModal'; m.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:3000;display:flex;align-items:flex-start;justify-content:center;padding:16px;overflow:auto'; m.onclick=e=>{ if(e.target===m){ m.remove(); rmS=null; } }; document.body.appendChild(m); }
+  const a=rmS.a; const names=rmClassNames(v,a); const live=classesFor(state.month).filter(c=>c.academy===a&&!c._deleted&&!c.examOnly).sort((x,y)=>classOrderCmp(a,x.name,y.name)||String(x.name).localeCompare(String(y.name),'ko',{numeric:true}));
+  if(!rmS.src||!live.some(c=>c.name===rmS.src)) rmS.src=(live[0]||{}).name||'';
+  const sc=live.find(c=>c.name===rmS.src); const studs=sc?(sc.students||[]).filter(n=>!isWithdrawnRosterName(a,n,sc.name)):[];
+  const key=n=>a+'|'+n; const lab=d=>d==='__none'?'(미배정)':d;
+  const arrive={}; Object.entries(rmS.dest).forEach(([k,to])=>{ if(k.split('|')[0]===a) arrive[to]=(arrive[to]||0)+1; });
+  const nSel=studs.filter(n=>rmS.sel.has(n)).length;
+  const planGroups={}; Object.entries(rmS.dest).forEach(([k,to])=>{ const i=k.indexOf('|'); if(k.slice(0,i)!==a) return; const nm=k.slice(i+1); (planGroups[to]=planGroups[to]||[]).push({nm,from:(ttFindClassOf(nm,state.month)||{}).name||'?'}); });
+  const cnt=Object.keys(rmS.dest).length; const bs='padding:5px 10px;border:1.5px solid var(--line);border-radius:8px;background:#fff;font-family:inherit;font-size:.8rem;cursor:pointer';
+  m.innerHTML=`<div style="background:#fff;border-radius:14px;padding:16px 18px;width:min(820px,100%);box-shadow:0 12px 40px rgba(0,0,0,.25)">
+    <div style="display:flex;align-items:center;gap:8px"><b style="font-size:1rem">👥 '${esc(v.name)}' 기간의 반 명단 이동</b><button class="btn small" id="rmClose" style="margin-left:auto">닫기</button></div>
+    <div style="font-size:.76rem;color:var(--sub);margin:4px 0 10px">① 지금 반을 고르고 → ② 옮길 학생을 체크(또는 끌어서) → ③ 이동할 반을 누르면 돼요. 기간이 되어 이 버전이 적용되는 날 학생들이 옮겨 가고, 기간이 끝나면(자동 전환) 원래 반으로 돌아와요. 이동일 이전의 출결·기록은 옛 반에 남아요. 새 반은 「＋ 새 반 추가」로 먼저 만들어 두세요.</div>
+    ${academies().length>1?`<select id="rmAc" style="padding:6px;border:1px solid var(--line);border-radius:8px;margin-bottom:8px">${academies().map(x=>`<option value="${x}" ${a===x?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}
+    <div style="display:flex;gap:14px;flex-wrap:wrap">
+      <div style="flex:1;min-width:250px">
+        <div style="font-size:.8rem;font-weight:700;margin-bottom:4px">① 지금 반</div>
+        <select id="rmSrc" style="width:100%;padding:7px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-weight:700;margin-bottom:6px">${live.map(c=>`<option value="${esc(c.name)}" ${c.name===rmS.src?'selected':''}>${esc(c.name)} (${(c.students||[]).length}명)</option>`).join('')}</select>
+        <div style="border:1px solid var(--line);border-radius:8px;max-height:340px;overflow:auto">
+          <label style="display:flex;gap:8px;align-items:center;padding:6px 10px;background:#f7f8fc;border-bottom:1px solid var(--line);font-size:.8rem;font-weight:700;position:sticky;top:0"><input type="checkbox" id="rmAll" ${studs.length&&nSel===studs.length?'checked':''}> 전체 선택 <span style="margin-left:auto;color:var(--sub);font-weight:600">${nSel}/${studs.length}명</span></label>
+          ${studs.map(n=>{ const d=rmS.dest[key(n)]; return `<label draggable="true" data-rmst="${esc(n)}" style="display:flex;gap:8px;align-items:center;padding:6px 10px;border-bottom:1px solid #f1f3f8;cursor:grab;font-size:.84rem;${d?'background:#f4f0ff':''}"><input type="checkbox" data-rmck="${esc(n)}" ${rmS.sel.has(n)?'checked':''}><b>${esc(n)}</b>${d?`<span style="margin-left:auto;font-size:.74rem;color:#6d28d9;font-weight:700">→ ${esc(lab(d))}</span>`:''}</label>`; }).join('')||'<div style="padding:12px;color:var(--sub);font-size:.8rem">학생이 없어요.</div>'}
+        </div>
+      </div>
+      <div style="flex:1;min-width:250px">
+        <div style="font-size:.8rem;font-weight:700;margin-bottom:4px">③ 이동할 반 <span style="font-weight:500;color:var(--sub)">· 누르면 체크한 학생이 이동 / 학생을 여기로 끌어도 돼요</span></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;max-height:340px;overflow:auto;align-content:flex-start">
+          ${names.filter(n=>n!==rmS.src).map(n=>`<button type="button" data-rmto="${esc(n)}" style="${bs};${arrive[n]?'border-color:#6d28d9;background:#f4f0ff;font-weight:800':''}">${esc(n)}${arrive[n]?` <span style="color:#6d28d9">+${arrive[n]}</span>`:''}</button>`).join('')}
+          <button type="button" data-rmto="__none" style="${bs};${arrive.__none?'border-color:#6d28d9;background:#f4f0ff;font-weight:800':''}">(미배정)${arrive.__none?` <span style="color:#6d28d9">+${arrive.__none}</span>`:''}</button>
+          <button type="button" data-rmto="__clear" style="${bs};color:#c02b2b">↩ 이동 취소(체크한 학생)</button>
+        </div>
+      </div>
+    </div>
+    <div style="font-size:.8rem;font-weight:700;margin:12px 0 4px">정해 둔 이동 <span style="color:var(--sub);font-weight:600">${cnt}명</span></div>
+    <div style="max-height:170px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:.8rem">${Object.keys(planGroups).length?Object.entries(planGroups).map(([to,arr])=>`<div style="margin:3px 0"><b style="color:#6d28d9">${esc(lab(to))}</b> ← ${arr.map(x=>`<span style="display:inline-block;background:#f4f0ff;border-radius:999px;padding:1px 8px;margin:1px">${esc(x.nm)} <span style="color:var(--sub);font-size:.7rem">(${esc(x.from)})</span> <a href="#" data-rmx="${esc(x.nm)}" style="color:#c02b2b;text-decoration:none;font-weight:800">×</a></span>`).join('')}</div>`).join(''):'<span style="color:var(--sub)">아직 없어요.</span>'}</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px"><button class="btn primary" id="rmSave">저장</button></div></div>`;
+  const moveTo=(nms,to)=>{ nms.forEach(n=>{ if(to==='__clear') delete rmS.dest[key(n)]; else rmS.dest[key(n)]=to; }); if(to!=='__clear') nms.forEach(n=>rmS.sel.delete(n)); rmRender(); };
+  m.querySelector('#rmClose').onclick=()=>{ m.remove(); rmS=null; };
+  const ac=m.querySelector('#rmAc'); if(ac) ac.onchange=()=>{ rmS.a=ac.value; rmS.src=''; rmS.sel=new Set(); rmRender(); };
+  m.querySelector('#rmSrc').onchange=e=>{ rmS.src=e.target.value; rmS.sel=new Set(); rmRender(); };
+  m.querySelector('#rmAll').onchange=e=>{ studs.forEach(n=>e.target.checked?rmS.sel.add(n):rmS.sel.delete(n)); rmRender(); };
+  m.querySelectorAll('[data-rmck]').forEach(cb=>cb.onchange=()=>{ cb.checked?rmS.sel.add(cb.dataset.rmck):rmS.sel.delete(cb.dataset.rmck); rmRender(); });
+  m.querySelectorAll('[data-rmto]').forEach(b=>{
+    b.onclick=()=>{ const t=studs.filter(n=>rmS.sel.has(n)); if(!t.length){ alert('옮길 학생을 먼저 체크해주세요.'); return; } moveTo(t,b.dataset.rmto); };
+    if(b.dataset.rmto!=='__clear'){ b.addEventListener('dragover',e=>{ e.preventDefault(); b.style.outline='2px dashed #6d28d9'; }); b.addEventListener('dragleave',()=>{ b.style.outline=''; });
+      b.addEventListener('drop',e=>{ e.preventDefault(); b.style.outline=''; const t=e.dataTransfer.getData('text/plain')||''; if(!t.startsWith('rm:')) return; const n=t.slice(3); moveTo(rmS.sel.has(n)?studs.filter(x=>rmS.sel.has(x)):[n],b.dataset.rmto); }); }
+  });
+  m.querySelectorAll('[data-rmst]').forEach(l=>l.addEventListener('dragstart',e=>{ e.dataTransfer.setData('text/plain','rm:'+l.dataset.rmst); e.dataTransfer.effectAllowed='move'; }));
+  m.querySelectorAll('[data-rmx]').forEach(x=>x.onclick=e=>{ e.preventDefault(); delete rmS.dest[key(x.dataset.rmx)]; rmRender(); });
+  m.querySelector('#rmSave').onclick=()=>{ v.roster=Object.assign({},rmS.dest); v.updatedAt=Date.now(); save(); m.remove(); rmS=null; render(true); };
+}
+function ttVerNewClassModal(){
+  const v=(store.ttVersions||[]).find(x=>x.id===state.ttVer); if(!v) return; document.getElementById('ttNcModal')&&document.getElementById('ttNcModal').remove();
+  const ac0=academies()[0]; const inp='width:100%;box-sizing:border-box;margin:3px 0 8px;padding:6px;border:1px solid var(--line);border-radius:8px';
+  const m=document.createElement('div'); m.id='ttNcModal'; m.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:3000;display:flex;align-items:center;justify-content:center;padding:16px;overflow:auto';
+  m.innerHTML=`<div style="background:#fff;border-radius:14px;padding:16px 18px;width:min(400px,100%)"><div style="font-weight:800;margin-bottom:4px">＋ 이 버전에 새 반 추가</div>
+    <div style="font-size:.74rem;color:var(--sub);margin-bottom:10px">이 버전이 적용될 때(수동 적용 또는 기간이 되어 자동 전환될 때) 이 반이 새로 만들어져요. 이미 같은 이름의 반이 있으면 그 반에 시간표만 들어가요.</div>
+    ${academies().length>1?`<label style="font-size:.76rem;font-weight:700">학원</label><select id="ncA" style="${inp}">${academies().map(a=>`<option value="${a}">${AC[a].label}</option>`).join('')}</select>`:''}
+    <label style="font-size:.76rem;font-weight:700">반 이름</label><input id="ncName" placeholder="예: JB3,4" style="${inp}">
+    <label style="font-size:.76rem;font-weight:700">부서</label><select id="ncDept" style="${inp}">${['초등','중등','고등'].map(d=>`<option>${d}</option>`).join('')}</select>
+    <label style="font-size:.76rem;font-weight:700">수업 요일</label><div style="display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 8px">${TTG_DAYS.slice(0,6).map(d=>`<label style="font-size:.84rem"><input type="checkbox" data-ncd="${d}"> ${d}</label>`).join('')}</div>
+    <div style="display:flex;gap:8px"><div style="flex:1"><label style="font-size:.76rem;font-weight:700">과목</label><input id="ncSub" style="${inp}"></div><div style="flex:1"><label style="font-size:.76rem;font-weight:700">시간</label><input id="ncTime" placeholder="6:05-7:25" style="${inp}"></div></div>
+    <div style="display:flex;gap:8px"><div style="flex:1"><label style="font-size:.76rem;font-weight:700">강의실</label><input id="ncRoom" style="${inp}"></div><div style="flex:1"><label style="font-size:.76rem;font-weight:700">선생님</label><select id="ncT" style="${inp}"><option value="">없음</option>${(store.teachers[ac0]||[]).map(t=>`<option>${esc(t.name)}</option>`).join('')}</select></div></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn small" id="ncCancel">취소</button><button class="btn primary small" id="ncSave">추가</button></div></div>`;
+  document.body.appendChild(m); m.onclick=e=>{ if(e.target===m) m.remove(); }; m.querySelector('#ncCancel').onclick=()=>m.remove();
+  m.querySelector('#ncSave').onclick=()=>{ const a=(m.querySelector('#ncA')||{value:ac0}).value, name=m.querySelector('#ncName').value.trim(), sub=m.querySelector('#ncSub').value.trim(), time=m.querySelector('#ncTime').value.replace(/\s/g,'');
+    const days=[...m.querySelectorAll('[data-ncd]')].filter(x=>x.checked).map(x=>x.dataset.ncd);
+    if(!name){ alert('반 이름을 입력해주세요.'); return; } if(v.classes.some(c=>c.a===a&&c.name===name)){ alert('이 버전에 이미 있는 반 이름이에요.'); return; }
+    if(sub||time){ if(!sub||!parseRange(time)||!days.length){ alert('과목·시간(6:05-7:25 형식)·요일을 모두 입력하거나, 셋 다 비워 주세요.'); return; } }
+    const subs=sub?[{subject:sub,time,day:days.join(','),room:m.querySelector('#ncRoom').value.trim(),teacher:m.querySelector('#ncT').value,book:'',hw:'',progress:'',note:''}]:[];
+    v.classes.push({a,_id:genClassId(),name,dept:m.querySelector('#ncDept').value,days:days.join(','),subjects:subs,isNew:true}); v.updatedAt=Date.now(); save(); m.remove(); render(true); };
 }
 function ttVerModal(id){
   const v=id?(store.ttVersions||[]).find(x=>x.id===id):null; document.getElementById('ttVerModal')&&document.getElementById('ttVerModal').remove();
@@ -3334,6 +3449,28 @@ function ttVerModal(id){
     if(v){ v.name=name; v.start=st; v.end=en; v.days=days; v.updatedAt=Date.now(); } else { const nv=ttVerSnapshot(name,st,en,state.month,days); store.ttVersions.push(nv); state.ttVer=nv.id; }
     save(); m.remove(); ttVerAutoCheck(); render(true); };
 }
+function planPanelHTML(){ // [반·교재]·[학생 명단] 위에 붙는 '기간별 반 세팅' 바로가기 — 시간표 버전의 새 반·명단 이동을 여기서도 설정
+  if(!isAdminRole()) return ''; const vs=ttVerList(); const cur=state.ttVer;
+  return `<details id="ppDet" ${(state.ppOpen||state.tab==='roster')?'open':''} style="margin-bottom:10px;background:#f5f6ff;border:1px solid #d9dcff;border-radius:10px;padding:8px 12px"><summary style="cursor:pointer;font-weight:800;font-size:.88rem">📅 기간별 반 세팅 <span style="font-weight:500;color:var(--sub);font-size:.76rem">· 내신 기간 등 새 반·학생 이동을 미리 정해 두기</span></summary>
+    <div style="font-size:.76rem;color:var(--sub);margin:6px 0">기간(시간표 버전)을 만들고 → 그 기간에 쓸 <b>새 반</b>과 <b>학생 반 이동</b>을 정해 두면, 자동 전환을 켠 경우 기간이 되는 날 시간표·새 반·학생 이동이 한꺼번에 적용되고 기간이 끝나면 원래대로 돌아와요. (시간표 칸은 시간표 탭에서 고쳐요)</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <select id="ppSel" style="padding:6px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-weight:700"><option value="">기간(버전) 선택…</option>${vs.map(x=>`<option value="${esc(x.id)}" ${cur===x.id?'selected':''}>${esc(ttVerLabel(x))}</option>`).join('')}</select>
+      <button class="btn small" id="ppNew">＋ 새 기간 만들기</button>
+      <button class="btn small" id="ppCls" ${cur?'':'disabled'}>＋ 새 반 추가</button>
+      <button class="btn small" id="ppRoster" ${cur?'':'disabled'}>👥 학생 반 이동 설정</button>
+      <button class="btn small" id="ppGo" ${cur?'':'disabled'}>🕒 시간표에서 보기·수정</button>
+      <label style="font-size:.78rem;font-weight:700;display:inline-flex;gap:5px;align-items:center;margin-left:auto"><input type="checkbox" id="ppAuto" ${(store.ttVerAuto||{}).on?'checked':''}> ⏰ 기간이 되면 자동 전환</label></div></details>`;
+}
+function bindPlanPanel(v){
+  const d=v.querySelector('#ppDet'); if(!d) return; d.ontoggle=()=>{ state.ppOpen=d.open; };
+  const sel=v.querySelector('#ppSel'); sel.onchange=()=>{ state.ttVer=sel.value||null; state.ppOpen=true; render(true); };
+  v.querySelector('#ppNew').onclick=()=>{ state.ppOpen=true; ttVerModal(null); };
+  v.querySelector('#ppCls').onclick=()=>{ state.ppOpen=true; ttVerNewClassModal(); };
+  v.querySelector('#ppRoster').onclick=()=>{ state.ppOpen=true; ttVerRosterOpen(); };
+  v.querySelector('#ppGo').onclick=()=>{ state.ttView='week'; goTab('timetable'); };
+  v.querySelector('#ppAuto').onchange=e=>{ store.ttVerAuto=Object.assign({on:false,key:'',baseId:''},store.ttVerAuto||{}); store.ttVerAuto.on=e.target.checked; if(!e.target.checked) store.ttVerAuto.key=''; save(); if(e.target.checked) ttVerAutoCheck(); render(true); };
+}
+function ttVerRosterOpen(){ const v=(store.ttVersions||[]).find(x=>x.id===state.ttVer); if(!v) return; rmS={a:academies()[0],src:'',sel:new Set(),dest:Object.assign({},v.roster||{})}; rmRender(); }
 function ttVerBarHTML(){
   const admin=isAdminRole(); const vs=ttVerList(); const cur=state.ttVer; const au=store.ttVerAuto||{};
   if(!vs.length && !admin) return '';
@@ -3341,13 +3478,15 @@ function ttVerBarHTML(){
     <b style="font-size:.82rem">🗂 시간표 버전</b>
     <select id="ttVerSel" style="padding:6px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-weight:700;max-width:100%"><option value="">현재 시간표 (편집용)</option>${vs.map(v=>`<option value="${esc(v.id)}" ${cur===v.id?'selected':''}>${esc(ttVerLabel(v))}</option>`).join('')}</select>
     ${admin?`<button class="btn small" id="ttVerNew">＋ 현재 시간표를 버전으로 저장</button>`:''}
-    ${admin&&cur?`<button class="btn small" id="ttVerEdit">✎ 이름·기간·요일</button><button class="btn small primary" id="ttVerApply">지금 현재 시간표로 적용</button><button class="btn small" id="ttVerDel" style="color:#c02b2b">삭제</button>`:''}
+    ${admin&&cur?`<button class="btn small" id="ttVerNewCls">＋ 새 반 추가</button><button class="btn small" id="ttVerRoster">👥 반 명단 이동${(()=>{ const v=(store.ttVersions||[]).find(x=>x.id===cur); const n=v&&v.roster?Object.keys(v.roster).length:0; return n?` (${n}명)`:''; })()}</button><button class="btn small" id="ttVerEdit">✎ 이름·기간·요일</button><button class="btn small primary" id="ttVerApply">지금 현재 시간표로 적용</button><button class="btn small" id="ttVerDel" style="color:#c02b2b">삭제</button>`:''}
     ${admin?`<label style="font-size:.78rem;font-weight:700;display:inline-flex;gap:5px;align-items:center;margin-left:auto;cursor:pointer" title="켜 두면 기간(·요일)이 되는 날 자동으로 그 버전이 현재 시간표에 적용되고, 기간이 끝나면 원래 시간표로 돌아와요"><input type="checkbox" id="ttVerAuto" ${au.on?'checked':''}> ⏰ 기간이 되면 자동 전환</label>`:''}
     ${cur?`<span style="font-size:.74rem;color:#6d28d9;font-weight:700;flex-basis:100%">👁 저장된 버전 내용을 보는 중${admin?' — ✎ 수정모드로 이 버전 내용을 고칠 수 있어요 (완료를 눌러야 저장)':''}</span>`:''}</div>`;
 }
 function bindTtVer(v){
   const sel=v.querySelector('#ttVerSel'); if(sel) sel.onchange=()=>{ if(state.ttEdit){ alert('수정 중에는 버전을 바꿀 수 없어요. ✔ 완료 또는 ✖ 취소를 먼저 눌러주세요.'); sel.value=state.ttVer||''; return; } state.ttVer=sel.value||null; render(true); };
   const nb=v.querySelector('#ttVerNew'); if(nb) nb.onclick=()=>ttVerModal(null);
+  const rb=v.querySelector('#ttVerRoster'); if(rb) rb.onclick=ttVerRosterOpen;
+  const nc=v.querySelector('#ttVerNewCls'); if(nc) nc.onclick=ttVerNewClassModal;
   const eb=v.querySelector('#ttVerEdit'); if(eb) eb.onclick=()=>ttVerModal(state.ttVer);
   const ab=v.querySelector('#ttVerApply'); if(ab) ab.onclick=()=>ttVerApply(state.ttVer);
   const db=v.querySelector('#ttVerDel'); if(db) db.onclick=()=>{ const x=(store.ttVersions||[]).find(q=>q.id===state.ttVer); if(!x||!confirm(`'${x.name}' 버전을 삭제할까요?`)) return; store.ttVersions=store.ttVersions.filter(q=>q.id!==state.ttVer); state.ttVer=null; save(); render(true); };
@@ -3441,6 +3580,114 @@ function ttgOwner(o){ // 수정 대상 반: 버전을 보는 중이면 그 버�
   if(state.ttVer){ const v=(store.ttVersions||[]).find(x=>x.id===state.ttVer); const sn=v&&v.classes.find(c=>c.a===o.academy&&c._id===o._id); if(sn){ sn.academy=sn.a; sn._vdays=sn.days; } return sn||null; }
   return findClassById(o.academy,o._src,o._id); }
 function ttgSetDays(oc,str){ oc.days=str; if(oc._vdays!=null) oc._vdays=str; else if(store.daysedit&&store.daysedit[ckey(oc)]!=null) store.daysedit[ckey(oc)]=str; }
+let ttgClip=null;
+function ttgSelKey(d){ return d.a+'|'+d.day+'|'+d.s0+'|'+d.names.join(','); }
+function ttgSelRegs(){ const st=new Set(state.ttSel||[]); return ttgEdReg.filter(d=>st.has(ttgSelKey(d))); }
+function ttgPinDays(oc){ const cd=cdays(oc); (oc.subjects||[]).forEach(s=>{ if(!s.day) s.day=cd; }); } // 요일을 비워 둔 과목은 반 요일로 고정 — 새 요일을 추가해도 그 과목이 따라 늘어나지 않게
+function ttgAddDay(oc,day){ const ds=String(cdays(oc)||'').split(',').map(x=>x.trim()).filter(Boolean); if(!ds.includes(day)){ ttgPinDays(oc); ds.push(day); ds.sort((x,y)=>TTG_DAYS.indexOf(x)-TTG_DAYS.indexOf(y)); ttgSetDays(oc,ds.join(',')); } }
+function ttgPutLesson(clsObj,day,src,st,en,over,cellHits){ // 'ok' | 'busy' | 'noclass'
+  const oc=ttgOwner(clsObj); if(!oc) return 'noclass'; oc.subjects=oc.subjects||[];
+  const mp=mergedCounterpart(clsObj); const mo=mp?ttgOwner(mp):null;
+  const ov=(o)=>(o&&o.subjects||[]).filter(x=>{ const r=parseRange(x.time); return r && ttgDayList(o,x).includes(day) && r[0]<en-1e-6 && r[1]>st+1e-6; });
+  const busy=ov(oc).concat(ov(mo));
+  if(busy.length||(cellHits&&cellHits.length)){
+    if(!over) return 'busy';
+    const cut=(o,x)=>{ const days=ttgDayList(o,x); if(days.length<=1){ const i=o.subjects.indexOf(x); if(i>=0) o.subjects.splice(i,1); } else x.day=days.filter(z=>z!==day).join(','); o.updatedAt=Date.now(); };
+    busy.forEach(x=>cut(oc.subjects.includes(x)?oc:mo,x));
+  }
+  ttgAddDay(oc,day);
+  oc.subjects.push({subject:src.subject,book:'',teacher:src.teacher||'',hw:'',progress:'',note:'',room:src.room||'',day,time:fmtH(st)+'-'+fmtH(en)}); oc.updatedAt=Date.now(); return 'ok';
+}
+function ttgCopySel(){
+  const regs=ttgSelRegs().filter(d=>d.hits.length); if(!regs.length){ alert('수업이 들어 있는 칸을 먼저 선택해주세요.'); return; }
+  ttgClip=regs.map(d=>({a:d.a,day:d.day,names:d.names.slice(),gi:d.gi,s0:d.s0,s1:d.s1,hits:d.hits.map(h=>({cn:h.className,subject:h.subject,room:h.room,teacher:h.teacher,start:h.start,end:h.end}))}));
+  state.ttSel=[]; render(true);
+}
+function ttgDelSel(){
+  const regs=ttgSelRegs().filter(d=>d.hits.length); if(!regs.length) return; if(!confirm(regs.length+'칸의 수업을 삭제할까요? (완료를 누르기 전엔 취소로 되돌릴 수 있어요)')) return;
+  regs.forEach(d=>d.hits.forEach(h=>{ const oc=ttgOwner(h.own); if(!oc) return; let i=(oc.subjects||[]).indexOf(h.ref); if(i<0) i=(oc.subjects||[]).findIndex(x=>x.subject===h.ref.subject&&x.time===h.ref.time&&x.day===h.ref.day); if(i<0) return; const sb=oc.subjects[i]; const days=ttgDayList(oc,sb);
+    if(days.length<=1) oc.subjects.splice(i,1); else sb.day=days.filter(x=>x!==d.day).join(','); oc.updatedAt=Date.now(); }));
+  state.ttSel=[]; state.ttEditDirty=true; render(true);
+}
+function ttgSelBarUpdate(){
+  const bar=document.getElementById('ttSelBar'); if(!bar) return; const n=ttgSelRegs().length; const bs='padding:4px 11px;border:1.5px solid var(--line);border-radius:999px;background:#fff;font-family:inherit;font-size:.78rem;font-weight:800;cursor:pointer';
+  bar.innerHTML=`<button type="button" id="tsMode" style="${bs};${state.ttSelMode?'background:#6d28d9;color:#fff;border-color:#6d28d9':''}">☑ 클릭으로 여러 칸 선택${state.ttSelMode?' 중':''}</button>
+    ${(state.ttSelMode||n)?`<span style="font-size:.8rem;font-weight:700">선택 ${n}칸</span><button type="button" id="tsCopy" style="${bs}" ${n?'':'disabled'}>📄 복사</button><button type="button" id="tsDel" style="${bs};color:#c02b2b" ${n?'':'disabled'}>🗑 삭제</button><button type="button" id="tsClr" style="${bs}" ${n?'':'disabled'}>선택 해제</button>`:''}
+    ${ttgClip?`<button type="button" id="tsPaste" style="${bs};background:#f4f0ff;border-color:#6d28d9">📋 붙여넣기 <span style="font-weight:600;color:var(--sub)">(복사한 ${ttgClip.length}칸)</span></button>`:''}
+    <span style="font-size:.72rem;color:var(--sub)">끌면 네모 안에 통째로 들어온 칸이 선택돼요 · Ctrl+C 복사 · Ctrl+V 붙여넣기 · Delete 삭제 · Esc 해제</span>`;
+  const q=id=>bar.querySelector(id);
+  q('#tsMode').onclick=()=>{ state.ttSelMode=!state.ttSelMode; render(true); };
+  if(q('#tsCopy')) q('#tsCopy').onclick=ttgCopySel; if(q('#tsDel')) q('#tsDel').onclick=ttgDelSel;
+  if(q('#tsClr')) q('#tsClr').onclick=()=>{ state.ttSel=[]; render(true); };
+  if(q('#tsPaste')) q('#tsPaste').onclick=ttgPasteModal;
+}
+let ttgMqSwallow=false, ttgKeyBound=false;
+function ttgMqBind(v){ // 엑셀처럼: 빈 칸·시간 칸·표 머리글에서 끌면 네모가 그려지고, 네모 안에 통째로 들어온 칸만 선택된다
+  if(!ttgKeyBound){ ttgKeyBound=true; document.addEventListener('keydown',e=>{
+    if(!state.ttEdit||document.querySelector('#ttgEdModal,#ttgPmModal,#ttVerModal,#rmModal,#ttNcModal')) return;
+    const t=e.target; if(t&&/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+    const mod=e.ctrlKey||e.metaKey;
+    if(mod&&(e.key==='c'||e.key==='C')&&ttgSelRegs().length){ e.preventDefault(); ttgCopySel(); }
+    else if(mod&&(e.key==='v'||e.key==='V')&&ttgClip){ e.preventDefault(); ttgPasteModal(); }
+    else if(e.key==='Delete'&&ttgSelRegs().length){ e.preventDefault(); ttgDelSel(); }
+    else if(e.key==='Escape'&&(state.ttSel||[]).length){ state.ttSel=[]; render(true); } }); }
+  v.querySelectorAll('.ttgsc').forEach(sc=>sc.addEventListener('mousedown',e=>{
+    if(!state.ttEdit||e.button!==0) return;
+    const td=e.target.closest('td,th'); if(e.target.closest('[data-tthandle]')) return; // ⠿ 손잡이를 잡고 끌면 이동
+    if(e.target.closest('button,input,select,a')) return;
+    const x0=e.clientX,y0=e.clientY; let box=null,moved=false; const add=e.ctrlKey||e.metaKey||e.shiftKey; const base=add?new Set(state.ttSel||[]):new Set();
+    const tds=[...v.querySelectorAll('td[data-tted]')];
+    const sr=td?td.getBoundingClientRect():{left:x0,right:x0,top:y0,bottom:y0}; // 시작한 칸은 통째로 네모에 포함(엑셀처럼)
+    const calc=(x1,y1)=>{ const L=Math.min(sr.left,x1),R=Math.max(sr.right,x1),T=Math.min(sr.top,y1),B=Math.max(sr.bottom,y1); const keys=new Set(base);
+      tds.forEach(t=>{ const r=t.getBoundingClientRect(), d=ttgEdReg[+t.dataset.tted]; if(d&&r.left>=L-1&&r.right<=R+1&&r.top>=T-1&&r.bottom<=B+1) keys.add(ttgSelKey(d)); }); return keys; };
+    const paint=keys=>tds.forEach(t=>{ const d=ttgEdReg[+t.dataset.tted]; if(d&&keys.has(ttgSelKey(d))) t.setAttribute('data-ttsel','1'); else t.removeAttribute('data-ttsel'); });
+    const mv=ev=>{ if(!moved){ if(Math.hypot(ev.clientX-x0,ev.clientY-y0)<6) return; moved=true; box=document.createElement('div'); box.style.cssText='position:fixed;border:1.5px solid #6d28d9;background:rgba(109,40,217,.10);z-index:2500;pointer-events:none'; document.body.appendChild(box); }
+      box.style.left=Math.min(x0,ev.clientX)+'px'; box.style.top=Math.min(y0,ev.clientY)+'px'; box.style.width=Math.abs(ev.clientX-x0)+'px'; box.style.height=Math.abs(ev.clientY-y0)+'px'; paint(calc(ev.clientX,ev.clientY)); };
+    const up=ev=>{ document.removeEventListener('mousemove',mv); document.removeEventListener('mouseup',up); if(box) box.remove(); if(!moved) return;
+      const keys=calc(ev.clientX,ev.clientY); state.ttSel=[...keys]; paint(keys); ttgMqSwallow=true; setTimeout(()=>{ ttgMqSwallow=false; },0); ttgSelBarUpdate(); };
+    document.addEventListener('mousemove',mv); document.addEventListener('mouseup',up); e.preventDefault();
+  }));
+}
+function ttgToggleSel(td){
+  const d=ttgEdReg[+td.dataset.tted]; if(!d) return; const k=ttgSelKey(d); const st=new Set(state.ttSel||[]);
+  if(st.has(k)){ st.delete(k); td.removeAttribute('data-ttsel'); } else { st.add(k); td.setAttribute('data-ttsel','1'); }
+  state.ttSel=[...st]; ttgSelBarUpdate();
+}
+function ttgPasteModal(){
+  if(!ttgClip||!ttgClip.length) return; document.getElementById('ttgPmModal')&&document.getElementById('ttgPmModal').remove();
+  const nSel=ttgSelRegs().length; const srcDays=[...new Set(ttgClip.map(x=>x.day))];
+  const m=document.createElement('div'); m.id='ttgPmModal'; m.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:3000;display:flex;align-items:center;justify-content:center;padding:16px;overflow:auto';
+  m.innerHTML=`<div style="background:#fff;border-radius:14px;padding:16px 18px;width:min(430px,100%)"><div style="font-weight:800;margin-bottom:2px">📋 붙여넣기 — 복사한 ${ttgClip.length}칸</div>
+    <div style="font-size:.74rem;color:var(--sub);margin-bottom:10px">복사한 칸: ${esc(srcDays.join('·'))}요일 · ${esc([...new Set(ttgClip.flatMap(x=>x.names))].slice(0,6).join(', '))}${new Set(ttgClip.flatMap(x=>x.names)).size>6?' 외':''}</div>
+    <div style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px"><b style="font-size:.84rem">① 다른 요일에 똑같이 (같은 반 · 같은 시간)</b>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">${TTG_DAYS.slice(0,6).map(d=>`<label style="font-size:.86rem"><input type="checkbox" data-pmd="${d}"> ${d}</label>`).join('')}</div>
+      <button class="btn small primary" id="pmDays">이 요일들에 붙여넣기</button></div>
+    <div style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px"><b style="font-size:.84rem">② 지금 선택한 칸에 붙여넣기 <span style="font-weight:600;color:var(--sub)">(선택 ${nSel}칸)</span></b>
+      <div style="font-size:.74rem;color:var(--sub);margin:5px 0 8px">선택한 칸을 시작점으로, 복사한 모양(반 간격·시간 간격) 그대로 놓아요. 칸이 여러 개면 각각을 시작점으로 붙여넣어요. 여러 요일에서 복사했다면 시작점의 요일에 모아 놓여요.</div>
+      <button class="btn small primary" id="pmCell" ${nSel?'':'disabled'}>선택한 칸에 붙여넣기</button></div>
+    <label style="font-size:.8rem;display:flex;gap:6px;align-items:center;margin-bottom:10px"><input type="checkbox" id="pmOver"> 이미 수업이 있는 칸은 덮어쓰기 <span style="color:var(--sub)">(끄면 건너뛰어요)</span></label>
+    <div style="display:flex;justify-content:flex-end"><button class="btn small" id="pmClose">닫기</button></div></div>`;
+  document.body.appendChild(m); m.onclick=e=>{ if(e.target===m) m.remove(); }; m.querySelector('#pmClose').onclick=()=>m.remove();
+  const done=(ok,busy,skip)=>{ m.remove(); if(ok) state.ttEditDirty=true; render(true); alert(ok+'칸 붙여넣었어요.'+(busy?`\n이미 수업이 있어 건너뜀: ${busy}칸`:'')+(skip?`\n붙일 반/자리가 없어 건너뜀: ${skip}칸`:'')); };
+  m.querySelector('#pmDays').onclick=()=>{
+    const days=[...m.querySelectorAll('[data-pmd]')].filter(x=>x.checked).map(x=>x.dataset.pmd); if(!days.length){ alert('붙여넣을 요일을 골라주세요.'); return; }
+    const over=m.querySelector('#pmOver').checked; let ok=0,busy=0,skip=0;
+    const objFor=(it,cn)=>{ const reg=ttgEdReg.find(d=>d.a===it.a&&d.names.includes(cn)); const o=reg&&reg.objs[reg.names.indexOf(cn)]; return o||null; };
+    ttgClip.forEach(it=>it.hits.forEach(h=>{ const co=objFor(it,h.cn)||objFor(it,it.names[0]); if(!co){ skip++; return; }
+      days.forEach(dy=>{ if(dy===it.day) return; const r=ttgPutLesson(co,dy,h,h.start,h.end,over,null); if(r==='ok') ok++; else if(r==='busy') busy++; else skip++; }); }));
+    done(ok,busy,skip);
+  };
+  m.querySelector('#pmCell').onclick=()=>{
+    const over=m.querySelector('#pmOver').checked; let ok=0,busy=0,skip=0;
+    const base=ttgClip.slice().sort((x,y)=>x.s0-y.s0||x.gi-y.gi)[0];
+    ttgSelRegs().forEach(t=>{ const dt=t.s0-base.s0, dg=t.gi-base.gi;
+      ttgClip.forEach(it=>{ const g2=(t.tg||[])[it.gi+dg]; if(!g2){ skip+=it.hits.length; return; }
+        it.hits.forEach(h=>{ const p=it.names.indexOf(h.cn); const nm=g2[p>=0&&p<g2.length?p:0]; const co=t.om&&t.om[nm]; if(!co){ skip++; return; }
+          const st=h.start+dt, en=h.end+dt; const same=(it.gi+dg===t.gi&&Math.abs(it.s0+dt-t.s0)<1e-6);
+          const r=ttgPutLesson(co,t.day,h,st,en,over,same?t.hits.filter(x=>x.className===nm):null); if(r==='ok') ok++; else if(r==='busy') busy++; else skip++; }); }); });
+    done(ok,busy,skip);
+  };
+}
 function ttgDragMove(fi,ti){
   const F=ttgEdReg[fi], T=ttgEdReg[ti]; if(!F||!T||F===T||!F.hits.length) return;
   if(F.names.join('|')!==T.names.join('|')){ alert('같은 반 칸끼리만 옮기거나 바꿀 수 있어요.'); return; }
@@ -3452,7 +3699,7 @@ function ttgDragMove(fi,ti){
   const ts=T.hits.map(h=>{ const oc=owner(h); const sb=locate(oc,h); return sb?{oc,sb,h}:null; }).filter(Boolean);
   if(!fs.length) return;
   const fd=fs.map(x=>only(x.oc,x.sb,F.day)); const td=ts.map(x=>only(x.oc,x.sb,T.day));
-  const addDay=(oc,day)=>{ const ds=String(cdays(oc)||'').split(',').map(x=>x.trim()).filter(Boolean); if(!ds.includes(day)){ ds.push(day); ds.sort((x,y)=>TTG_DAYS.indexOf(x)-TTG_DAYS.indexOf(y)); ttgSetDays(oc,ds.join(',')); } };
+  const addDay=(oc,day)=>ttgAddDay(oc,day);
   if(td.length){ // 이미 수업이 있는 칸 → 서로 시간(요일 포함)을 맞바꾼다
     const ft=fd[0].time, fday=F.day, tt=td[0].time, tday=T.day;
     fd.forEach((sb,i)=>{ sb.time=tt; sb.day=tday; addDay(fs[i].oc,tday); fs[i].oc.updatedAt=Date.now(); });
@@ -3506,7 +3753,7 @@ function ttgOpenEditor(i){
     } else {
       const c0=d.objs[0]; const oc=ttgOwner(c0); if(!oc){ alert('반을 찾지 못했어요.'); return; }
       oc.subjects=oc.subjects||[]; oc.subjects.push({subject,book:'',teacher:tSel,hw:'',progress:'',note:'',room:roomV,day:d.day,time:timeV.replace(/\s/g,'')});
-      const ds=String(cdays(oc)||'').split(',').map(x=>x.trim()).filter(Boolean); if(!ds.includes(d.day)){ ds.push(d.day); ds.sort((x,y)=>TTG_DAYS.indexOf(x)-TTG_DAYS.indexOf(y)); ttgSetDays(oc,ds.join(',')); }
+      ttgAddDay(oc,d.day);
       oc.updatedAt=Date.now();
     }
     state.ttEditDirty=true; ttgEdClose(); render(true);
@@ -3530,7 +3777,7 @@ function renderTimetableGrid(list){
     <button class="chip ${gd==='all'?'on':''}" data-ttgday="all">전체 요일</button>
     ${TTG_DAYS.map(d=>`<button class="chip ${gd===d?'on':''}" data-ttgday="${d}">${d}요일</button>`).join('')}
     ${admin?(edit?`<span style="margin-left:auto;display:flex;gap:6px"><button class="chip" data-ttcancel="1" style="font-weight:800">✖ 취소(되돌리기)</button><button class="chip on" data-ttdone="1" style="font-weight:800;background:#16a34a;border-color:#16a34a">✔ 완료 (적용)</button></span>`:`<button class="chip" data-ttedit="1" style="margin-left:auto;font-weight:800">✎ 수정모드</button>`):''}
-  </div>${edit?'<div style="font-size:.78rem;color:#6d28d9;font-weight:700;margin:-4px 0 10px">✎ 수정모드 — <b style="color:#c02b2b">수정한 내용은 ✔ 완료를 눌러야 적용·저장돼요.</b> 칸을 누르면 선생님(색)·과목·강의실을 바로 바꿀 수 있고, 빈 칸을 누르면 새 수업을 넣어요. 수업 칸을 같은 반의 다른 칸으로 끌면 이동(빈 칸) 또는 시간 맞바꿈(수업이 있는 칸)이에요. 해당 반 과목에 자동 반영돼요.</div>':''}`;
+  </div>${edit?'<div style="font-size:.78rem;color:#6d28d9;font-weight:700;margin:-4px 0 10px">✎ 수정모드 — <b style="color:#c02b2b">수정한 내용은 ✔ 완료를 눌러야 적용·저장돼요.</b> 칸을 누르면 선생님(색)·과목·강의실을 바로 바꿀 수 있고, 빈 칸을 누르면 새 수업을 넣어요. 수업 칸 왼쪽 위의 ⠿ 를 잡고 같은 반의 다른 칸으로 끌면 이동(빈 칸) 또는 시간 맞바꿈(수업이 있는 칸)이에요. 해당 반 과목에 자동 반영돼요. 여러 칸 복사: 아무 칸에서나 끌어 네모로 선택(엑셀처럼) → 복사 → 붙여넣기.</div><div id="ttSelBar" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:0 0 10px"></div>':''}`;
   const css=`<style>
     .ttgw{margin-bottom:22px}
     .ttgw h3{margin:0 0 8px;font-size:.95rem}
@@ -3547,7 +3794,7 @@ function renderTimetableGrid(list){
     .ttgt td.rc{color:#e11d1d;font-weight:800;letter-spacing:.08em;background:#fff}
     .ttgt td.hit{font-weight:800}
     .ttgt td[data-ttjump]{cursor:pointer}
-    .ttgt td[data-tted]{cursor:cell}.ttgt td[data-tted]:hover{outline:2px solid #6d28d9;outline-offset:-2px}
+    .ttgsc{user-select:none}.ttgt td[data-tted]{position:relative}.tth{position:absolute;left:1px;top:1px;font-size:.66rem;line-height:1;cursor:grab;padding:1px 3px;border-radius:4px;background:rgba(255,255,255,.8);color:#333;z-index:1}.ttgt td[data-ttsel]{outline:3px solid #6d28d9;outline-offset:-3px;box-shadow:inset 0 0 0 999px rgba(109,40,217,.22)}.ttgt td[data-tted]{cursor:cell}.ttgt td[data-tted]:hover{outline:2px solid #6d28d9;outline-offset:-2px}
     @media print{.ttgsc{overflow:visible}.ttgt{width:100%}.ttgt th,.ttgt td{min-width:0;white-space:normal}}
   </style>`;
   if(!acs.length) return css+chips+'<div class="empty">시간이 입력된 반이 없습니다.</div>';
@@ -3601,14 +3848,15 @@ function renderTimetableGrid(list){
         let tds='';
         groups.forEach(g=>{
           const gh=g.map(nm=>({nm, h:hits.find(e=>e.className===nm)})).filter(x=>x.h);
-          const ed=edit?(()=>{ ttgEdReg.push({a,day,names:g,objs:g.map(nm=>objOf[nm]),hits:gh.map(x=>x.h),s0,s1,isWt}); return ` data-tted="${ttgEdReg.length-1}"${gh.length?' draggable="true"':''}`; })():'';
+          const ed=edit?(()=>{ const rg={a,day,names:g,objs:g.map(nm=>objOf[nm]),hits:gh.map(x=>x.h),s0,s1,isWt,gi:groups.indexOf(g),tg:groups,om:objOf}; ttgEdReg.push(rg); const sel=(state.ttSel||[]).includes(ttgSelKey(rg)); return ` data-tted="${ttgEdReg.length-1}"${sel?' data-ttsel="1"':''}`; })():'';
           const jump=(!edit&&admin&&idOf[g[0]])?` data-ttjump="${day}|${esc(idOf[g[0]])}"`:'';
+          const hd=(edit&&gh.length)?'<span class="tth" data-tthandle="1" draggable="true" title="잡고 끌면 이동 · 수업이 있는 칸과는 시간 맞바꿈">⠿</span>':'';
           if(!gh.length){ tds+=`<td${ed}${isWt?' style="background:#d9d9d9"':''}></td>`; return; }
           if(gh.length===1 || gh.every(x=>sameHit(gh[0].h, x.h))){
             const h=gh[0].h, pt=paint(h);
-            tds+=`<td class="hit"${jump}${ed} style="${pt.bg?`background:${pt.bg};color:${pt.fg}`:''}" title="${esc(g.join(', '))} · ${esc(h.subject)}${h.teacher?' · '+esc(h.teacher):''}${h.room?' · '+esc(h.room):''}">${esc(pt.txt)}${(g.length>1&&gh.length===1)?`<div style="font-size:.64rem;font-weight:600;opacity:.8">${esc(gh[0].nm)}만</div>`:''}</td>`;
+            tds+=`<td class="hit"${jump}${ed} style="${pt.bg?`background:${pt.bg};color:${pt.fg}`:''}" title="${esc(g.join(', '))} · ${esc(h.subject)}${h.teacher?' · '+esc(h.teacher):''}${h.room?' · '+esc(h.room):''}">${hd}${esc(pt.txt)}${(g.length>1&&gh.length===1)?`<div style="font-size:.64rem;font-weight:600;opacity:.8">${esc(gh[0].nm)}만</div>`:''}</td>`;
           } else {
-            tds+=`<td class="hit"${jump}${ed} style="padding:0"><div style="display:flex;flex-direction:column;height:100%">${gh.map(x=>{ const pt=paint(x.h); return `<div style="flex:1;padding:4px;${pt.bg?`background:${pt.bg};color:${pt.fg}`:''}">${esc(pt.txt)}<div style="font-size:.64rem;font-weight:600;opacity:.8">${esc(x.nm)}</div></div>`; }).join('')}</div></td>`;
+            tds+=`<td class="hit"${jump}${ed} style="padding:0">${hd}<div style="display:flex;flex-direction:column;height:100%">${gh.map(x=>{ const pt=paint(x.h); return `<div style="flex:1;padding:4px;${pt.bg?`background:${pt.bg};color:${pt.fg}`:''}">${esc(pt.txt)}<div style="font-size:.64rem;font-weight:600;opacity:.8">${esc(x.nm)}</div></div>`; }).join('')}</div></td>`;
           }
         });
         rows+=`<tr>${tm}${tds}</tr>`;
@@ -3772,13 +4020,14 @@ function bindClassEdit(){
   v.querySelectorAll('[data-ttedit]').forEach(b=>b.onclick=()=>{ // 수정모드 시작 — 지금 상태를 백업해 두고, 완료를 눌러야 저장·동기화한다
     ttgSnap={m:state.month,arrs:{},de:JSON.stringify(store.daysedit||{}),tv:JSON.stringify(store.ttVersions||[])}; academies().forEach(a=>{ try{ ttgSnap.arrs[a]=JSON.stringify(editArr(a,state.month)); }catch(e){} });
     state.ttEdit=true; state.ttEditDirty=false; render(true); });
-  v.querySelectorAll('[data-ttdone]').forEach(b=>b.onclick=()=>{ const d=state.ttEditDirty; if(d&&state.ttVer){ const vv=(store.ttVersions||[]).find(x=>x.id===state.ttVer); if(vv) vv.updatedAt=Date.now(); } state.ttEdit=false; state.ttEditDirty=false; ttgSnap=null; if(d) save(); render(true); });
+  v.querySelectorAll('[data-ttdone]').forEach(b=>b.onclick=()=>{ const d=state.ttEditDirty; if(d&&state.ttVer){ const vv=(store.ttVersions||[]).find(x=>x.id===state.ttVer); if(vv) vv.updatedAt=Date.now(); } state.ttEdit=false; state.ttEditDirty=false; state.ttSel=[]; state.ttSelMode=false; ttgSnap=null; if(d) save(); render(true); });
   v.querySelectorAll('[data-ttcancel]').forEach(b=>b.onclick=()=>{
     if(state.ttEditDirty && !confirm('수정한 내용을 모두 취소하고 되돌릴까요?')) return;
     if(ttgSnap){ Object.keys(ttgSnap.arrs).forEach(a=>{ const arr=editArr(a,ttgSnap.m); arr.splice(0,arr.length,...JSON.parse(ttgSnap.arrs[a])); }); store.daysedit=JSON.parse(ttgSnap.de); store.ttVersions=JSON.parse(ttgSnap.tv); }
-    state.ttEdit=false; state.ttEditDirty=false; ttgSnap=null; render(true); });
-  v.querySelectorAll('[data-tted]').forEach(td=>{ td.onclick=()=>ttgOpenEditor(+td.dataset.tted);
-    td.addEventListener('dragstart',e=>{ e.dataTransfer.setData('text/plain','tted:'+td.dataset.tted); e.dataTransfer.effectAllowed='move'; });
+    state.ttEdit=false; state.ttEditDirty=false; state.ttSel=[]; state.ttSelMode=false; ttgSnap=null; render(true); });
+  ttgSelBarUpdate(); ttgMqBind(v);
+  v.querySelectorAll('[data-tted]').forEach(td=>{ td.onclick=ev=>{ if(ttgMqSwallow||(ev.target.closest&&ev.target.closest('[data-tthandle]'))) return; if(state.ttSelMode||ev.ctrlKey||ev.metaKey||ev.shiftKey){ ttgToggleSel(td); return; } ttgOpenEditor(+td.dataset.tted); };
+    td.addEventListener('dragstart',e=>{ e.dataTransfer.setData('text/plain','tted:'+td.dataset.tted); e.dataTransfer.effectAllowed='move'; try{ e.dataTransfer.setDragImage(td,10,10); }catch(x){} });
     td.addEventListener('dragover',e=>{ e.preventDefault(); td.style.outline='2px dashed #6d28d9'; });
     td.addEventListener('dragleave',()=>{ td.style.outline=''; });
     td.addEventListener('drop',e=>{ e.preventDefault(); td.style.outline=''; const t=(e.dataTransfer.getData('text/plain')||''); if(t.startsWith('tted:')) ttgDragMove(+t.slice(5),+td.dataset.tted); }); });
@@ -6914,7 +7163,7 @@ function renderSeat(){
   const noLevel=store.students.filter(st=>st.academy===a && !st._deleted && (st.status||'재원')==='재원' && !['초','중'].includes(csLevelOf(st)) && csLevelOf(st)!=='고').length;
   const labNone=csLabClassNames(a).size===0;
   return `<div class="setsec" style="border:2px solid #2e5fb7">
-    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1105-s · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
+    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1106-a · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
     <div class="desc">학원 전체 <b>초·중등 재원생 중 강의실이 '어학실'인 수업을 듣는 학생</b>(${cand.length}명, 어학실 수업이 있는 반 ${csLabClassNames(a).size}개)을 자리 ${seatCount}개에 자동으로 배치합니다. <b>같은 학년끼리</b>, <b>같은 반끼리</b>는 옆·앞뒤 자리에 앉지 않게 짜고, 학년·반은 학생 명단과 시간표(반)를 그대로 따릅니다. <b>어학실 이용 시간이 겹치지 않는 학생</b>은 같은 학년·같은 반이어도 옆자리에 앉을 수 있고, 한 자리(컴퓨터)를 시간대별로 나눠 써도 돼요(자리 칸 안에 학생이 여러 명 보여요). 수동으로는 학생을 눌러 고른 뒤 자리나 다른 학생을 누르면 옮기거나 서로 바꿔요. 빨간 테두리(⚠)는 규칙에 걸린 곳입니다.</div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:10px 0 0;font-size:.84rem"><b>📅 기간</b>
       <select data-csperiod style="padding:5px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${periods.map(x=>`<option value="${esc(x[0])}" ${x[0]===pkey?'selected':''}>${esc(x[1])}</option>`).join('')}</select>
@@ -9181,6 +9430,7 @@ if(!store.worklog) store.worklog={};
 if(!store.worklogMonthly) store.worklogMonthly={};
 if(!store.worklogWeekly) store.worklogWeekly={};
 if(!store.ttVerAuto||typeof store.ttVerAuto!=='object') store.ttVerAuto={on:false,key:'',baseId:''};
+if(!Array.isArray(store.classMoves)) store.classMoves=[]; // 반 이동 기록 — [{id,a,name,from,to,date,month,updatedAt}]
 if(!Array.isArray(store.ttVersions)) store.ttVersions=[]; // 시간표 버전(스냅샷) — [{id,name,start,end,month,classes:[{a,_id,name,dept,days,subjects}],updatedAt}]
 if(!store.yearSched) store.yearSched={}; // 연간 일정 — {edited, groups:[{id,dept,days,start,total}], extra:[{date,label}], updatedAt}
 if(!store.wlMemo) store.wlMemo={}; // 업무일지 옆 개인 메모(제출되지 않음) — {선생님키:{text,updatedAt}}
@@ -16494,7 +16744,7 @@ function renderInner(keepOpen){
   } else if(state.tab==='timetable'){
     v.innerHTML=renderTimetable(list); bindClassEdit();
   } else if(state.tab==='roster'){
-    v.innerHTML=renderRoster(list); bindRoster();
+    v.innerHTML=planPanelHTML()+renderRoster(list); bindPlanPanel(v); bindRoster();
   } else if(state.tab==='today'){
     v.innerHTML=renderToday(list); bindToday();
   } else if(state.tab==='consult'){
