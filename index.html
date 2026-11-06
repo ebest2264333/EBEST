@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>이베스트 (본관) — 선생님용 대시보드 · v1106-b</title>
+<title>이베스트 (본관) — 선생님용 대시보드 · v1106-c</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%96%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">
@@ -7163,7 +7163,7 @@ function renderSeat(){
   const noLevel=store.students.filter(st=>st.academy===a && !st._deleted && (st.status||'재원')==='재원' && !['초','중'].includes(csLevelOf(st)) && csLevelOf(st)!=='고').length;
   const labNone=csLabClassNames(a).size===0;
   return `<div class="setsec" style="border:2px solid #2e5fb7">
-    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1106-b · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
+    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1106-c · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
     <div class="desc">학원 전체 <b>초·중등 재원생 중 강의실이 '어학실'인 수업을 듣는 학생</b>(${cand.length}명, 어학실 수업이 있는 반 ${csLabClassNames(a).size}개)을 자리 ${seatCount}개에 자동으로 배치합니다. <b>같은 학년끼리</b>, <b>같은 반끼리</b>는 옆·앞뒤 자리에 앉지 않게 짜고, 학년·반은 학생 명단과 시간표(반)를 그대로 따릅니다. <b>어학실 이용 시간이 겹치지 않는 학생</b>은 같은 학년·같은 반이어도 옆자리에 앉을 수 있고, 한 자리(컴퓨터)를 시간대별로 나눠 써도 돼요(자리 칸 안에 학생이 여러 명 보여요). 수동으로는 학생을 눌러 고른 뒤 자리나 다른 학생을 누르면 옮기거나 서로 바꿔요. 빨간 테두리(⚠)는 규칙에 걸린 곳입니다.</div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:10px 0 0;font-size:.84rem"><b>📅 기간</b>
       <select data-csperiod style="padding:5px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${periods.map(x=>`<option value="${esc(x[0])}" ${x[0]===pkey?'selected':''}>${esc(x[1])}</option>`).join('')}</select>
@@ -7542,7 +7542,7 @@ function bindConsult(){
   if(auto) auto.onclick= async ()=>{
     for(const a of academies()){
       const ts=store.teachers[a]; if(!ts.length) continue;
-      const cls=filtered().filter(c=>c.academy===a);
+      const cls=filtered().filter(c=>c.academy===a&&c.students&&c.students.length>0); // 학생이 0명인 반은 상담 배정에서 제외
       const load=ts.map((_,i)=>cls.filter(c=>mAssign()[ckey(c)]===i).length);
       cls.filter(c=>mAssign()[ckey(c)]==null).forEach(c=>{
         const i=load.indexOf(Math.min(...load)); mAssign()[ckey(c)]=i; load[i]++;
@@ -16598,10 +16598,11 @@ function reportHTML(){
     boxes=rBoxes([['수업 반',cls.length+'개'],['출석',pres+' / '+tot+'명','#0e9f6e'],['숙제 완료',hwd+' / '+tot+'명']]);
     body=repToday(list);
   } else if(state.tab==='consult'){
-    let tot=0,d=0; list.forEach(c=>{const p=classProgress(c);tot+=p.total;d+=p.done;});
-    const un=list.filter(c=>mAssign()[ckey(c)]==null).length;
-    boxes=rBoxes([['대상 반',list.length+'개'],['상담 완료',d+' / '+tot+'명', d===tot&&tot?'#0e9f6e':'#1c2740'],['담당 미배정',un+'개 반', un?'#b45309':'#0e9f6e']]);
-    body=repConsult(list);
+    const cl=list.filter(c=>c.students&&c.students.length>0); // 학생 0명 반은 상담 대상 아님
+    let tot=0,d=0; cl.forEach(c=>{const p=classProgress(c);tot+=p.total;d+=p.done;});
+    const un=cl.filter(c=>mAssign()[ckey(c)]==null).length;
+    boxes=rBoxes([['대상 반',cl.length+'개'],['상담 완료',d+' / '+tot+'명', d===tot&&tot?'#0e9f6e':'#1c2740'],['담당 미배정',un+'개 반', un?'#b45309':'#0e9f6e']]);
+    body=repConsult(cl);
   } else if(state.tab==='attend'){ body=repAttend(list); }
   else if(state.tab==='report'){ body = state.rkind==='weekly' ? repWorkWeekly(state.date) : repWorkDaily(state.date); }
   else if(state.tab==='roster'){ body=repRosterSchoolGrade(); }
@@ -16802,7 +16803,7 @@ function renderInner(keepOpen){
     const srcs=[]; if(state.tab!=='yearly'&&state.tab!=='set') classesFor(state.month).forEach(c=>{ if(c._src!==state.month){ const tag=AC[c.academy].label+'|'+c._src; if(!srcs.includes(tag)) srcs.push(tag);} });
     const srcEl=document.getElementById('srcnote');
     if(srcEl) srcEl.textContent = (loginTeacher()||!srcs.length)? '' : srcs.length? '※ 선택한 달의 교재 자료가 없어 최근 자료를 표시 중: '+srcs.map(s=>{const[l,m]=s.split('|');return l+' '+mLabel(m)+' 자료';}).join(' / ') : '';
-    const un=classesFor(state.month).filter(c=>!c.examOnly && !(store.assign[state.month]&&store.assign[state.month][ckey(c)]!=null)).length; // 내신전용반은 [상담] 탭 목록에 아예 안 뜨므로 미배정 개수에도 넣지 않는다
+    const un=classesFor(state.month).filter(c=>!c.examOnly && c.students && c.students.length>0 && !(store.assign[state.month]&&store.assign[state.month][ckey(c)]!=null)).length; // 내신전용반은 [상담] 탭 목록에 아예 안 뜨므로 미배정 개수에도 넣지 않는다
     const pd=document.getElementById('pending');
     if(pd){ pd.style.display=un?'':'none'; pd.textContent=un; }
   }catch(tailErr){ console.error('렌더 마무리 단계 오류', tailErr); }
