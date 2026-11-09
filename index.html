@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>이베스트 (본관) — 선생님용 대시보드 · v1106-h</title>
+<title>이베스트 (본관) — 선생님용 대시보드 · v1106-k</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%96%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">
@@ -3362,7 +3362,7 @@ let rmS=null;
 function rmClassNames(v,a){ const set=new Set(); classesFor(state.month).filter(c=>c.academy===a&&!c._deleted).forEach(c=>set.add(c.name)); v.classes.filter(c=>c.a===a).forEach(c=>set.add(c.name)); return [...set].sort((x,y)=>classOrderCmp(a,x,y)||String(x).localeCompare(String(y),'ko',{numeric:true})); }
 function rmRender(){
   const v=(store.ttVersions||[]).find(x=>x.id===state.ttVer); if(!v||!rmS) return; let m=document.getElementById('rmModal');
-  if(!m){ m=document.createElement('div'); m.id='rmModal'; m.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:3000;display:flex;align-items:flex-start;justify-content:center;padding:16px;overflow:auto'; m.onclick=e=>{ if(e.target===m){ m.remove(); rmS=null; } }; document.body.appendChild(m); }
+  if(!m){ m=document.createElement('div'); m.id='rmModal'; m.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:3000;display:flex;align-items:flex-start;justify-content:center;padding:16px;overflow:auto'; document.body.appendChild(m); }
   const a=rmS.a; const names=rmClassNames(v,a); const live=classesFor(state.month).filter(c=>c.academy===a&&!c._deleted&&!c.examOnly).sort((x,y)=>classOrderCmp(a,x.name,y.name)||String(x.name).localeCompare(String(y.name),'ko',{numeric:true}));
   if(!rmS.src||!live.some(c=>c.name===rmS.src)) rmS.src=(live[0]||{}).name||'';
   const sc=live.find(c=>c.name===rmS.src); const studs=sc?(sc.students||[]).filter(n=>!isWithdrawnRosterName(a,n,sc.name)):[];
@@ -3433,7 +3433,7 @@ function ttVerNewClassModal(){
     <div style="display:flex;gap:8px"><div style="flex:1"><label style="font-size:.76rem;font-weight:700">과목</label><input id="ncSub" style="${inp}"></div><div style="flex:1"><label style="font-size:.76rem;font-weight:700">시간</label><input id="ncTime" placeholder="6:05-7:25" style="${inp}"></div></div>
     <div style="display:flex;gap:8px"><div style="flex:1"><label style="font-size:.76rem;font-weight:700">강의실</label><input id="ncRoom" style="${inp}"></div><div style="flex:1"><label style="font-size:.76rem;font-weight:700">선생님</label><select id="ncT" style="${inp}"><option value="">없음</option>${(store.teachers[ac0]||[]).map(t=>`<option>${esc(t.name)}</option>`).join('')}</select></div></div>
     <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn small" id="ncCancel">취소</button><button class="btn primary small" id="ncSave">추가</button></div></div>`;
-  document.body.appendChild(m); m.onclick=e=>{ if(e.target===m) m.remove(); }; m.querySelector('#ncCancel').onclick=()=>m.remove();
+  document.body.appendChild(m); m.querySelector('#ncCancel').onclick=()=>m.remove();
   m.querySelector('#ncSave').onclick=()=>{ const a=(m.querySelector('#ncA')||{value:ac0}).value, name=m.querySelector('#ncName').value.trim(), sub=m.querySelector('#ncSub').value.trim(), time=m.querySelector('#ncTime').value.replace(/\s/g,'');
     const days=[...m.querySelectorAll('[data-ncd]')].filter(x=>x.checked).map(x=>x.dataset.ncd);
     if(!name){ alert('반 이름을 입력해주세요.'); return; } if(v.classes.some(c=>c.a===a&&c.name===name)){ alert('이 버전에 이미 있는 반 이름이에요.'); return; }
@@ -3454,7 +3454,7 @@ function ttVerModal(id){
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 8px">${TTG_DAYS.slice(0,6).map(d=>`<label style="font-size:.84rem"><input type="checkbox" data-tvd="${d}" ${dsel.includes(d)?'checked':''}> ${d}</label>`).join('')}</div>
     <div style="font-size:.72rem;color:var(--sub);margin-bottom:8px">예) 기간 11/10~11/14, 요일 화·목 → 그 기간의 화·목요일만 이 버전 시간표로 바뀌고 나머지 요일은 그대로예요. 기간 안의 오늘인 버전은 목록에 ● 로 표시돼요.</div>
     <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn small" id="tvCancel">취소</button><button class="btn primary small" id="tvSave">저장</button></div></div>`;
-  document.body.appendChild(m); m.onclick=e=>{ if(e.target===m) m.remove(); }; m.querySelector('#tvCancel').onclick=()=>m.remove();
+  document.body.appendChild(m); m.querySelector('#tvCancel').onclick=()=>m.remove();
   m.querySelector('#tvSave').onclick=()=>{ const name=m.querySelector('#tvName').value.trim(), st=m.querySelector('#tvStart').value; let en=m.querySelector('#tvEnd').value;
     if(m.querySelector('#tvOne').checked && st) en=st;
     const days=[...m.querySelectorAll('[data-tvd]')].filter(x=>x.checked).map(x=>x.dataset.tvd);
@@ -3573,7 +3573,7 @@ function ttgTeacherStats(classes){
   // 선생님별 주간 수업 시간: 같은 요일·같은 시간대는 한 번만 센다(합반·같은 시간 중복 방지)
   const st={}; const seen=new Set();
   classes.forEach(c=>{ (c.subjects||[]).forEach(s=>{
-    const t=String(s.teacher||'').trim(); const r=parseRange(s.time); if(!t||!r||!s.subject) return;
+    const t=String(s.teacher||'').trim(); const r=parseRange(s.time); if(!t||!r||!s.subject||isWordTestSubject(s)) return; // 단어시험 타임은 수업 시간에 넣지 않는다
     ttgDayList(c,s).forEach(d=>{ const k=t+'|'+d+'|'+r[0]+'|'+r[1]; if(seen.has(k)) return; seen.add(k);
       const o=st[t]=st[t]||{min:0,n:0,days:{}}; const m=Math.round((r[1]-r[0])*60); o.min+=m; o.n++; o.days[d]=(o.days[d]||0)+m; });
   }); });
@@ -3583,7 +3583,7 @@ function ttgFmtMin(m){ const h=Math.floor(m/60), mm=m%60; return h?(h+'시간'+(
 function ttgTeacherPanel(a,cls){
   const st=ttgTeacherStats(cls); const names=Object.keys(st); if(!names.length) return '';
   const rows=(store.teachers[a]||[]).map(t=>t.name).filter(n=>st[n]).concat(names.filter(n=>!(store.teachers[a]||[]).some(t=>t.name===n)));
-  return `<div style="background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:12px"><b style="font-size:.88rem">⏱ 선생님별 주간 수업 시간</b> <span style="font-size:.72rem;color:var(--sub)">(같은 시간대는 한 번만 계산 · 수정하면 바로 갱신)</span>
+  return `<div style="background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:12px"><b style="font-size:.88rem">⏱ 선생님별 주간 수업 시간</b> <span style="font-size:.72rem;color:var(--sub)">(같은 시간대는 한 번만 계산 · 단어시험 제외 · 수정하면 바로 갱신)</span>
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">${rows.map(n=>{ const o=st[n]; const hex=ttgTeacherColorHex(a,n)||'#e5e7eb'; const fg=ttgIsDarkColor(hex)?'#fff':'#000';
       return `<div style="border:1px solid var(--line);border-radius:10px;padding:6px 10px;min-width:150px"><span style="background:${hex};color:${fg};font-weight:800;font-size:.8rem;border-radius:999px;padding:2px 10px">${esc(n)}</span>
         <div style="font-weight:800;margin-top:4px">${ttgFmtMin(o.min)} <span style="font-weight:600;color:var(--sub);font-size:.74rem">· ${o.n}타임</span></div>
@@ -3747,7 +3747,6 @@ function ttgOpenEditor(i){
   document.body.appendChild(m);
   let tSel=curT;
   m.querySelectorAll('[data-tgeT]').forEach(b=>b.onclick=()=>{ tSel=b.dataset.tget!==undefined?b.dataset.tget:b.getAttribute('data-tgeT'); m.querySelectorAll('[data-tgeT]').forEach(x=>x.style.borderColor=(x.getAttribute('data-tgeT')===tSel)?'#111':'transparent'); });
-  m.onclick=e=>{ if(e.target===m) ttgEdClose(); };
   m.querySelector('#tgeCancel').onclick=ttgEdClose;
   const owner=h=>ttgOwner(h.own);
   const locate=(oc,h)=>{ if(!oc) return null; let i=(oc.subjects||[]).indexOf(h.ref); if(i<0) i=(oc.subjects||[]).findIndex(x=>x.subject===h.ref.subject&&x.time===h.ref.time&&x.day===h.ref.day); return i<0?null:oc.subjects[i]; };
@@ -3853,7 +3852,7 @@ function renderTimetableGrid(list){
         const sameHit=(h1,h2)=>{ if(!h1||!h2) return false; const q1=paint(h1), q2=paint(h2); return q1.txt===q2.txt && q1.bg===q2.bg; }; // 화면에 똑같이 보이면 같은 칸으로 본다 (단어시험은 강의실·담당 약자만 같으면 합침)
         const paint=(h)=>{
           if(h.isWordTest){ const code=ttgTeacherCode(a, h.teacher); const txt=h.room?(code?`${h.room}(${code})`:h.room):(code?`단어시험(${code})`:'단어시험'); return {bg:'#d9d9d9', fg:'#000', txt}; }
-          const hex=ttgTeacherColorHex(a, h.teacher);
+          const isLc=/^(ibt|l\/c)$/i.test(String(h.subject).replace(/\s/g,'')); const hex=isLc?'':ttgTeacherColorHex(a, h.teacher); // IBT·L/C는 배경색 없이(눈 편하게)
           // 강의실이 있는 수업은 "(강의실)과목"으로 표시 — 어학실에서 하는 수업(IBT·L/C 등)은 강의실 표기 없이 과목만
           const rm=String(h.room||'').replace(/강의실|호|\s/g,''); const showRm=rm && !rm.includes('어학실') && !isLabSubject(h.subject);
           return {bg:hex||'', fg:hex?(ttgIsDarkColor(hex)?'#fff':'#000'):'', txt:(showRm?'('+rm+')':'')+h.subject};
@@ -7176,7 +7175,7 @@ function renderSeat(){
   const noLevel=store.students.filter(st=>st.academy===a && !st._deleted && (st.status||'재원')==='재원' && !['초','중'].includes(csLevelOf(st)) && csLevelOf(st)!=='고').length;
   const labNone=csLabClassNames(a).size===0;
   return `<div class="setsec" style="border:2px solid #2e5fb7">
-    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1106-h · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
+    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1106-k · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
     <div class="desc">학원 전체 <b>초·중등 재원생 중 강의실이 '어학실'인 수업을 듣는 학생</b>(${cand.length}명, 어학실 수업이 있는 반 ${csLabClassNames(a).size}개)을 자리 ${seatCount}개에 자동으로 배치합니다. <b>같은 학년끼리</b>, <b>같은 반끼리</b>는 옆·앞뒤 자리에 앉지 않게 짜고, 학년·반은 학생 명단과 시간표(반)를 그대로 따릅니다. <b>어학실 이용 시간이 겹치지 않는 학생</b>은 같은 학년·같은 반이어도 옆자리에 앉을 수 있고, 한 자리(컴퓨터)를 시간대별로 나눠 써도 돼요(자리 칸 안에 학생이 여러 명 보여요). 수동으로는 학생을 눌러 고른 뒤 자리나 다른 학생을 누르면 옮기거나 서로 바꿔요. 빨간 테두리(⚠)는 규칙에 걸린 곳입니다.</div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:10px 0 0;font-size:.84rem"><b>📅 기간</b>
       <select data-csperiod style="padding:5px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${periods.map(x=>`<option value="${esc(x[0])}" ${x[0]===pkey?'selected':''}>${esc(x[1])}</option>`).join('')}</select>
