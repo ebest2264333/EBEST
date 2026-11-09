@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>이베스트 (본관) — 선생님용 대시보드 · v1106-l</title>
+<title>이베스트 (본관) — 선생님용 대시보드 · v1106-n</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%96%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">
@@ -3785,7 +3785,7 @@ function renderTimetableGrid(list){
   const classes=list.filter(c=>!c.examOnly && !c._deleted);
   const acs=academies().filter(a=>classes.some(c=>c.academy===a));
   const gd=state.ttGridDay||'all';
-  const chips=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;align-items:center">
+  const chips=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;align-items:center;${edit?'position:sticky;top:0;z-index:30;background:#fff;padding:8px 6px;border-bottom:2px solid #6d28d9;box-shadow:0 2px 6px rgba(0,0,0,.08)':''}">
     <button class="chip ${gd==='all'?'on':''}" data-ttgday="all">전체 요일</button>
     ${TTG_DAYS.map(d=>`<button class="chip ${gd===d?'on':''}" data-ttgday="${d}">${d}요일</button>`).join('')}
     ${admin?(edit?`<span style="margin-left:auto;display:flex;gap:6px"><button class="chip" data-ttcancel="1" style="font-weight:800">✖ 취소(되돌리기)</button><button class="chip on" data-ttdone="1" style="font-weight:800;background:#16a34a;border-color:#16a34a">✔ 완료 (적용)</button></span>`:`<button class="chip" data-ttedit="1" style="margin-left:auto;font-weight:800">✎ 수정모드</button>`):''}
@@ -7175,7 +7175,7 @@ function renderSeat(){
   const noLevel=store.students.filter(st=>st.academy===a && !st._deleted && (st.status||'재원')==='재원' && !['초','중'].includes(csLevelOf(st)) && csLevelOf(st)!=='고').length;
   const labNone=csLabClassNames(a).size===0;
   return `<div class="setsec" style="border:2px solid #2e5fb7">
-    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1106-l · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
+    <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1106-n · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
     <div class="desc">학원 전체 <b>초·중등 재원생 중 강의실이 '어학실'인 수업을 듣는 학생</b>(${cand.length}명, 어학실 수업이 있는 반 ${csLabClassNames(a).size}개)을 자리 ${seatCount}개에 자동으로 배치합니다. <b>같은 학년끼리</b>, <b>같은 반끼리</b>는 옆·앞뒤 자리에 앉지 않게 짜고, 학년·반은 학생 명단과 시간표(반)를 그대로 따릅니다. <b>어학실 이용 시간이 겹치지 않는 학생</b>은 같은 학년·같은 반이어도 옆자리에 앉을 수 있고, 한 자리(컴퓨터)를 시간대별로 나눠 써도 돼요(자리 칸 안에 학생이 여러 명 보여요). 수동으로는 학생을 눌러 고른 뒤 자리나 다른 학생을 누르면 옮기거나 서로 바꿔요. 빨간 테두리(⚠)는 규칙에 걸린 곳입니다.</div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:10px 0 0;font-size:.84rem"><b>📅 기간</b>
       <select data-csperiod style="padding:5px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${periods.map(x=>`<option value="${esc(x[0])}" ${x[0]===pkey?'selected':''}>${esc(x[1])}</option>`).join('')}</select>
@@ -16685,7 +16685,8 @@ document.getElementById('xlsBtn').onclick=()=>{
 /* ---------- 렌더 ---------- */
 // 어떤 버튼을 눌러 화면을 다시 그려도 스크롤이 맨 위로 돌아가지 않도록 — 같은 탭 안에서는 다시 그리기 전후로
 // 페이지 스크롤과 안쪽 스크롤 칸(표·목록)의 위치를 기억했다가 복원한다. 탭을 바꿀 때만 맨 위에서 시작한다.
-var _lastRenderTab=null;
+var _lastRenderTab=null; var _lastUserScrollAt=0;
+['wheel','touchmove','keydown','mousedown'].forEach(ev=>window.addEventListener(ev,()=>{ _lastUserScrollAt=Date.now(); },{passive:true,capture:true})); // 사람이 직접 스크롤·조작한 시각 — 화면 다시 그린 뒤 위치 복원이 사용자 조작을 덮어쓰지 않게
 function render(keepOpen){
   const v=document.getElementById('view');
   const same=(_lastRenderTab===state.tab);
@@ -16725,6 +16726,9 @@ function render(keepOpen){
         window.scrollTo(x,y);
         v.style.minHeight='';
         if(Math.abs(window.scrollY-y)>2) window.scrollTo(x,y);
+        if(keepOpen){ // 폰·태블릿 브라우저는 화면을 다시 그린 직후 위치를 한 번 더 맨 위/이전 위치로 돌려놓는 일이 있어, 사용자가 직접 움직이지 않았다면 잠시 뒤 다시 맞춘다
+          const t0=Date.now(); const again=()=>{ if(_lastUserScrollAt>=t0) return; if(Math.abs(window.scrollY-y)>2) window.scrollTo(x,y); };
+          requestAnimationFrame(again); setTimeout(again,60); setTimeout(again,250); setTimeout(again,700); }
       }
     }catch(e){ if(v) v.style.minHeight=''; }
   }
