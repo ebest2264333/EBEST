@@ -10967,6 +10967,17 @@ function hgApplyGroupOrder(g, defaultGroups){
   defaultGroups.forEach(gr=>{ if(!used.has(gr.key)){ ordered.push(gr); used.add(gr.key); } });
   return ordered;
 }
+// 반(그룹) 하나를 다른 반 자리로 옮긴다 — 끌어서 놓은 반 앞(위로 올릴 때) 또는 뒤(아래로 내릴 때)에 들어간다
+function hgMoveGroupTo(a, targetMonth, key, targetKey){
+  if(key===targetKey) return false;
+  const prevMonth=shiftMonth(targetMonth,-1);
+  const g=handoverGridFor(a, targetMonth); if(!g) return false;
+  const defaultGroups=hgDefaultGroups(a, prevMonth, targetMonth, g.rows||[], g);
+  const keys=hgApplyGroupOrder(g, defaultGroups).map(x=>x.key);
+  const from=keys.indexOf(key), to=keys.indexOf(targetKey); if(from<0||to<0) return false;
+  keys.splice(from,1); keys.splice(to,0,key);
+  g.groupOrder=keys; g.updatedAt=Date.now(); save(); return true;
+}
 // 반(그룹) 하나를 위/아래로 옮긴다 — dir: -1 위로, 1 아래로
 function hgMoveGroup(a, targetMonth, key, dir){
   const prevMonth=shiftMonth(targetMonth,-1);
@@ -11125,12 +11136,12 @@ function renderHandoverGrid(){
         <button type="button" data-hgsplittarget="${esc(g2.key)}" title="반이 나뉘어서 과목마다 다음달 반명이 다를 때 — 과목별로 따로 입력하게 바꾸기" style="flex:none;border:none;background:#e6e9f0;color:#5a6478;border-radius:4px;padding:0 4px;font-size:.62rem;cursor:pointer;line-height:1.6">✂️</button>
       </div>
     </td>`:'');
-      return `<tr>
+      return `<tr data-hggrp="${esc(g2.key)}">
     <td style="border:1px solid var(--line);padding:6px;text-align:center"><input type="checkbox" data-hgmergesel="${r.id}"></td>
-    ${ri===0?`<td rowspan="${g2.rows.length}" style="border:1px solid var(--line);padding:6px;text-align:center;font-weight:800;background:#f6f8fc;vertical-align:middle">
+    ${ri===0?`<td class="hg-gcell" data-hggrip="${esc(g2.key)}" draggable="true" title="이 칸 아무 데나 잡고 끌어서 반 순서 옮기기" rowspan="${g2.rows.length}" style="border:1px solid var(--line);padding:6px;text-align:center;font-weight:800;background:#f6f8fc;vertical-align:middle">
       <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px">
         <div style="display:flex;align-items:center;gap:4px">
-          <div style="display:flex;flex-direction:column;gap:1px">${hgUpBtn}${hgDownBtn}</div>
+          <span class="hg-grip">⠿</span>
           <span>${esc(g2.key)}</span>
         </div>
         ${g2.mergeKeyId?`<button type="button" data-hgclassunmerge="${esc(g2.mergeKeyId)}" title="반 통째로 합치기 해제 — 원래의 각 반으로 다시 나눕니다" style="border:none;background:#e6e9f0;color:#b45309;border-radius:4px;padding:1px 5px;font-size:.6rem;cursor:pointer;white-space:nowrap">✕ 합치기 해제</button>`:''}
@@ -11160,8 +11171,20 @@ function bindHandoverGrid(){
     if(!confirm(msg)) return;
     regenHandoverGrid(a, state.hgMonth, myName); render(true);
   };
-  v.querySelectorAll('[data-hggroupup]').forEach(btn=>btn.onclick=()=>{ if(btn.disabled) return; hgMoveGroup(a, state.hgMonth, btn.dataset.hggroupup, -1); render(true); });
-  v.querySelectorAll('[data-hggroupdown]').forEach(btn=>btn.onclick=()=>{ if(btn.disabled) return; hgMoveGroup(a, state.hgMonth, btn.dataset.hggroupdown, 1); render(true); });
+  { // ⠿ 잡고 끌어서 반 순서 옮기기 (시간표 옮기기와 같은 방식)
+    let dragKey=null; const clr=()=>v.querySelectorAll('tr.hg-over').forEach(t=>t.classList.remove('hg-over'));
+    v.querySelectorAll('[data-hggrip]').forEach(gp=>{
+      gp.addEventListener('dragstart',e=>{ dragKey=gp.dataset.hggrip; e.dataTransfer.setData('text/plain','hg:'+dragKey); e.dataTransfer.effectAllowed='move';
+        try{ const tr=gp.closest('tr'); if(tr) e.dataTransfer.setDragImage(tr,20,16); }catch(_){} });
+      gp.addEventListener('dragend',()=>{ dragKey=null; clr(); });
+    });
+    v.querySelectorAll('tr[data-hggrp]').forEach(tr=>{
+      tr.addEventListener('dragover',e=>{ if(dragKey===null) return; e.preventDefault(); e.dataTransfer.dropEffect='move';
+        clr(); if(tr.dataset.hggrp!==dragKey) v.querySelectorAll('tr[data-hggrp]').forEach(t=>{ if(t.dataset.hggrp===tr.dataset.hggrp) t.classList.add('hg-over'); }); });
+      tr.addEventListener('drop',e=>{ if(dragKey===null) return; e.preventDefault(); const k=dragKey; dragKey=null; clr();
+        if(hgMoveGroupTo(a, state.hgMonth, k, tr.dataset.hggrp)) render(true); });
+    });
+  }
   v.querySelectorAll('[data-hgfield]').forEach(inp=>inp.onchange=()=>{
     const [rid,field]=inp.dataset.hgfield.split('|');
     const g=handoverGridFor(a, state.hgMonth); if(!g) return;
@@ -11644,6 +11667,7 @@ const YS_CSS=`<style>
 .ystb td.today{outline:2px solid #6d28d9;outline-offset:-2px}
 .ysd{font-weight:700;font-size:.74rem;display:flex;gap:4px;align-items:baseline;flex-wrap:wrap}
 .ysh{font-size:.58rem;font-weight:600;color:#d64545;line-height:1.1}
+.hg-gcell{cursor:grab;user-select:none}.hg-gcell:active{cursor:grabbing}.hg-grip{color:#6b7690;font-size:.95rem;line-height:1;padding:2px 3px;border-radius:4px;user-select:none}.hg-grip:hover{background:#e6e9f0;color:#333}.hg-grip:active{cursor:grabbing}tr.hg-over>td{background:#ede9fe!important;box-shadow:inset 0 2px 0 #6d28d9}
 .yschip[draggable=true]{cursor:grab}.ystb td.ysover{background:#ede9fe}
 .ysev{font-size:.6rem;font-weight:700;color:#fff;border-radius:4px;padding:1px 4px;margin-top:2px;line-height:1.2;white-space:normal;word-break:keep-all}
 .yschip{font-size:.6rem;font-weight:800;border:1px solid;border-radius:5px;padding:1px 3px;margin-top:2px;line-height:1.2;white-space:normal}
