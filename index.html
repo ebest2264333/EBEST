@@ -1765,6 +1765,13 @@ function migrateClassKey(oldKey, newKey, month){
 // c.wordTestOn이 명시적으로 설정돼 있지 않은 기존 반은 "모의고사가 꺼져있으면 단어시험은 켜진 것"이라는 기존 동작을 그대로 유지한다(하위호환).
 function classWordTestOn(c){ if(!c) return true; return c.wordTestOn===true || (c.wordTestOn!==false && !c.mockExamOn); }
 function classMockExamOn(c){ return !!(c && c.mockExamOn); }
+// 📖 내신 단어(추가 단어시험 칸) — 🎓 내신(모의고사)와 함께 켜지고 꺼진다.
+function classNsWordOn(c){ return classMockExamOn(c); } // 🎓 내신(모의고사)를 켜면 내신단어 입력 칸이 자동으로 같이 나타난다
+function toggleNsWordOn(a,m,id){
+  const c=findClassById(a,m,id); if(!c) return;
+  c.nsWordOn=!classNsWordOn(c); c.updatedAt=Date.now();
+  save(); render(true);
+}
 function toggleMockExamOn(a,m,id){
   const c=findClassById(a,m,id); if(!c) return;
   c.mockExamOn=!c.mockExamOn;
@@ -3200,7 +3207,8 @@ function classCard(c, admin, dayFilter, dupCount){
       </label>
       <label title="체크하면 이 반에서 모의고사(회차 선택) 점수를 입력할 수 있습니다. 단어시험과 동시에 체크하면 둘 다 입력란이 나타납니다." style="display:flex;align-items:center;gap:4px;font-size:.8rem;font-weight:700;background:${mOn?'#7c3aed':'#fff'};color:${mOn?'#fff':'#333'};border:1px solid ${mOn?'#7c3aed':'var(--line)'};border-radius:7px;padding:6px 9px;cursor:pointer">
         <input type="checkbox" data-mockexamcb ${attrs} ${mOn?'checked':''} style="margin:0">🎓 내신 (모의고사)
-      </label>`; })()}
+      </label>
+`; })()}
       <select data-cfield="wordDuty" ${attrs} title="${classWordTestOn(c)&&classMockExamOn(c)?'단어시험·모의고사':classMockExamOn(c)?'모의고사':'단어시험'} 담당 선생님" style="padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;background:#fff8ec">
         <option value="">${classWordTestOn(c)&&classMockExamOn(c)?'📖🎓 단어·모의고사':classMockExamOn(c)?'🎓 모의고사':'📖 단어시험'} 담당 미지정</option>
         ${(store.teachers[c.academy]||[]).map(t=>`<option value="${t.id}" ${c.wordDuty===t.id?'selected':''}>${classWordTestOn(c)&&classMockExamOn(c)?'📖🎓':classMockExamOn(c)?'🎓':'📖'} ${esc(t.name)}</option>`).join('')}
@@ -5077,7 +5085,7 @@ function wtFieldsFor(s, date){
   };
   // 📖 내신 단어 — 고등부만: 기본 단어시험·모의고사와 별개로 내신 단어를 한 번 더 본다(단어장·범위·점수를 따로 기록)
   const nsBlock=()=>{
-    if(!studentIsHigh(s)) return '';
+    if(cls ? !classNsWordOn(cls) : !studentIsHigh(s)) return '';
     const st='padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;'+dim;
     const opts=[...wbOptionsFor(s.academy)].sort((a,b)=>(String(b).includes('내신')?1:0)-(String(a).includes('내신')?1:0));
     return `<span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:4px 6px;background:#ecfdf5;border-radius:8px"><b style="font-size:.78rem;color:#047857">📖 내신단어</b>
@@ -5584,19 +5592,19 @@ function renderBookStock(){
   const TH='position:sticky;top:0;background:#e8ecf3;border:1px solid #c5ccd8;padding:6px 8px;font-weight:800;text-align:center;white-space:nowrap';
   const TD='border:1px solid #d5dae3;padding:6px 8px';
   Object.keys(byAc).forEach(a=>{
-    h+=`<div style="margin-bottom:16px"><div style="font-weight:800;margin-bottom:4px">${AC[a]?AC[a].label:a}</div><div style="overflow:auto;max-height:70vh;border:1px solid #c5ccd8;border-radius:6px"><table style="border-collapse:collapse;font-size:.86rem;min-width:100%;background:#fff">
+    h+=`<div style="margin-bottom:16px"><div style="font-weight:800;margin-bottom:4px">${AC[a]?AC[a].label:a}</div><div style="overflow:auto;max-height:70vh;border:1px solid #c5ccd8;border-radius:6px"><table style="border-collapse:collapse;font-size:.86rem;min-width:100%;background:#fff;table-layout:auto">
       <thead><tr><th style="${TH};width:34px;background:#dfe4ee"></th>${['품목','분류','단가','입고 합계','출고 합계','현재고',mLabel(nmonth)+' 필요','부족','주문 기준','상태',''].map((t,ti)=>`<th style="${TH}${ti===1?';min-width:130px':''}${ti===10?';width:150px':''}">${t}</th>`).join('')}</tr></thead><tbody>`;
     byAc[a].forEach((it,i)=>{
       if(it._virtual){ const ui=window.__bkUnreg.findIndex(u=>u.academy===it.academy&&u.name===it.name);
-        return void(h+=`<tr style="background:#fffdf5"><td style="${TD};background:#eef1f6;color:#7a8499;text-align:center;font-size:.74rem">${i+1}</td><td style="${TD};font-weight:700">${esc(it.name)}</td><td style="${TD};text-align:center;white-space:nowrap">${it.cat}</td><td style="${TD};text-align:right">-</td><td style="${TD};text-align:right;color:#8b93a7">-</td><td style="${TD};text-align:right;color:#8b93a7">-</td><td style="${TD};text-align:right;color:#8b93a7">-</td><td style="${TD};text-align:right">${it.need||'-'}</td><td style="${TD}"></td><td style="${TD};text-align:right">-</td><td style="${TD};text-align:center"><span style="background:#fff4e0;border:1px solid #f5c77e;border-radius:6px;padding:2px 7px;font-size:.72rem">재고 미입력</span></td><td style="${TD};text-align:center">${admin?`<button class="btn small" data-bkreg="${ui}">재고 입력</button>`:''}</td></tr>`); }
+        return void(h+=`<tr style="background:#fffdf5"><td style="${TD};background:#eef1f6;color:#7a8499;text-align:center;font-size:.74rem">${i+1}</td><td style="${TD};font-weight:700">${esc(it.name)}</td><td style="${TD};text-align:center;white-space:nowrap">${it.cat}</td><td style="${TD};text-align:center">-</td><td style="${TD};text-align:center;color:#8b93a7">-</td><td style="${TD};text-align:center;color:#8b93a7">-</td><td style="${TD};text-align:center;color:#8b93a7">-</td><td style="${TD};text-align:center">${it.need||'-'}</td><td style="${TD}"></td><td style="${TD};text-align:center">-</td><td style="${TD};text-align:center"><span style="background:#fff4e0;border:1px solid #f5c77e;border-radius:6px;padding:2px 7px;font-size:.72rem">재고 미입력</span></td><td style="${TD};text-align:center">${admin?`<button class="btn small" data-bkreg="${ui}">재고 입력</button>`:''}</td></tr>`); }
       const c=bkCalc(it,NM); const bg=c.low?'#fff1f1':(i%2?'#fafbfd':'#fff');
       h+=`<tr style="background:${bg}"><td style="${TD};background:#eef1f6;color:#7a8499;text-align:center;font-size:.74rem">${i+1}</td>
         <td style="${TD};font-weight:700">${esc(it.name)}</td><td style="${TD};text-align:center;white-space:nowrap">${esc(bkCatLabel(it))}</td>
-        <td style="${TD};text-align:right">${it.price?fmtWon(it.price):'-'}</td>
-        <td style="${TD};text-align:right">${c.inn}</td><td style="${TD};text-align:right">${c.man+c.auto}</td>
-        <td style="${TD};text-align:right;font-weight:800;font-size:1rem;color:${c.low?'#dc2626':c.stock<0?'#b45309':'var(--ink)'}">${c.stock}</td>
-        <td style="${TD};text-align:right">${c.need?c.need:'-'}</td><td style="${TD};text-align:right;font-weight:800;color:#dc2626">${c.lack?c.lack:''}</td>
-        <td style="${TD};text-align:right">${c.min?c.min+'권 미만':'-'}</td>
+        <td style="${TD};text-align:center">${it.price?fmtWon(it.price):'-'}</td>
+        <td style="${TD};text-align:center">${c.inn}</td><td style="${TD};text-align:center">${c.man+c.auto}</td>
+        <td style="${TD};text-align:center;font-weight:800;font-size:1rem;color:${c.low?'#dc2626':c.stock<0?'#b45309':'var(--ink)'}">${c.stock}</td>
+        <td style="${TD};text-align:center">${c.need?c.need:'-'}</td><td style="${TD};text-align:center;font-weight:800;color:#dc2626">${c.lack?c.lack:''}</td>
+        <td style="${TD};text-align:center">${c.min?c.min+'권 미만':'-'}</td>
         <td style="${TD};text-align:center">${c.low?`<span style="background:#dc2626;color:#fff;border-radius:6px;padding:2px 7px;font-size:.72rem;font-weight:800">${c.pend?(it.sub==='제본'?'추가 제본 필요':'추가 주문 필요'):(it.sub==='제본'?'제본 권장':'주문 권장')}</span>`:(c.pend?'':(c.min||c.need?'<span style="color:var(--ok);font-size:.76rem">충분</span>':''))}
           ${c.orders.map(o=>`<div style="margin-top:3px;background:${o.eta&&o.eta<todayISO()?'#fee2e2':'#fff4e0'};border:1px solid ${o.eta&&o.eta<todayISO()?'#fca5a5':'#f5c77e'};border-radius:6px;padding:2px 6px;font-size:.72rem;white-space:nowrap">📦 주문 ${o.qty}권 · 입고 대기${o.eta?' (~'+esc(o.eta.slice(5))+(o.eta<todayISO()?' ⏰지연':'')+')':''}${admin?` <button class="btn small" style="padding:1px 6px" data-bkrcv="${o.id}">✔ 도착</button> <button class="btn small" style="padding:1px 6px" data-bkocx="${o.id}" title="주문 취소">✕</button>`:''}</div>`).join('')}</td>
         <td style="${TD};text-align:center;width:150px"><div style="display:flex;flex-wrap:wrap;gap:3px;justify-content:center;max-width:150px;margin:0 auto"><button class="btn small" data-bkhist="${it.id}">내역</button>${admin?`<button class="btn small" data-bkord="${it.id}">${it.sub==='제본'?'🖨 제본함':'🛒 주문함'}</button><button class="btn small" data-bkin="${it.id}">＋입고</button><button class="btn small" data-bkout="${it.id}">－출고</button><button class="btn small" data-bked="${it.id}">✎</button>`:''}</div></td></tr>`;
