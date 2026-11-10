@@ -423,6 +423,7 @@ for(const k in store.bookdone){ if(store.bookdone[k]===true) store.bookdone[k]='
 if(!store.bookedit) store.bookedit={};
 if(!store.bookGiven) store.bookGiven={};
 if(!store.bookCatalog) store.bookCatalog=[]; // 교재 마스터 목록(이름+금액) — 관리자/실장이 목록을 만들어두고 학생에게 배정
+if(!store.bookCfg) store.bookCfg={orderDay:20}; // 교재 재고 설정 — orderDay: 다음달 교재 주문 권장이 뜨기 시작하는 날(매월 n일)
 if(!store.bookBilling) store.bookBilling=[]; // 교재비 청구 완료 기록 {id,sk(학생키),upTo(이 시각까지 배부분 청구),amount,count,date,by,_deleted}
 if(!store.bookOrders) store.bookOrders=[]; // 주문 대기 {id,itemId,qty,date,eta,received,receivedAt,by,_deleted}
 if(!store.bookNeed) store.bookNeed={}; // 다음달 교재 소요 — {YYYY-MM: {반키|과목키: {teacher:true, by, at}}} 교사용 필요 체크
@@ -682,11 +683,11 @@ store.syllabusSeeded=true; // 예전에 기본으로 들어있던 'Spider Phonic
 if(!store.examAnalysis) store.examAnalysis=[]; // 내신 분석 — {id, academy, school, grade, examTitle, examRange, examDate, prepStart, prepEnd, teacherLecture, teacherIBT, note, categories:[{name,count,questions:[{id,no,question,points,difficulty}]}], updatedAt, updatedBy} · 월 상관없이 항상 보임, 모든 선생님 열람·수정 가능(Syllabus처럼 보관용)
 if(!store.absentNotes) store.absentNotes={}; // 날짜별 결석생 요약의 '특이사항' 자유 메모 {YYYY-MM-DD: text}
 if(!store.examTrends) store.examTrends=[]; // 동향 분석 리포트 — {id, academy, school, grade, title, memo, source:'ai'|'upload', entryIds, snaps, files, report:{headline,strategy,metrics,changes,teaching}, aiModel, createdAt, updatedAt, createdBy, _deleted} · 내신 분석 탭 안의 두 번째 탭, AI로 만든 리포트는 자동 저장
-const SHARE_FIELDS=['bookBilling','bookOrders','bookNeed','bookGiveLog','bookStock','bookStockLog','wordBooks','uploads','bookedit','bookdone','daysedit','timeedit','calendar','calendarTombstones','calCatColors','meetings','teachers','adminEmail','enrollment','newStudents','dropouts','compSeats','classOrder','consultRoles','students','admissionConsults','wordTests','attend','homework','stayback','bookGiven','uploadTombstones','uploadStamps','wordbookOptions','testPaperOptions','giveSel','consultRequests','records','assign','cmemo','worklog','weekplan','submits','handover','boardPosts','handoverGrid','monthOverride','examAnalysis','examTrends','absentNotes','bookCatalog','tuitionCatalog','papercheckEnabled','papercheckCols','papercheckData','worklogMonthly','worklogWeekly','wlMemo','yearSched','ttVersions','ttVerAuto','classMoves'];
+const SHARE_FIELDS=['bookCfg','bookBilling','bookOrders','bookNeed','bookGiveLog','bookStock','bookStockLog','wordBooks','uploads','bookedit','bookdone','daysedit','timeedit','calendar','calendarTombstones','calCatColors','meetings','teachers','adminEmail','enrollment','newStudents','dropouts','compSeats','classOrder','consultRoles','students','admissionConsults','wordTests','attend','homework','stayback','bookGiven','uploadTombstones','uploadStamps','wordbookOptions','testPaperOptions','giveSel','consultRequests','records','assign','cmemo','worklog','weekplan','submits','handover','boardPosts','handoverGrid','monthOverride','examAnalysis','examTrends','absentNotes','bookCatalog','tuitionCatalog','papercheckEnabled','papercheckCols','papercheckData','worklogMonthly','worklogWeekly','wlMemo','yearSched','ttVersions','ttVerAuto','classMoves'];
 // syllabus(실러버스)는 PDF/한글/워드 첨부가 커서 별도 경로(/syllabus)로, 낮은 빈도로만 동기화합니다 — 그래야 매 5초/매 입력마다 전체를 전송하지 않습니다.
 // 반 자료·학생 명단처럼 "삭제"가 중요한 항목은 병합하지 않고 통째로 교체한다(마지막 저장이 우선).
 // 병합 방식(mergeById)에는 삭제라는 개념이 없어서, 지운 반·학생이 다른 기기 자료와 합쳐지며 계속 되살아나기 때문.
-const REPLACE_FIELDS=['wordBooks','papercheckEnabled','papercheckCols','papercheckData','yearSched','ttVersions','ttVerAuto','compSeats','classOrder','uploads','students','teachers','bookedit','bookdone','daysedit','timeedit','wordbookOptions','testPaperOptions','handoverGrid'];
+const REPLACE_FIELDS=['bookCfg','wordBooks','papercheckEnabled','papercheckCols','papercheckData','yearSched','ttVersions','ttVerAuto','compSeats','classOrder','uploads','students','teachers','bookedit','bookdone','daysedit','timeedit','wordbookOptions','testPaperOptions','handoverGrid'];
 // 출결·숙제 등은 여러 선생님이 동시에 서로 다른 학생을 입력하므로 기존처럼 병합해야 안전하다.
 function isReplaceField(f){ return REPLACE_FIELDS.includes(f); }
 // 각 항목을 마지막으로 편집한 시각 — 교체 방식에서 "누가 더 최신인지" 판단에 사용
@@ -5342,6 +5343,11 @@ function bkNeedMap(){ // 다음달 시간표 기준 교재별 필요 권수(학�
   return m;
 }
 function bkPending(itemId){ return (store.bookOrders||[]).filter(o=>!o._deleted && !o.received && o.itemId===itemId && (Number(o.qty)||0)>0); }
+function bkOrderDay(){ const d=Number((store.bookCfg||{}).orderDay); return (d>=1&&d<=28)?d:20; }
+function bkOrderOpen(){ // 다음달 교재 필요 권수 부족으로 '주문 권장'을 띄우기 시작했는지(매월 orderDay일부터)
+  const m=state.bkMonth||shiftMonth(state.month,1); const start=shiftMonth(m,-1)+'-'+String(bkOrderDay()).padStart(2,'0');
+  return todayISO()>=start;
+}
 function bkCalc(it,nm){
   const logs=(store.bookStockLog||[]).filter(x=>!x._deleted && x.itemId===it.id);
   const inn=logs.filter(x=>x.type==='in').reduce((n,x)=>n+(Number(x.qty)||0),0);
@@ -5351,7 +5357,8 @@ function bkCalc(it,nm){
   const orders=bkPending(it.id); const pend=orders.reduce((n,o)=>n+(Number(o.qty)||0),0);
   const need=(nm||bkNeedMap())[it.academy+'|'+bkNorm(it.name)]||0; const lack=Math.max(0,need-stock-pend);
   const late=orders.some(o=>o.eta && o.eta<todayISO());
-  return {inn,man,auto,stock,min,need,lack,pend,orders,late,low:(min>0 && stock+pend<min)||lack>0, logs};
+  const lackOn=lack>0 && bkOrderOpen();
+  return {inn,man,auto,stock,min,need,lack,lackOn,pend,orders,late,low:(min>0 && stock+pend<min)||lackOn, logs};
 }
 function bkLowCount(){ try{ const nm=bkNeedMap(); return bkItems().filter(it=>bkCalc(it,nm).low).length; }catch(e){ return 0; } }
 function bkModal(title, body, onOk, okLabel){
@@ -5598,9 +5605,9 @@ function renderBookStock(){
   let h='';
   if(lows.length){
     h+=`<div style="background:#fef2f2;border:1.5px solid #fca5a5;border-radius:12px;padding:12px 14px;margin-bottom:12px"><b style="color:#b91c1c">🛒 주문 권장 ${lows.length}종</b>
-      <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px">${lows.map(it=>{ const c=bkCalc(it,NM); return `<span style="background:#fff;border:1px solid #fca5a5;border-radius:8px;padding:4px 9px;font-size:.82rem"><b>${esc(it.name)}</b> <span style="color:#b91c1c;font-weight:800">${c.stock}권</span> <span style="color:var(--sub)">${c.lack>0?`(${mLabel(nmonth)} 필요 ${c.need}권 → ${c.lack}권 부족)`:`(기준 ${c.min}권 미만)`}</span></span>`; }).join('')}</div></div>`;
+      <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px">${lows.map(it=>{ const c=bkCalc(it,NM); return `<span style="background:#fff;border:1px solid #fca5a5;border-radius:8px;padding:4px 9px;font-size:.82rem"><b>${esc(it.name)}</b> <span style="color:#b91c1c;font-weight:800">${c.stock}권</span> <span style="color:var(--sub)">${c.lackOn?`(${mLabel(nmonth)} 필요 ${c.need}권 → ${c.lack}권 부족)`:`(기준 ${c.min}권 미만)`}</span></span>`; }).join('')}</div></div>`;
   }
-  h+=`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">${admin?`<button class="btn primary" data-bkadd>+ 재고 품목 추가</button>`:''}${admin?`<button class="btn ${state.bkEdit?'primary':''}" data-bkedm>${state.bkEdit?'✔ 수정 모드 끄기':'✎ 수정 모드'}</button>`:''}<button class="btn" data-bkxls>📥 엑셀로 내려받기</button>${admin&&bkUnregistered().length?`<button class="btn" data-bkregall>📥 미입력 ${bkUnregistered().length}종 전부 등록</button>`:''}
+  h+=`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">${admin?`<button class="btn primary" data-bkadd>+ 재고 품목 추가</button>`:''}${admin?`<button class="btn ${state.bkEdit?'primary':''}" data-bkedm>${state.bkEdit?'✔ 수정 모드 끄기':'✎ 수정 모드'}</button>`:''}<button class="btn" data-bkxls>📥 엑셀로 내려받기</button>${admin?`<span style="display:inline-flex;align-items:center;gap:4px;font-size:.8rem;background:#fff;border:1px solid var(--line);border-radius:8px;padding:4px 8px">📆 다음달 교재 주문 권장 <input type="number" min="1" max="28" data-bkday value="${bkOrderDay()}" style="width:48px;padding:3px 5px;border:1.5px solid var(--line);border-radius:6px;text-align:center">일부터</span>`:''}${admin&&bkUnregistered().length?`<button class="btn" data-bkregall>📥 미입력 ${bkUnregistered().length}종 전부 등록</button>`:''}
     <span style="font-size:.78rem;color:var(--sub)">현재고 = 입고 − 출고 · 교재배부에서 학생을 체크하면(교재명이 같으면) 자동으로 출고돼요 · 단어장·시험책은 5권 미만이면 주문 권장${admin?'':' · 입력은 관리자·실장만 가능해요'}</span></div>`;
   const catChips=[['all','전체'],['단어장','단어장'],['시험책','시험책'],['교재','교재 전체'],['주문','└ 주문 교재'],['제본','└ 제본 교재'],['기타','기타']];
   h+=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${catChips.map(([k,l])=>`<button class="chip ${CF===k?'on':''}" data-bkcat="${k}">${l}</button>`).join('')}</div>`;
@@ -5626,7 +5633,7 @@ function renderBookStock(){
         <td style="${TD};text-align:center;font-weight:800;font-size:1rem;color:${c.low?'#dc2626':c.stock<0?'#b45309':'var(--ink)'}">${EDM?`<input type="number" data-bkf="${it.id}|stock" value="${c.stock}" title="현재고를 바로 고치면 차이만큼 '재고 조정' 기록이 남아요" style="${EIN};width:70px;font-weight:800">`:c.stock}</td>
         <td style="${TD};text-align:center">${c.need?c.need:'-'}</td><td style="${TD};text-align:center;font-weight:800;color:#dc2626">${c.lack?c.lack:''}</td>
         <td style="${TD};text-align:center">${EDM?`<input type="number" min="0" data-bkf="${it.id}|min" value="${c.min}" style="${EIN};width:60px">`:(c.min?c.min+'권 미만':'-')}</td>
-        <td style="${TD};text-align:center;white-space:normal;min-width:150px;line-height:1.35">${c.low?`<span style="background:#dc2626;color:#fff;border-radius:6px;padding:2px 7px;font-size:.72rem;font-weight:800">${c.pend?(it.sub==='제본'?'추가 제본 필요':'추가 주문 필요'):(it.sub==='제본'?'제본 권장':'주문 권장')}</span>`:(c.pend?'':(c.min||c.need?'<span style="color:var(--ok);font-size:.76rem">충분</span>':''))}
+        <td style="${TD};text-align:center;white-space:normal;min-width:150px;line-height:1.35">${c.low?`<span style="background:#dc2626;color:#fff;border-radius:6px;padding:2px 7px;font-size:.72rem;font-weight:800">${c.pend?(it.sub==='제본'?'추가 제본 필요':'추가 주문 필요'):(it.sub==='제본'?'제본 권장':'주문 권장')}</span>`:(c.pend?'':(c.lack>0?`<span style="color:#8b93a7;font-size:.74rem">${bkOrderDay()}일부터 주문</span>`:(c.min||c.need?'<span style="color:var(--ok);font-size:.76rem">충분</span>':'')))}
           ${c.orders.map(o=>{ const late=o.eta&&o.eta<todayISO(); return `<div style="margin-top:3px;background:${late?'#fee2e2':'#fff4e0'};border:1px solid ${late?'#fca5a5':'#f5c77e'};border-radius:6px;padding:3px 6px;font-size:.72rem;text-align:left;line-height:1.35"><div style="display:flex;align-items:center;justify-content:space-between;gap:6px;white-space:nowrap"><span>📦 주문 ${o.qty}권</span>${admin?`<span style="display:flex;gap:3px"><button class="btn small" style="padding:1px 6px" data-bkrcv="${o.id}">✔ 도착</button><button class="btn small" style="padding:1px 6px" data-bkocx="${o.id}" title="주문 취소">✕</button></span>`:''}</div><div style="white-space:nowrap">입고대기${o.eta?' ~'+esc(o.eta.slice(5).replace('-','/')):''}${late?' ⏰지연':''}</div></div>`; }).join('')}</td>
         <td style="${TD};text-align:center;min-width:210px"><div style="display:flex;flex-wrap:wrap;gap:3px;justify-content:center;max-width:210px;margin:0 auto"><button class="btn small" style="white-space:nowrap" data-bkhist="${it.id}">내역</button>${admin?`<button class="btn small" style="white-space:nowrap" data-bkord="${it.id}">${it.sub==='제본'?'🖨 제본함':'🛒 주문함'}</button><button class="btn small" style="white-space:nowrap" data-bkin="${it.id}">＋입고</button><button class="btn small" style="white-space:nowrap" data-bkout="${it.id}">－출고</button><button class="btn small" style="white-space:nowrap" data-bked="${it.id}">✎</button>`:''}</div></td></tr>`;
     });
@@ -5666,6 +5673,7 @@ function bindBookStock(v){
   const acOpts=()=>academies().map(a=>`<option value="${a}" ${(state.ac===a)?'selected':''}>${AC[a].label}</option>`).join('');
   const catOpts=sel=>BK_CATS.map(c=>`<option ${c===sel?'selected':''}>${c}</option>`).join('');
   bindBookNext(v);
+  const dayI=v.querySelector('[data-bkday]'); if(dayI) dayI.onchange=()=>{ let d=Math.round(Number(dayI.value)||20); d=Math.min(28,Math.max(1,d)); store.bookCfg={orderDay:d}; try{ stampField('bookCfg'); }catch(e){} save(); toast('매월 '+d+'일부터 다음달 교재 주문 권장이 떠요'); bkRr(); };
   const emb=v.querySelector('[data-bkedm]'); if(emb) emb.onclick=()=>{ state.bkEdit=!state.bkEdit; bkRr(); };
   { let dirty=false; const box=[...v.querySelectorAll('[data-bkedit]')];
     v.querySelectorAll('[data-bkf]').forEach(el=>{
