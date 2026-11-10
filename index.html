@@ -5316,6 +5316,10 @@ function bulkAssignBook(a){
   toast(`✅ ${done}개 반에 적용 완료`);
 }
 /* ---------- 📊 교재 재고 (품목 + 입고·출고 기록, 현재고 = 입고 − 출고, 교재배부 체크는 자동 출고) ---------- */
+function bkRr(){ // 다시 그린 뒤에도 보던 스크롤 위치를 그대로 유지한다
+  const x=window.scrollX, y=window.scrollY; render(true);
+  const back=()=>window.scrollTo(x,y); back(); requestAnimationFrame(back); setTimeout(back,80); setTimeout(back,350);
+}
 const BK_CATS=['단어장','시험책','교재','기타'];
 function bkNorm(x){ return String(x||'').replace(/\s+/g,'').toLowerCase(); }
 function bkDefMin(cat){ return (cat==='단어장'||cat==='시험책')?5:0; } // 단어장·시험책은 5권 미만이면 주문 권장
@@ -5352,6 +5356,12 @@ function bkModal(title, body, onOk, okLabel){
   if(onOk) ov.querySelector('[data-bkok]').onclick=()=>{ if(onOk(ov)!==false) ov.remove(); };
   return ov;
 }
+const BK_SUBS=['주문','제본']; // 교재 세부 분류: 주문 교재 / 제본 교재
+function bkCatLabel(it){ return (it.cat||'')+(it.cat==='교재'&&it.sub?' · '+it.sub+' 교재':''); }
+function bkCatMatch(it,f){ if(!f||f==='all') return true; if(f==='제본'||f==='주문') return it.cat==='교재'&&it.sub===f; return it.cat===f; }
+function bkSubField(cat,val){ return `<label id="bkSL" style="display:${cat==='교재'?'block':'none'}">교재 세부 분류<select id="bkS" style="${BK_INP}"><option value="주문" ${val!=='제본'?'selected':''}>주문 교재</option><option value="제본" ${val==='제본'?'selected':''}>제본 교재</option></select></label>`; }
+function bkWireCat(extra){ const c=document.querySelector('#bkC'); if(!c) return; c.onchange=()=>{ const l=document.querySelector('#bkSL'); if(l) l.style.display=c.value==='교재'?'block':'none'; if(extra) extra(c); }; }
+function bkSubVal(ov){ return ov.querySelector('#bkC').value==='교재'?(ov.querySelector('#bkS').value||'주문'):''; }
 const BK_INP='padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.9rem;width:100%;box-sizing:border-box';
 /* ---------- 📅 다음달 소요 교재 (시간표에 적힌 교재명 × 학생 수 + 담당 선생님이 체크한 교사용) ---------- */
 function bkNextClasses(month){ // 편집용 사본을 새로 만들지 않고, 그 달(또는 가장 가까운 이전 달)에 저장된 반 자료만 읽는다
@@ -5407,13 +5417,13 @@ function renderBookNext(partial){
 }
 function bindBookNext(v){
   const month=state.bkMonth||shiftMonth(state.month,1);
-  v.querySelectorAll('[data-bnm]').forEach(b=>b.onclick=()=>{ state.bkMonth=shiftMonth(month,Number(b.dataset.bnm)); render(true); });
+  v.querySelectorAll('[data-bnm]').forEach(b=>b.onclick=()=>{ state.bkMonth=shiftMonth(month,Number(b.dataset.bnm)); bkRr(); });
   v.querySelectorAll('[data-bnt]').forEach(cb=>cb.onchange=()=>{
     store.bookNeed[month]=store.bookNeed[month]||{};
     if(cb.checked) store.bookNeed[month][cb.dataset.bnt]={teacher:true,by:(loginTeacher()?loginTeacher().t.name:'관리자'),at:Date.now()};
     else store.bookNeed[month][cb.dataset.bnt]={teacher:false,by:'',at:Date.now()};
     store.bookNeed[month].updatedAt=undefined; delete store.bookNeed[month].updatedAt;
-    save(); render(true);
+    save(); bkRr();
   });
 }
 /* ---------- 📖 단어장·단어 시험지 목록 관리 (교재 메뉴) — 엑셀로 내려받아 고치고 다시 올릴 수 있다 ---------- */
@@ -5435,7 +5445,7 @@ function renderBookLists(){
   return h;
 }
 function bindBookLists(v){
-  const getL=(t,a)=>[...(t==='wb'?wbOptionsFor(a):tpOptionsFor(a))], setL=(t,a,l)=>{ t==='wb'?setWbOptions(a,l):setTpOptions(a,l); save(); render(true); };
+  const getL=(t,a)=>[...(t==='wb'?wbOptionsFor(a):tpOptionsFor(a))], setL=(t,a,l)=>{ t==='wb'?setWbOptions(a,l):setTpOptions(a,l); save(); bkRr(); };
   ['wb','tp'].forEach(t=>{
     v.querySelectorAll(`[data-bl${t}del]`).forEach(b=>b.onclick=()=>{ const [a,i]=b.dataset[`bl${t}del`].split('|'); const l=getL(t,a); l.splice(Number(i),1); setL(t,a,l); });
     const add=a=>{ const inp=v.querySelector(`[data-bl${t}in="${a}"]`); const val=(inp&&inp.value||'').trim(); if(!val) return; const l=getL(t,a); if(!l.includes(val)) l.push(val); setL(t,a,l); };
@@ -5473,7 +5483,7 @@ function bindBookLists(v){
       const msg=keys.map(k=>{ const [a,t]=k.split('|'); return `${AC[a].label} ${t==='wb'?'단어장':'시험지'}: 현재 ${(t==='wb'?wbOptionsFor(a):tpOptionsFor(a)).length}개 → ${got[k].length}개`; }).join('\n');
       if(!confirm('아래처럼 목록이 파일 내용으로 바뀝니다. 계속할까요?\n\n'+msg)) return;
       keys.forEach(k=>{ const [a,t]=k.split('|'); t==='wb'?setWbOptions(a,got[k]):setTpOptions(a,got[k]); });
-      save(); render(true); toast('목록을 엑셀 내용으로 바꿨어요');
+      save(); bkRr(); toast('목록을 엑셀 내용으로 바꿨어요');
     }catch(e){ console.error(e); alert('엑셀을 읽지 못했어요: '+e.message); }
   }; }
 }
@@ -5522,7 +5532,7 @@ function renderBookBilling(){
   return h+'</tbody></table></div>';
 }
 function bindBookBilling(v){
-  v.querySelectorAll('[data-bbm]').forEach(b=>b.onclick=()=>{ state.bbMonth=shiftMonth(state.bbMonth||state.month,Number(b.dataset.bbm)); render(true); });
+  v.querySelectorAll('[data-bbm]').forEach(b=>b.onclick=()=>{ state.bbMonth=shiftMonth(state.bbMonth||state.month,Number(b.dataset.bbm)); bkRr(); });
   const doBill=(sks)=>{
     const all=bbData(); const list=sks.map(k=>all.find(x=>x.sk===k)).filter(Boolean).map(e=>({e,un:e.items.filter(x=>!x.__billed)})).filter(r=>r.un.length);
     if(!list.length){ toast('청구할 학생이 없어요'); return; }
@@ -5530,7 +5540,7 @@ function bindBookBilling(v){
     if(!confirm((list.length===1?list[0].e.name:`학생 ${list.length}명`)+` — 미청구 ${cnt}건, ${fmtWon(amt)}을 청구 완료로 처리할까요?\n이후 배부분부터 다시 합산돼요.`)) return;
     const now=Date.now();
     list.forEach(r=>{ store.bookBilling.push({id:genStudentId(),sk:r.e.sk,name:r.e.name,academy:r.e.academy,upTo:now,amount:r.un.reduce((n,x)=>n+x.__price,0),count:r.un.length,date:todayISO(),items:r.un.map(x=>x.book+' '+String(x.date||'').slice(5)).join(', '),by:(loginTeacher()?loginTeacher().t.name:'관리자'),createdAt:now,updatedAt:now}); });
-    save(); render(true); toast(list.length+'명 청구 완료로 처리했어요');
+    save(); bkRr(); toast(list.length+'명 청구 완료로 처리했어요');
   };
   v.querySelectorAll('[data-bbdone]').forEach(b=>b.onclick=()=>doBill([b.dataset.bbdone]));
   const sels=()=>[...v.querySelectorAll('[data-bbsel]')];
@@ -5540,40 +5550,56 @@ function bindBookBilling(v){
   v.querySelectorAll('[data-bbhist]').forEach(b=>b.onclick=()=>{
     const e=bbData().find(x=>x.sk===b.dataset.bbhist); if(!e) return;
     bkModal(`${e.name} — 청구 내역`,e.recs.map(r=>`<div style="border-bottom:1px dashed var(--line);padding:5px 0;font-size:.84rem"><b>${esc(r.date)}</b> · ${r.count}건 · <b>${fmtWon(r.amount)}</b> <button class="btn small" style="float:right" data-bbundo="${r.id}">청구 취소</button><div style="color:var(--sub);font-size:.76rem">${esc(r.items||'')}${r.by?' · '+esc(r.by):''}</div></div>`).join(''),null);
-    document.querySelectorAll('#bkOv [data-bbundo]').forEach(x=>x.onclick=()=>{ const r=(store.bookBilling||[]).find(y=>y.id===x.dataset.bbundo); if(!r||!confirm('이 청구 완료를 취소할까요? 그 건들은 다시 미청구로 돌아가요.')) return; r._deleted=true; r.updatedAt=Date.now(); save(); document.getElementById('bkOv')?.remove(); render(true); });
+    document.querySelectorAll('#bkOv [data-bbundo]').forEach(x=>x.onclick=()=>{ const r=(store.bookBilling||[]).find(y=>y.id===x.dataset.bbundo); if(!r||!confirm('이 청구 완료를 취소할까요? 그 건들은 다시 미청구로 돌아가요.')) return; r._deleted=true; r.updatedAt=Date.now(); save(); document.getElementById('bkOv')?.remove(); bkRr(); });
   });
+}
+function bkUnregistered(){ // 단어장·시험지 목록, 이번·다음달 시간표 교재 중 재고 품목으로 아직 등록 안 된 것들
+  const have=new Set((store.bookStock||[]).filter(x=>!x._deleted).map(x=>x.academy+'|'+bkNorm(x.name)));
+  const out=new Map(); const nextM=state.bkMonth||shiftMonth(state.month,1); const NM=bkNeedMap();
+  const add=(a,name,cat)=>{ name=String(name||'').trim(); if(!name) return; const k=a+'|'+bkNorm(name); if(have.has(k)||out.has(k)) return; out.set(k,{academy:a,name,cat,need:NM[k]||0}); };
+  academies().filter(a=>state.ac==='all'||a===state.ac).forEach(a=>{ wbOptionsFor(a).forEach(n=>add(a,n,'단어장')); tpOptionsFor(a).forEach(n=>add(a,n,'시험책')); });
+  [state.month,nextM].forEach(m=>{ try{ bkNextRows(m).rows.forEach(r=>add(r.c.academy,r.book,'교재')); }catch(e){} });
+  return [...out.values()].sort((x,y)=>x.academy.localeCompare(y.academy)||BK_CATS.indexOf(x.cat)-BK_CATS.indexOf(y.cat)||x.name.localeCompare(y.name,'ko'));
 }
 function renderBookStock(){
   const admin=isAdminRole();
-  const items=bkItems().slice().sort((a,b)=>(a.academy||'').localeCompare(b.academy||'')||BK_CATS.indexOf(a.cat)-BK_CATS.indexOf(b.cat)||String(a.name).localeCompare(String(b.name),'ko'));
+  const CF=state.bkCat||'all';
+  const allItems=bkItems();
+  const items=allItems.filter(it=>bkCatMatch(it,CF)).sort((a,b)=>(a.academy||'').localeCompare(b.academy||'')||BK_CATS.indexOf(a.cat)-BK_CATS.indexOf(b.cat)||String(a.sub||'').localeCompare(String(b.sub||''))||String(a.name).localeCompare(String(b.name),'ko'));
   const NM=bkNeedMap(); const nmonth=state.bkMonth||shiftMonth(state.month,1);
-  const lows=items.filter(it=>bkCalc(it,NM).low);
+  const lows=allItems.filter(it=>bkCalc(it,NM).low);
   let h='';
   if(lows.length){
     h+=`<div style="background:#fef2f2;border:1.5px solid #fca5a5;border-radius:12px;padding:12px 14px;margin-bottom:12px"><b style="color:#b91c1c">🛒 주문 권장 ${lows.length}종</b>
       <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px">${lows.map(it=>{ const c=bkCalc(it,NM); return `<span style="background:#fff;border:1px solid #fca5a5;border-radius:8px;padding:4px 9px;font-size:.82rem"><b>${esc(it.name)}</b> <span style="color:#b91c1c;font-weight:800">${c.stock}권</span> <span style="color:var(--sub)">${c.lack>0?`(${mLabel(nmonth)} 필요 ${c.need}권 → ${c.lack}권 부족)`:`(기준 ${c.min}권 미만)`}</span></span>`; }).join('')}</div></div>`;
   }
-  h+=`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">${admin?`<button class="btn primary" data-bkadd>+ 재고 품목 추가</button>`:''}<button class="btn" data-bkxls>📥 엑셀로 내려받기</button>
+  h+=`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">${admin?`<button class="btn primary" data-bkadd>+ 재고 품목 추가</button>`:''}<button class="btn" data-bkxls>📥 엑셀로 내려받기</button>${admin&&bkUnregistered().length?`<button class="btn" data-bkregall>📥 미입력 ${bkUnregistered().length}종 전부 등록</button>`:''}
     <span style="font-size:.78rem;color:var(--sub)">현재고 = 입고 − 출고 · 교재배부에서 학생을 체크하면(교재명이 같으면) 자동으로 출고돼요 · 단어장·시험책은 5권 미만이면 주문 권장${admin?'':' · 입력은 관리자·실장만 가능해요'}</span></div>`;
-  if(!items.length) return h+`<div class="empty">등록된 재고 품목이 없어요.${admin?' [+ 재고 품목 추가]로 시작하세요.':''}</div>`;
+  const catChips=[['all','전체'],['단어장','단어장'],['시험책','시험책'],['교재','교재 전체'],['주문','└ 주문 교재'],['제본','└ 제본 교재'],['기타','기타']];
+  h+=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${catChips.map(([k,l])=>`<button class="chip ${CF===k?'on':''}" data-bkcat="${k}">${l}</button>`).join('')}</div>`;
+  const UNREG=bkUnregistered().filter(u=>CF==='all'||CF===u.cat||(u.cat==='교재'&&CF==='교재')); window.__bkUnreg=bkUnregistered();
+  if(!items.length && !UNREG.length) return h+`<div class="empty">등록된 재고 품목이 없어요.${admin?' [+ 재고 품목 추가]로 시작하세요.':''}</div>`;
   const byAc={}; items.forEach(it=>{ (byAc[it.academy]=byAc[it.academy]||[]).push(it); });
+  UNREG.forEach(u=>{ (byAc[u.academy]=byAc[u.academy]||[]).push(Object.assign({_virtual:true},u)); });
   const TH='position:sticky;top:0;background:#e8ecf3;border:1px solid #c5ccd8;padding:6px 8px;font-weight:800;text-align:center;white-space:nowrap';
   const TD='border:1px solid #d5dae3;padding:6px 8px';
   Object.keys(byAc).forEach(a=>{
     h+=`<div style="margin-bottom:16px"><div style="font-weight:800;margin-bottom:4px">${AC[a]?AC[a].label:a}</div><div style="overflow:auto;max-height:70vh;border:1px solid #c5ccd8;border-radius:6px"><table style="border-collapse:collapse;font-size:.86rem;min-width:100%;background:#fff">
-      <thead><tr><th style="${TH};width:34px;background:#dfe4ee"></th>${['품목','분류','단가','입고 합계','출고 합계','현재고',mLabel(nmonth)+' 필요','부족','주문 기준','상태',''].map(t=>`<th style="${TH}">${t}</th>`).join('')}</tr></thead><tbody>`;
+      <thead><tr><th style="${TH};width:34px;background:#dfe4ee"></th>${['품목','분류','단가','입고 합계','출고 합계','현재고',mLabel(nmonth)+' 필요','부족','주문 기준','상태',''].map((t,ti)=>`<th style="${TH}${ti===1?';min-width:130px':''}${ti===10?';width:150px':''}">${t}</th>`).join('')}</tr></thead><tbody>`;
     byAc[a].forEach((it,i)=>{
+      if(it._virtual){ const ui=window.__bkUnreg.findIndex(u=>u.academy===it.academy&&u.name===it.name);
+        return void(h+=`<tr style="background:#fffdf5"><td style="${TD};background:#eef1f6;color:#7a8499;text-align:center;font-size:.74rem">${i+1}</td><td style="${TD};font-weight:700">${esc(it.name)}</td><td style="${TD};text-align:center;white-space:nowrap">${it.cat}</td><td style="${TD};text-align:right">-</td><td style="${TD};text-align:right;color:#8b93a7">-</td><td style="${TD};text-align:right;color:#8b93a7">-</td><td style="${TD};text-align:right;color:#8b93a7">-</td><td style="${TD};text-align:right">${it.need||'-'}</td><td style="${TD}"></td><td style="${TD};text-align:right">-</td><td style="${TD};text-align:center"><span style="background:#fff4e0;border:1px solid #f5c77e;border-radius:6px;padding:2px 7px;font-size:.72rem">재고 미입력</span></td><td style="${TD};text-align:center">${admin?`<button class="btn small" data-bkreg="${ui}">재고 입력</button>`:''}</td></tr>`); }
       const c=bkCalc(it,NM); const bg=c.low?'#fff1f1':(i%2?'#fafbfd':'#fff');
       h+=`<tr style="background:${bg}"><td style="${TD};background:#eef1f6;color:#7a8499;text-align:center;font-size:.74rem">${i+1}</td>
-        <td style="${TD};font-weight:700">${esc(it.name)}</td><td style="${TD};text-align:center">${esc(it.cat||'')}</td>
+        <td style="${TD};font-weight:700">${esc(it.name)}</td><td style="${TD};text-align:center;white-space:nowrap">${esc(bkCatLabel(it))}</td>
         <td style="${TD};text-align:right">${it.price?fmtWon(it.price):'-'}</td>
         <td style="${TD};text-align:right">${c.inn}</td><td style="${TD};text-align:right">${c.man+c.auto}</td>
         <td style="${TD};text-align:right;font-weight:800;font-size:1rem;color:${c.low?'#dc2626':c.stock<0?'#b45309':'var(--ink)'}">${c.stock}</td>
         <td style="${TD};text-align:right">${c.need?c.need:'-'}</td><td style="${TD};text-align:right;font-weight:800;color:#dc2626">${c.lack?c.lack:''}</td>
         <td style="${TD};text-align:right">${c.min?c.min+'권 미만':'-'}</td>
-        <td style="${TD};text-align:center">${c.low?`<span style="background:#dc2626;color:#fff;border-radius:6px;padding:2px 7px;font-size:.72rem;font-weight:800">${c.pend?'추가 주문 필요':'주문 권장'}</span>`:(c.pend?'':(c.min||c.need?'<span style="color:var(--ok);font-size:.76rem">충분</span>':''))}
+        <td style="${TD};text-align:center">${c.low?`<span style="background:#dc2626;color:#fff;border-radius:6px;padding:2px 7px;font-size:.72rem;font-weight:800">${c.pend?(it.sub==='제본'?'추가 제본 필요':'추가 주문 필요'):(it.sub==='제본'?'제본 권장':'주문 권장')}</span>`:(c.pend?'':(c.min||c.need?'<span style="color:var(--ok);font-size:.76rem">충분</span>':''))}
           ${c.orders.map(o=>`<div style="margin-top:3px;background:${o.eta&&o.eta<todayISO()?'#fee2e2':'#fff4e0'};border:1px solid ${o.eta&&o.eta<todayISO()?'#fca5a5':'#f5c77e'};border-radius:6px;padding:2px 6px;font-size:.72rem;white-space:nowrap">📦 주문 ${o.qty}권 · 입고 대기${o.eta?' (~'+esc(o.eta.slice(5))+(o.eta<todayISO()?' ⏰지연':'')+')':''}${admin?` <button class="btn small" style="padding:1px 6px" data-bkrcv="${o.id}">✔ 도착</button> <button class="btn small" style="padding:1px 6px" data-bkocx="${o.id}" title="주문 취소">✕</button>`:''}</div>`).join('')}</td>
-        <td style="${TD};white-space:nowrap;text-align:center"><button class="btn small" data-bkhist="${it.id}">내역</button>${admin?` <button class="btn small" data-bkord="${it.id}">🛒 주문함</button> <button class="btn small" data-bkin="${it.id}">＋입고</button> <button class="btn small" data-bkout="${it.id}">－출고</button> <button class="btn small" data-bked="${it.id}">✎</button>`:''}</td></tr>`;
+        <td style="${TD};text-align:center;width:150px"><div style="display:flex;flex-wrap:wrap;gap:3px;justify-content:center;max-width:150px;margin:0 auto"><button class="btn small" data-bkhist="${it.id}">내역</button>${admin?`<button class="btn small" data-bkord="${it.id}">${it.sub==='제본'?'🖨 제본함':'🛒 주문함'}</button><button class="btn small" data-bkin="${it.id}">＋입고</button><button class="btn small" data-bkout="${it.id}">－출고</button><button class="btn small" data-bked="${it.id}">✎</button>`:''}</div></td></tr>`;
     });
     h+=`</tbody></table></div></div>`;
   });
@@ -5611,23 +5637,40 @@ function bindBookStock(v){
   const acOpts=()=>academies().map(a=>`<option value="${a}" ${(state.ac===a)?'selected':''}>${AC[a].label}</option>`).join('');
   const catOpts=sel=>BK_CATS.map(c=>`<option ${c===sel?'selected':''}>${c}</option>`).join('');
   bindBookNext(v);
+  v.querySelectorAll('[data-bkcat]').forEach(b=>b.onclick=()=>{ state.bkCat=b.dataset.bkcat; bkRr(); });
+  v.querySelectorAll('[data-bkreg]').forEach(b=>b.onclick=()=>{
+    const u=(window.__bkUnreg||[])[Number(b.dataset.bkreg)]; if(!u) return;
+    bkModal(`${u.name} — 재고 등록`,`<label>현재 보유 수량<input id="bkQ" type="number" min="0" value="0" style="${BK_INP}"></label>
+      <label>분류<select id="bkC" style="${BK_INP}">${catOpts(u.cat)}</select></label>${bkSubField(u.cat,'주문')}
+      <label>주문 권장 기준 (권 미만이면 알림, 0 = 알림 없음)<input id="bkM" type="number" min="0" value="${bkDefMin(u.cat)}" style="${BK_INP}"></label>
+      <label>단가 (원)<input id="bkP" type="number" min="0" value="0" style="${BK_INP}"></label>`,ov=>{
+      const it={id:catNewId('st'),academy:u.academy,name:u.name,cat:ov.querySelector('#bkC').value,sub:bkSubVal(ov),min:Number(ov.querySelector('#bkM').value)||0,price:Number(ov.querySelector('#bkP').value)||0,base:todayISO(),createdAt:Date.now(),updatedAt:Date.now()};
+      store.bookStock.push(it); const q=Number(ov.querySelector('#bkQ').value)||0; if(q>0) logAdd(it,'in',q,todayISO(),'처음 재고'); save(); bkRr();
+    },'등록'); bkWireCat();
+  });
+  const ra=v.querySelector('[data-bkregall]'); if(ra) ra.onclick=()=>{
+    const L=window.__bkUnreg||[]; if(!L.length) return;
+    if(!confirm(`${L.length}종을 재고 0권으로 한꺼번에 등록할까요?\n(단어장·시험책은 5권 미만이라 주문 권장으로 뜨니, 이후 「＋입고」로 수량을 넣어주세요)`)) return;
+    L.forEach(u=>store.bookStock.push({id:catNewId('st'),academy:u.academy,name:u.name,cat:u.cat,sub:u.cat==='교재'?'주문':'',min:bkDefMin(u.cat),price:0,base:todayISO(),createdAt:Date.now(),updatedAt:Date.now()}));
+    save(); bkRr(); toast(L.length+'종 등록했어요');
+  };
   const xb=v.querySelector('[data-bkxls]'); if(xb) xb.onclick=()=>bkExportXlsx(xb);
   const addB=v.querySelector('[data-bkadd]');
   if(addB) addB.onclick=()=>{
     bkModal('재고 품목 추가',`${academies().length>1?`<label>학원<select id="bkA" style="${BK_INP}">${acOpts()}</select></label>`:''}
       <label>품목명 (교재배부의 교재명과 똑같이 쓰면 자동 출고돼요)<input id="bkN" style="${BK_INP}" placeholder="예: Voca 1000"></label>
-      <label>분류<select id="bkC" style="${BK_INP}">${catOpts('단어장')}</select></label>
+      <label>분류<select id="bkC" style="${BK_INP}">${catOpts('단어장')}</select></label>${bkSubField('단어장','주문')}
       <label>현재 보유 수량 (처음 재고)<input id="bkQ" type="number" min="0" value="0" style="${BK_INP}"></label>
       <label>주문 권장 기준 (권 미만이면 알림, 0 = 알림 없음)<input id="bkM" type="number" min="0" value="5" style="${BK_INP}"></label>
       <label>단가 (원, 교재비 청구에 사용)<input id="bkP" type="number" min="0" value="0" style="${BK_INP}"></label>`,ov=>{
       const name=ov.querySelector('#bkN').value.trim(); if(!name){ toast('품목명을 입력하세요'); return false; }
       const a=ov.querySelector('#bkA')?ov.querySelector('#bkA').value:academies()[0];
       if((store.bookStock||[]).some(x=>!x._deleted&&x.academy===a&&bkNorm(x.name)===bkNorm(name))){ toast('이미 있는 품목이에요'); return false; }
-      const it={id:catNewId('st'),academy:a,name,cat:ov.querySelector('#bkC').value,min:Number(ov.querySelector('#bkM').value)||0,price:Number(ov.querySelector('#bkP').value)||0,base:todayISO(),createdAt:Date.now(),updatedAt:Date.now()};
+      const it={id:catNewId('st'),academy:a,name,cat:ov.querySelector('#bkC').value,sub:bkSubVal(ov),min:Number(ov.querySelector('#bkM').value)||0,price:Number(ov.querySelector('#bkP').value)||0,base:todayISO(),createdAt:Date.now(),updatedAt:Date.now()};
       store.bookStock.push(it); const q=Number(ov.querySelector('#bkQ').value)||0; if(q>0) logAdd(it,'in',q,todayISO(),'처음 재고');
-      save(); render(true);
+      save(); bkRr();
     });
-    const c=document.querySelector('#bkC'), m=document.querySelector('#bkM'); if(c&&m) c.onchange=()=>{ m.value=bkDefMin(c.value); };
+    bkWireCat(c=>{ const m=document.querySelector('#bkM'); if(m) m.value=bkDefMin(c.value); });
   };
   const io=(type)=>b=>b.onclick=()=>{
     const it=find(b.dataset[type==='in'?'bkin':'bkout']); if(!it) return;
@@ -5635,7 +5678,7 @@ function bindBookStock(v){
       <label>날짜<input id="bkD" type="date" value="${todayISO()}" style="${BK_INP}"></label>
       <label>메모 (선택)<input id="bkMemo" style="${BK_INP}" placeholder="${type==='in'?'예: 주문 입고':'예: 분실·파손·직원 사용'}"></label>`,ov=>{
       const q=Number(ov.querySelector('#bkQ').value)||0; if(q<=0){ toast('수량을 입력하세요'); return false; }
-      logAdd(it,type,q,ov.querySelector('#bkD').value,ov.querySelector('#bkMemo').value.trim()); it.updatedAt=Date.now(); save(); render(true); toast(type==='in'?'입고 기록했어요':'출고 기록했어요');
+      logAdd(it,type,q,ov.querySelector('#bkD').value,ov.querySelector('#bkMemo').value.trim()); it.updatedAt=Date.now(); save(); bkRr(); toast(type==='in'?'입고 기록했어요':'출고 기록했어요');
     },type==='in'?'입고 기록':'출고 기록');
   };
   v.querySelectorAll('[data-bkord]').forEach(b=>b.onclick=()=>{
@@ -5645,7 +5688,7 @@ function bindBookStock(v){
       <label>도착 예정일 (선택)<input id="bkE" type="date" style="${BK_INP}"></label>`,ov=>{
       const q=Number(ov.querySelector('#bkQ').value)||0; if(q<=0){ toast('수량을 입력하세요'); return false; }
       store.bookOrders.push({id:genStudentId(),itemId:it.id,qty:q,date:ov.querySelector('#bkD').value||todayISO(),eta:ov.querySelector('#bkE').value||'',received:false,by:(loginTeacher()?loginTeacher().t.name:'관리자'),createdAt:Date.now(),updatedAt:Date.now()});
-      save(); render(true); toast('주문 기록했어요 — 입고 대기로 표시돼요');
+      save(); bkRr(); toast('주문 기록했어요 — 입고 대기로 표시돼요');
     },'주문 기록');
   });
   v.querySelectorAll('[data-bkrcv]').forEach(b=>b.onclick=()=>{
@@ -5656,23 +5699,23 @@ function bindBookStock(v){
       const q=Number(ov.querySelector('#bkQ').value)||0; if(q<=0){ toast('수량을 입력하세요'); return false; }
       logAdd(it,'in',q,ov.querySelector('#bkD').value,'주문 도착');
       if(q>=o.qty){ o.received=true; o.receivedAt=Date.now(); } else { o.qty=o.qty-q; }
-      o.updatedAt=Date.now(); save(); render(true); toast('입고 기록했어요 ✓');
+      o.updatedAt=Date.now(); save(); bkRr(); toast('입고 기록했어요 ✓');
     },'입고 처리');
   });
-  v.querySelectorAll('[data-bkocx]').forEach(b=>b.onclick=()=>{ const o=(store.bookOrders||[]).find(x=>x.id===b.dataset.bkocx); if(!o||!confirm('이 주문 기록을 취소할까요? (입고 처리는 되지 않아요)')) return; o._deleted=true; o.updatedAt=Date.now(); save(); render(true); });
+  v.querySelectorAll('[data-bkocx]').forEach(b=>b.onclick=()=>{ const o=(store.bookOrders||[]).find(x=>x.id===b.dataset.bkocx); if(!o||!confirm('이 주문 기록을 취소할까요? (입고 처리는 되지 않아요)')) return; o._deleted=true; o.updatedAt=Date.now(); save(); bkRr(); });
   v.querySelectorAll('[data-bkin]').forEach(io('in')); v.querySelectorAll('[data-bkout]').forEach(io('out'));
   v.querySelectorAll('[data-bked]').forEach(b=>b.onclick=()=>{
     const it=find(b.dataset.bked); if(!it) return;
     bkModal('품목 수정',`<label>품목명<input id="bkN" style="${BK_INP}" value="${esc(it.name)}"></label>
-      <label>분류<select id="bkC" style="${BK_INP}">${catOpts(it.cat)}</select></label>
+      <label>분류<select id="bkC" style="${BK_INP}">${catOpts(it.cat)}</select></label>${bkSubField(it.cat,it.sub)}
       <label>주문 권장 기준 (권 미만, 0 = 알림 없음)<input id="bkM" type="number" min="0" value="${Number(it.min)||0}" style="${BK_INP}"></label>
       <label>단가 (원, 교재비 청구에 사용)<input id="bkP" type="number" min="0" value="${Number(it.price)||0}" style="${BK_INP}"></label>
       <label>배부 자동 출고 시작일<input id="bkB" type="date" value="${esc(it.base||'')}" style="${BK_INP}"></label>
       <button class="btn small" id="bkDel" style="color:#dc2626;align-self:flex-start">🗑 이 품목 삭제</button>`,ov=>{
       const name=ov.querySelector('#bkN').value.trim(); if(!name){ toast('품목명을 입력하세요'); return false; }
-      it.name=name; it.cat=ov.querySelector('#bkC').value; it.min=Number(ov.querySelector('#bkM').value)||0; it.price=Number(ov.querySelector('#bkP').value)||0; it.base=ov.querySelector('#bkB').value||it.base; it.updatedAt=Date.now(); save(); render(true);
+      it.name=name; it.cat=ov.querySelector('#bkC').value; it.sub=bkSubVal(ov); it.min=Number(ov.querySelector('#bkM').value)||0; it.price=Number(ov.querySelector('#bkP').value)||0; it.base=ov.querySelector('#bkB').value||it.base; it.updatedAt=Date.now(); save(); bkRr();
     });
-    const d=document.querySelector('#bkDel'); if(d) d.onclick=()=>{ if(!confirm('"'+it.name+'" 품목과 입출고 기록을 삭제할까요?')) return; it._deleted=true; it.updatedAt=Date.now(); (store.bookStockLog||[]).forEach(x=>{ if(x.itemId===it.id){ x._deleted=true; x.updatedAt=Date.now(); } }); save(); document.getElementById('bkOv')?.remove(); render(true); };
+    bkWireCat(); const d=document.querySelector('#bkDel'); if(d) d.onclick=()=>{ if(!confirm('"'+it.name+'" 품목과 입출고 기록을 삭제할까요?')) return; it._deleted=true; it.updatedAt=Date.now(); (store.bookStockLog||[]).forEach(x=>{ if(x.itemId===it.id){ x._deleted=true; x.updatedAt=Date.now(); } }); save(); document.getElementById('bkOv')?.remove(); bkRr(); };
   });
   v.querySelectorAll('[data-bkhist]').forEach(b=>b.onclick=()=>{
     const it=find(b.dataset.bkhist); if(!it) return; const c=bkCalc(it);
@@ -5682,7 +5725,7 @@ function bindBookStock(v){
     rows.sort((x,y)=>String(y.d).localeCompare(String(x.d))||y.ts-x.ts);
     const lab={in:['입고','#0e9f6e'],out:['출고','#dc2626'],auto:['배부 출고','#b45309']};
     bkModal(`${it.name} — 입출고 내역 (현재고 ${c.stock}권)`, rows.length?rows.map(r=>`<div style="display:flex;gap:8px;align-items:baseline;font-size:.84rem;border-bottom:1px dashed var(--line);padding:4px 0"><span style="color:var(--sub);min-width:84px">${esc(r.d)}</span><b style="color:${lab[r.t][1]};min-width:60px">${lab[r.t][0]}</b><b>${r.t==='in'?'+':'−'}${r.q}</b><span style="flex:1;color:var(--sub)">${esc(r.m||'')}${r.by&&r.by!=='자동'?' · '+esc(r.by):''}</span>${admin&&r.id?`<button class="btn small" data-bkdl="${r.id}">삭제</button>`:''}</div>`).join(''):'<div style="color:#8b93a7">기록이 없어요.</div>',null);
-    document.querySelectorAll('#bkOv [data-bkdl]').forEach(x=>x.onclick=()=>{ const l=(store.bookStockLog||[]).find(y=>y.id===x.dataset.bkdl); if(!l||!confirm('이 기록을 삭제할까요?')) return; l._deleted=true; l.updatedAt=Date.now(); save(); document.getElementById('bkOv')?.remove(); render(true); });
+    document.querySelectorAll('#bkOv [data-bkdl]').forEach(x=>x.onclick=()=>{ const l=(store.bookStockLog||[]).find(y=>y.id===x.dataset.bkdl); if(!l||!confirm('이 기록을 삭제할까요?')) return; l._deleted=true; l.updatedAt=Date.now(); save(); document.getElementById('bkOv')?.remove(); bkRr(); });
   });
 }
 function bkAssignToolHTML(list){
@@ -6070,9 +6113,9 @@ function bindBookGive(){
   });
   v.querySelectorAll('[data-baapply]').forEach(btn=>btn.onclick=()=>bulkAssignBook(btn.dataset.baapply));
   const sbCls=k=>{ const a=k.split('|')[0], cn=k.slice(a.length+1); return classesMatchingName(a,state.month,cn); };
-  v.querySelectorAll('[data-sbadd]').forEach(b=>b.onclick=()=>{ const k=b.dataset.k, sj=b.dataset.subj; const id=catNewId('sb'); sbCls(k).forEach(c=>{ c.subBooks=c.subBooks||[]; c.subBooks.push({id,subj:sj,name:''}); }); save(); render(true); });
-  v.querySelectorAll('[data-sbdel]').forEach(b=>b.onclick=()=>{ const k=b.dataset.k, id=b.dataset.id; if(!confirm('이 교재 배부 칸과 체크를 삭제할까요?')) return; sbCls(k).forEach(c=>{ c.subBooks=(c.subBooks||[]).filter(x=>x.id!==id); }); save(); render(true); });
-  v.querySelectorAll('.bgsub').forEach(inp=>inp.onchange=()=>{ const k=inp.dataset.k, id=inp.dataset.id; sbCls(k).forEach(c=>{ (c.subBooks||[]).forEach(x=>{ if(x.id===id) x.name=inp.value.trim(); }); }); save(); render(true); });
+  v.querySelectorAll('[data-sbadd]').forEach(b=>b.onclick=()=>{ const k=b.dataset.k, sj=b.dataset.subj; const id=catNewId('sb'); sbCls(k).forEach(c=>{ c.subBooks=c.subBooks||[]; c.subBooks.push({id,subj:sj,name:''}); }); save(); bkRr(); });
+  v.querySelectorAll('[data-sbdel]').forEach(b=>b.onclick=()=>{ const k=b.dataset.k, id=b.dataset.id; if(!confirm('이 교재 배부 칸과 체크를 삭제할까요?')) return; sbCls(k).forEach(c=>{ c.subBooks=(c.subBooks||[]).filter(x=>x.id!==id); }); save(); bkRr(); });
+  v.querySelectorAll('.bgsub').forEach(inp=>inp.onchange=()=>{ const k=inp.dataset.k, id=inp.dataset.id; sbCls(k).forEach(c=>{ (c.subBooks||[]).forEach(x=>{ if(x.id===id) x.name=inp.value.trim(); }); }); save(); bkRr(); });
   v.querySelectorAll('.bgbook').forEach(inp=>inp.onchange=()=>{
     const kk=inp.dataset.k; const a=kk.split('|')[0]; const className=kk.slice(a.length+1);
     syncBookToClass(a, className, inp.dataset.subj, state.month, inp.value.trim());
