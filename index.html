@@ -17792,6 +17792,16 @@ const WL_BACK="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAUDBAQEAw
 const WL_CARD_BOX={x:900,y:244,s:420,W:1440,H:908,nx:625,ny:612};
 function wlCardName(s){ return String(s.nameEn||s.nameKo||'').trim(); }
 function wlLoadCardImg(){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=()=>rej(new Error('카드 그림을 읽지 못했어요')); i.src=WL_CARD; }); }
+/* 이름 글자는 카드 그림(E-BEST ACADEMY 로고)과 같은 해상도·같은 부드러움으로 그려서 화질이 따로 놀지 않게 한다 */
+function wlDrawName(x, nm){
+  if(!nm) return; const B=WL_CARD_BOX; let fs=46; const F=z=>'700 '+z+'px "Montserrat","Malgun Gothic","Apple SD Gothic Neo",Arial,sans-serif';
+  x.save(); x.font=F(fs); while(x.measureText(nm).width>400 && fs>20){ fs-=2; x.font=F(fs); }
+  x.fillStyle='#14305f'; x.textAlign='center'; x.textBaseline='middle';
+  try{ x.filter='blur(1.1px)'; }catch(e){}
+  x.fillText(nm,B.nx,B.ny); x.fillText(nm,B.nx,B.ny); /* 두 번 겹쳐 흐려진 만큼 진하게 */
+  x.restore();
+}
+function wlNameLayer(nm){ const B=WL_CARD_BOX; const c=document.createElement('canvas'); c.width=B.W; c.height=B.H; wlDrawName(c.getContext('2d'),nm); return c.toDataURL('image/png'); }
 async function wlCardPng(s, withQr){
   const B=WL_CARD_BOX; const im=await wlLoadCardImg();
   const c=document.createElement('canvas'); c.width=B.W; c.height=B.H; const x=c.getContext('2d'); x.drawImage(im,0,0,B.W,B.H);
@@ -17799,10 +17809,7 @@ async function wlCardPng(s, withQr){
     const q=qrcode(0,'M'); q.addData(wlUrl(wlToken(s.id,true))); q.make(); const n=q.getModuleCount();
     const cell=Math.floor(B.s/(n+4)), off=Math.round((B.s-cell*(n+4))/2)+cell*2;
     x.fillStyle='#000'; for(let r=0;r<n;r++) for(let k=0;k<n;k++) if(q.isDark(r,k)) x.fillRect(B.x+off+k*cell, B.y+off+r*cell, cell, cell);
-    const nm=wlCardName(s);
-    if(nm){ let fs=46; const F=z=>'700 '+z+'px "Montserrat","Malgun Gothic","Apple SD Gothic Neo",Arial,sans-serif';
-      x.font=F(fs); while(x.measureText(nm).width>400 && fs>20){ fs-=2; x.font=F(fs); }
-      x.fillStyle='#14305f'; x.textAlign='center'; x.textBaseline='middle'; x.fillText(nm,B.nx,B.ny); }
+    wlDrawName(x, wlCardName(s));
   }
   return new Promise(r=>c.toBlob(r,'image/png'));
 }
@@ -17819,7 +17826,7 @@ function wlPrintQrs(ids){
   const PER=10, pages=[];
   for(let i=0;i<items.length;i+=PER) pages.push(items.slice(i,i+PER));
   const front=g=>g.map(s=>{ const nm=wlCardName(s); const fs=(2.74*Math.min(1,17/Math.max(1,nm.length))).toFixed(2);
-    return `<div class="c"><img data-b alt=""><div class="q">${wlQrSvg(wlUrl(wlToken(s.id,false)))}</div><div class="n" style="font-size:${fs}mm">${esc(nm)}</div></div>`; }).join('');
+    return `<div class="c"><img data-b alt=""><div class="q">${wlQrSvg(wlUrl(wlToken(s.id,false)))}</div>${nm?`<img class="nl" src="${wlNameLayer(nm)}" alt="">`:''}</div>`; }).join('');
   const back=()=>`<img class="bk" data-k alt="">`;
   const body=pages.map(g=>`<section class="p">${front(g)}</section><section class="p bkp">${back()}</section>`).join('');
   const w=window.open('','_blank');
@@ -17833,7 +17840,7 @@ function wlPrintQrs(ids){
     .c img{position:absolute;inset:0;width:100%;height:100%;display:block}
     .bkp{display:block;position:relative}.bkp .bk{position:absolute;inset:0;width:210mm;height:297mm;display:block}
     .q{position:absolute;left:62.5%;top:26.87%;width:29.17%;height:46.26%}.q svg{width:100%;height:100%;display:block}
-    .n{position:absolute;left:25.4%;width:36%;top:62.8%;text-align:center;font-weight:700;color:#14305f;white-space:nowrap;line-height:1.1;letter-spacing:.2mm}
+    .c img.nl{z-index:2}
     @media print{.tip{display:none}.p{margin:0}} @media screen{body{background:#e9ecf2}.p{background:#fff;margin:10px auto;box-shadow:0 1px 6px rgba(0,0,0,.2)}}
     </style></head><body><div class="tip">🖨 인쇄(Ctrl+P) → <b>양면 인쇄 · 긴 쪽 넘김</b>으로 설정하세요. 홀수 쪽=QR 카드, 짝수 쪽=뒷면(보내주신 PDF 배경)이에요. (배율 100% / 여백 없음)</div>${body}
     <script>var B=${JSON.stringify(WL_CARD)},K=${JSON.stringify(WL_BACK)};var imgs=[].slice.call(document.querySelectorAll('img[data-b],img[data-k]'));var left=imgs.length;
@@ -17919,7 +17926,7 @@ function renderWallet(){
     <input type="search" id="wlSearch" value="${esc(state.wlQ||'')}" placeholder="🔍 이름 검색 (Enter)" style="padding:7px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;min-width:150px">
     <span style="font-size:.82rem;color:var(--sub);font-weight:700">${rows.length}명${sum['달러']?` · 💵 ${sum['달러'].toLocaleString()}달러`:''}${sum['코인']?` · ${wlSymHtml({name:'코인'})} ${sum['코인'].toLocaleString()}코인`:''}</span></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"><button class="btn" data-wlprintall>🖨 현재 목록 카드 인쇄 (${rows.length}명)</button><button class="btn" data-wlprintsel>🖨 선택한 학생 카드 인쇄 (<span id="wlSelN">${rows.filter(x=>(state.wlSel||{})[x.s.id]).length}</span>명)</button><button class="btn" data-wlrepub>🔄 QR 전체 다시 올리기</button>${admin?'<button class="btn" data-wlimgs>🖼 저금통 그림</button>':''}
-    <span style="font-size:.76rem;color:var(--sub);align-self:center">초등부는 달러, 중등·고등부는 코인이에요 · 적립·사용은 모든 선생님이 입력할 수 있어요 · 사유는 안 적어도 돼요(비우면 담당 과목으로 기록)</span></div>`;
+    <span style="font-size:.76rem;color:var(--sub);align-self:center">초등부는 달러, 중등·고등부는 코인이에요 · 적립·사용은 모든 선생님이 입력할 수 있어요 · 사유는 안 적어도 돼요(비우면 담당 과목으로 기록)</span><span style="font-size:.7rem;color:#9aa3b5;align-self:center">화면 버전 11/11-D (뒷면=PDF)</span></div>`;
   if(!rows.length) return h+'<div class="empty">표시할 학생이 없어요. (반이 정해진 재원생만 나와요)</div>';
   h+=`<div style="overflow:auto"><table class="wlt" style="border-collapse:collapse;width:100%;font-size:.88rem;background:#fff"><thead><tr>${['<input type="checkbox" data-wlselall title="전체 선택">','학생','반','잔액','최근 내역',''].map(t=>`<th style="background:#e8ecf3;border:1px solid #c5ccd8;padding:6px 8px;text-align:center;white-space:nowrap">${t}</th>`).join('')}</tr></thead><tbody>`;
   rows.forEach(({s,u})=>{
@@ -17949,6 +17956,54 @@ function bindWallet(){
   const rp=v.querySelector('[data-wlrepub]'); if(rp) rp.onclick=()=>wlRepublishAll(null,false);
 }
 
+/* 학생 QR을 로그인한 기기로 찍었을 때 뜨는 "빠른 입출금" 전체 화면 — 폰에서 크게 보이도록 화면 폭에 맞춰 키움 */
+function wlQuick(sid){
+  const s=store.students.find(x=>x.id===sid&&!x._deleted); if(!s) return;
+  const u=wlUnit(s)||{name:'코인'};
+  let ov=document.getElementById('wlQ'); if(ov) ov.remove();
+  ov=document.createElement('div'); ov.id='wlQ';
+  ov.style.cssText='position:fixed;inset:0;z-index:10000;background:#f3f5fa;overflow:auto;-webkit-overflow-scrolling:touch';
+  document.body.appendChild(ov);
+  let type='in';
+  const fit=()=>{ const w=ov.querySelector('.wq'); if(w) w.style.zoom=Math.max(1,Math.min(window.innerWidth/420,2.8)); };
+  const draw=()=>{
+    const bal=wlBal(sid); const en=String(s.nameEn||'').trim();
+    const ents=wlEntries(sid).slice(0,8);
+    const B=(on,c)=>`flex:1;padding:14px 0;border-radius:12px;border:2px solid ${on?c:'#d5dae3'};background:${on?c:'#fff'};color:${on?'#fff':'#444'};font-size:1.05rem;font-weight:800;font-family:inherit;cursor:pointer`;
+    ov.innerHTML=`<div class="wq" style="max-width:460px;margin:0 auto;padding:16px 14px 40px;font-family:inherit;color:#1c2333">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><span style="font-size:.78rem;color:#7b8498">학원 화폐 · 빠른 입출금</span><button id="wqX" style="border:1.5px solid #d5dae3;background:#fff;border-radius:10px;padding:7px 12px;font-weight:700;font-family:inherit">✕ 닫기</button></div>
+      <div style="background:#fff;border-radius:16px;padding:16px;text-align:center;box-shadow:0 2px 10px rgba(0,0,0,.06)">
+        <div style="font-size:1.45rem;font-weight:900">${esc(en||s.nameKo)}</div>
+        <div style="font-size:.85rem;color:#7b8498;margin-top:2px">${en?esc(s.nameKo)+' · ':''}${esc(classNameInMonth(s,state.month)||'')}</div>
+        <div style="margin-top:12px;font-size:.8rem;color:#7b8498">현재 잔액</div>
+        <div style="font-size:2.2rem;font-weight:900;margin-top:2px">${wlSymHtml(u)} ${bal.toLocaleString()} <span style="font-size:1rem;font-weight:700;color:#7b8498">${u.name}</span></div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:14px"><button id="wqIn" style="${B(type==='in','#1f9d63')}">＋ 적립</button><button id="wqOut" style="${B(type==='out','#d9534f')}">－ 사용</button></div>
+      <input id="wqAmt" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="금액" style="width:100%;box-sizing:border-box;margin-top:12px;padding:14px;border:2px solid #c5ccd8;border-radius:12px;font-size:1.5rem;font-weight:800;text-align:center;font-family:inherit">
+      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">${[1,5,10,50,100].map(n=>`<button data-wqadd="${n}" style="flex:1;min-width:52px;padding:9px 0;border-radius:10px;border:1.5px solid #d5dae3;background:#fff;font-weight:800;font-family:inherit">+${n}</button>`).join('')}<button id="wqClr" style="padding:9px 12px;border-radius:10px;border:1.5px solid #d5dae3;background:#fff;font-weight:700;font-family:inherit">지움</button></div>
+      <input id="wqWhy" type="text" placeholder="사유 (안 적어도 돼요 — 비우면 담당 과목으로 기록)" style="width:100%;box-sizing:border-box;margin-top:10px;padding:12px;border:1.5px solid #d5dae3;border-radius:12px;font-size:.95rem;font-family:inherit">
+      <button id="wqGo" style="width:100%;margin-top:12px;padding:16px;border:0;border-radius:14px;background:#1c2333;color:#fff;font-size:1.15rem;font-weight:900;font-family:inherit;cursor:pointer">${type==='in'?'＋ 적립 기록':'－ 사용 기록'}</button>
+      <div style="margin-top:18px;font-weight:800;font-size:.95rem">최근 내역</div>
+      <div style="margin-top:6px;background:#fff;border-radius:12px;overflow:hidden">${ents.length?ents.map(x=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:10px 12px;border-bottom:1px solid #eef0f5;font-size:.85rem"><span style="color:#7b8498;white-space:nowrap">${esc(String(x.date).slice(5).replace('-','/'))}</span><span style="flex:1;text-align:left">${esc(wlLabel(x))}</span><b style="color:${x.type==='in'?'#1f9d63':'#d9534f'}">${x.type==='in'?'+':'−'}${(Number(x.amount)||0).toLocaleString()}</b></div>`).join(''):'<div style="padding:14px;color:#7b8498;font-size:.85rem">아직 내역이 없어요.</div>'}</div>
+      <button id="wqAll" style="width:100%;margin-top:10px;padding:11px;border:1.5px solid #d5dae3;background:#fff;border-radius:12px;font-weight:700;font-family:inherit">전체 내역 보기 · 수정</button>
+    </div>`;
+    fit();
+    const amt=ov.querySelector('#wqAmt');
+    ov.querySelector('#wqX').onclick=()=>ov.remove();
+    ov.querySelector('#wqIn').onclick=()=>{ type='in'; const v=amt.value,w=ov.querySelector('#wqWhy').value; draw(); ov.querySelector('#wqAmt').value=v; ov.querySelector('#wqWhy').value=w; };
+    ov.querySelector('#wqOut').onclick=()=>{ type='out'; const v=amt.value,w=ov.querySelector('#wqWhy').value; draw(); ov.querySelector('#wqAmt').value=v; ov.querySelector('#wqWhy').value=w; };
+    ov.querySelectorAll('[data-wqadd]').forEach(b=>b.onclick=()=>{ amt.value=String((parseInt(amt.value,10)||0)+Number(b.dataset.wqadd)); });
+    ov.querySelector('#wqClr').onclick=()=>{ amt.value=''; amt.focus(); };
+    ov.querySelector('#wqAll').onclick=()=>{ ov.remove(); wlOpenLedger(sid,'in'); };
+    ov.querySelector('#wqGo').onclick=()=>{
+      const err=wlAdd(sid,type,amt.value.replace(/[^0-9]/g,''),ov.querySelector('#wqWhy').value,'');
+      if(err){ alert(err); return; }
+      toast(type==='in'?'적립했어요':'사용 처리했어요'); try{ render(true); }catch(e){} draw();
+    };
+  };
+  draw();
+  if(!ov._fit){ ov._fit=1; window.addEventListener('resize',fit); }
+}
 /* 학생 QR(wallet.html)을 대시보드에 로그인한 기기로 찍으면 → 이 주소(?wl=토큰)로 넘어와서 바로 적립/사용 창이 열린다 */
 function wlDeepLink(){
   let tk=WL_DEEP; if(!tk||window.__wlDeepDone) return;
@@ -17959,7 +18014,7 @@ function wlDeepLink(){
   if(!s){
     if(!window.__wlDeepRetry && syncOn()){ window.__wlDeepRetry=true; window.__wlDeepDone=false; toast('최신 명단을 불러오는 중…'); try{ pullShared(true); }catch(e){} setTimeout(()=>{ try{ wlDeepLink(); }catch(e){} },3500); return; }
     toast('이 QR의 학생을 찾지 못했어요 (학생 명단/QR이 이 대시보드에 있는지 확인해주세요)'); return; }
-  state.tab='wallet'; render(true); wlOpenLedger(s.id,'in');
+  state.tab='wallet'; render(true); wlQuick(s.id);
 }
 setTimeout(()=>{ try{ wlDeepLink(); }catch(e){} },700);
 
