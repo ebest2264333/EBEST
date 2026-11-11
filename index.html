@@ -17612,7 +17612,7 @@ function wlDept(s){
   if(!d){ const sc=String(s.school||'').trim(); d=sc.endsWith('초')?'초등':sc.endsWith('중')?'중등':sc.endsWith('고')?'고등':''; }
   return d;
 }
-function wlUnit(s){ const d=wlDept(s); if(!d) return null; if(d==='초등') return {name:'달러',sym:'$',dept:d}; return {name:'코인',sym:'🪙',dept:d}; } // 초등부만 달러, 중등·고등부는 코인
+function wlUnit(s){ const d=wlDept(s); if(!d) return null; if(d==='초등') return {name:'달러',sym:'$',dept:d}; return {name:'코인',sym:'',dept:d}; } // 초등부만 달러, 중등·고등부는 코인
 function wlEntries(sid){ return (store.walletLog||[]).filter(x=>!x._deleted && x.studentId===sid).sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||0)-(a.createdAt||0)); }
 function wlBal(sid){ return wlEntries(sid).reduce((t,x)=>t+(x.type==='in'?1:-1)*(Number(x.amount)||0),0); }
 // 사유를 안 적으면 입력한 선생님의 담당 과목으로만 기록한다(과목을 못 찾으면 선생님 이름)
@@ -17626,6 +17626,9 @@ function wlSubjFor(s, lt){
   }));
   return out.join('/');
 }
+// 코인 기호는 이모지(🪙)가 오래된 컴퓨터에서 깨져서, 그림(SVG)으로 직접 그린다
+function wlSymHtml(u){ return u&&u.name==='코인'?'<svg viewBox="0 0 24 24" width="1em" height="1em" style="vertical-align:-.14em"><circle cx="12" cy="12" r="11" fill="#f5b014" stroke="#b36b00" stroke-width="1.6"/><circle cx="12" cy="12" r="7" fill="none" stroke="#d98a0b" stroke-width="1.5"/><text x="12" y="16" font-size="10" font-weight="900" text-anchor="middle" fill="#a85f00" font-family="Arial,sans-serif">C</text></svg>':esc((u&&u.sym)||''); }
+function wlName(s){ return esc(s.nameKo||'')+(s.nameEn?' <span style="font-weight:400;color:var(--sub)">('+esc(s.nameEn)+')</span>':''); } // 한국어이름(영어이름)
 function wlMask(n){ n=String(n||'').trim(); if(n.length<=1) return n; if(n.length===2) return n[0]+'*'; return n[0]+'*'.repeat(n.length-2)+n[n.length-1]; }
 function wlTokRec(sid){ return (store.walletTokens||[]).find(x=>x.id===sid && x.token); }
 function wlNewToken(){ const a=new Uint8Array(16); (window.crypto||window.msCrypto).getRandomValues(a); return [...a].map(b=>(b%36).toString(36)).join('')+Date.now().toString(36); }
@@ -17638,7 +17641,7 @@ function wlUrl(tk){ return location.origin+routeBase()+'wallet.html?t='+tk; }
 function wlDbBase(){ let u=String((store.sync&&store.sync.url)||'').trim().replace(/\/+$/,''); if(u && !/^https:\/\//.test(u)) u='https://'+u; return u; }
 function wlPubData(s){
   const u=wlUnit(s)||{name:'',sym:''};
-  return {n:wlMask(s.nameKo), ac:s.academy, u:u.name, s:u.sym, bal:wlBal(s.id), rec:wlEntries(s.id).slice(0,300).map(x=>({d:x.date,t:x.type,a:Number(x.amount)||0,r:wlLabel(x)})), upd:new Date().toISOString()};
+  return {n:wlMask(s.nameKo), e:String(s.nameEn||'').trim(), ac:s.academy, u:u.name, s:u.sym, bal:wlBal(s.id), rec:wlEntries(s.id).slice(0,300).map(x=>({d:x.date,t:x.type,a:Number(x.amount)||0,r:wlLabel(x)})), upd:new Date().toISOString()};
 }
 async function wlPublish(sid){
   const s=store.students.find(x=>x.id===sid); const tk=wlToken(sid,false);
@@ -17662,7 +17665,7 @@ function wlAvgSoon(ac){ clearTimeout(_wlAvgT[ac]); _wlAvgT[ac]=setTimeout(()=>wl
 function wlPublishSoon(sid){
   clearTimeout(_wlTimers[sid]);
   const st0=store.students.find(x=>x.id===sid); if(st0) wlAvgSoon(st0.academy);
-  _wlTimers[sid]=setTimeout(async()=>{ if(!wlTokRec(sid)) return; const ok=await wlPublish(sid); if(!ok) toast('⚠ QR 화면(잔액) 갱신 실패 — 인터넷 확인 후 [QR 전체 다시 올리기]를 눌러주세요'); },400);
+  _wlTimers[sid]=setTimeout(async()=>{ if(!wlTokRec(sid)) return; const ok=await wlPublish(sid); if(!ok) toast('⚠ QR 화면(잔액) 갱신 실패 — 인터넷·서버 규칙(wallet 칸 열기)을 확인해주세요'); },400);
 }
 function wlAdd(sid,type,amount,reason,date){
   const s=store.students.find(x=>x.id===sid); if(!s) return '학생을 찾을 수 없어요';
@@ -17679,6 +17682,12 @@ function wlDel(id){
   if(x.type==='in'){ const after=wlBal(x.studentId)-(Number(x.amount)||0); if(after<0) return '이 적립을 지우면 잔액이 음수가 돼요. 먼저 뒤의 사용 내역을 지워주세요.'; }
   x._deleted=true; x.updatedAt=Date.now(); save(); wlPublishSoon(x.studentId); return '';
 }
+// 서버가 거절했는지(규칙) 인터넷 문제인지 알 수 있게 안내한다
+function wlNetErr(e,head){
+  const m=String((e&&e.message)||e||''); 
+  if(/HTTP 40[13]/.test(m)) return head+'\n\n서버(Firebase)가 이 칸의 읽기·쓰기를 막고 있어요 ('+m+').\nFirebase 콘솔 → Realtime Database → 규칙에 wallet / walletMeta / walletImg 를 열어야 해요. (안내는 대화창 참고)';
+  return head+' — '+(m||'인터넷을 확인해주세요')+'\n(서버 규칙이 막은 경우에도 이렇게 보일 수 있어요)';
+}
 function wlOverlay(html){
   let ov=document.getElementById('wlOv'); if(ov) ov.remove();
   ov=document.createElement('div'); ov.id='wlOv';
@@ -17694,11 +17703,11 @@ function wlOpenLedger(sid, type){
   const u=wlUnit(s)||{name:'',sym:''}; type=type||state.wlType||'in'; state.wlType=type;
   const ents=wlEntries(sid); const bal=wlBal(sid);
   const ov=wlOverlay(`<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-      <div><b style="font-size:1.05rem">${esc(s.nameKo)}</b> <span style="color:var(--sub);font-size:.8rem">${esc(classNameInMonth(s,state.month)||'')}</span></div>
+      <div><b style="font-size:1.05rem">${wlName(s)}</b> <span style="color:var(--sub);font-size:.8rem">${esc(classNameInMonth(s,state.month)||'')}</span></div>
       <button class="btn small" data-wlclose>✕ 닫기</button></div>
     <div style="margin:10px 0;padding:12px;border-radius:12px;background:${type==='in'?'#ecfdf5':'#fef2f2'};text-align:center">
       <div style="font-size:.78rem;color:var(--sub)">현재 잔액</div>
-      <div style="font-size:1.9rem;font-weight:900">${esc(u.sym)} ${bal.toLocaleString()} <span style="font-size:.9rem;font-weight:700">${esc(u.name)}</span></div></div>
+      <div style="font-size:1.9rem;font-weight:900">${wlSymHtml(u)} ${bal.toLocaleString()} <span style="font-size:.9rem;font-weight:700">${esc(u.name)}</span></div></div>
     <div style="display:flex;gap:6px;margin-bottom:8px">
       <button class="chip ${type==='in'?'on':''}" data-wltype="in" style="flex:1">＋ 적립</button>
       <button class="chip ${type==='out'?'on':''}" data-wltype="out" style="flex:1">－ 사용</button></div>
@@ -17732,7 +17741,7 @@ function wlOpenQr(sid){
   const s=store.students.find(x=>x.id===sid); if(!s) return;
   const tk=wlToken(sid,true); const url=wlUrl(tk); const u=wlUnit(s)||{name:''};
   const warn=(!/^https?:$/.test(location.protocol))?'<div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:8px;font-size:.78rem;margin-bottom:8px">⚠ 지금은 인터넷 주소(GitHub Pages)로 연 화면이 아니라서, 이 QR은 학생 휴대폰에서 열리지 않아요. 홈페이지 주소로 접속한 뒤 다시 만들어주세요.</div>':(syncOn()?'':'<div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:8px;font-size:.78rem;margin-bottom:8px">⚠ 실시간 동기화가 꺼져 있어서 QR 화면에 잔액을 올릴 수 없어요. 설정에서 동기화를 켜주세요.</div>');
-  const ov=wlOverlay(`<div style="display:flex;justify-content:space-between;align-items:center"><b>${esc(s.nameKo)} · ${esc(u.name)} 통장 QR</b><button class="btn small" data-wlclose>✕ 닫기</button></div>
+  const ov=wlOverlay(`<div style="display:flex;justify-content:space-between;align-items:center"><b>${wlName(s)} · ${esc(u.name)} 통장 QR</b><button class="btn small" data-wlclose>✕ 닫기</button></div>
     <div style="margin-top:10px">${warn}<div style="width:230px;max-width:100%;margin:0 auto">${wlQrSvg(url)}</div>
     <input type="text" readonly value="${esc(url)}" onclick="this.select()" style="${WL_INP};margin-top:10px;font-size:.72rem">
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><button class="btn small" id="wlCopy">📋 주소 복사</button><button class="btn small" id="wlPrintOne">🖨 이 QR 인쇄</button>${isAdminRole()?'<button class="btn small" id="wlRegen" style="margin-left:auto;color:#c0392b">🔁 새 QR로 바꾸기</button>':''}</div>
@@ -17754,7 +17763,7 @@ function wlPrintQrs(ids){
   if(!items.length){ alert('인쇄할 학생이 없어요.'); return; }
   items.forEach(s=>wlToken(s.id,true));
   const cards=items.map(s=>{ const u=wlUnit(s)||{name:''}; const tk=wlToken(s.id,false);
-    return `<div class="c"><div class="t">${esc(s.nameKo)}</div><div class="m">${esc(classNameInMonth(s,state.month)||'')}</div><div class="q">${wlQrSvg(wlUrl(tk))}</div><div class="g">${esc(u.name)} 통장 · QR을 찍어보세요</div></div>`; }).join('');
+    return `<div class="c"><div class="t">${esc(s.nameKo)}${s.nameEn?' <span style="font-weight:400;font-size:10pt">('+esc(s.nameEn)+')</span>':''}</div><div class="m">${esc(classNameInMonth(s,state.month)||'')}</div><div class="q">${wlQrSvg(wlUrl(tk))}</div><div class="g">${esc(u.name)} 통장 · QR을 찍어보세요</div></div>`; }).join('');
   const w=window.open('','_blank');
   if(!w){ alert('팝업이 막혀 있어요. 이 사이트의 팝업을 허용한 뒤 다시 눌러주세요.'); return; }
   w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>학원 화폐 QR</title><style>
@@ -17793,7 +17802,7 @@ async function wlOpenImgs(unitKey){
   if(!isAdminRole()) return;
   if(!syncOn()){ alert('실시간 동기화가 켜져 있어야 그림을 올릴 수 있어요. (설정에서 동기화를 켜주세요)'); return; }
   const uk=unitKey||state.wlImgUnit||'dollar'; state.wlImgUnit=uk; const uname=uk==='dollar'?'달러':'코인';
-  let data={}; try{ const r=await fbFetch(wlDbBase()+'/walletImg/'+uk+'.json',null,15000); if(!r.ok) throw new Error('HTTP '+r.status); data=(await r.json())||{}; }catch(e){ alert('저장된 그림을 불러오지 못했어요 — 인터넷을 확인해주세요.'); return; }
+  let data={}; try{ const r=await fbFetch(wlDbBase()+'/walletImg/'+uk+'.json',null,15000); if(!r.ok) throw new Error('HTTP '+r.status); data=(await r.json())||{}; }catch(e){ alert(wlNetErr(e,'저장된 그림을 불러오지 못했어요')); return; }
   const get=i=>(Array.isArray(data)?data[i]:data[i]);
   const ov=wlOverlay(`<div style="display:flex;justify-content:space-between;align-items:center"><b>🖼 저금통 그림 (${uname})</b><button class="btn small" data-wlclose>✕ 닫기</button></div>
     <div style="display:flex;gap:6px;margin:10px 0"><button class="chip ${uk==='dollar'?'on':''}" data-wliu="dollar">달러 (초등)</button><button class="chip ${uk==='coin'?'on':''}" data-wliu="coin">코인 (중등·고등)</button></div>
@@ -17808,27 +17817,31 @@ async function wlOpenImgs(unitKey){
     try{ const url=await wlResizeImg(f);
       const r=await fbFetch(wlDbBase()+'/walletImg/'+uk+'/'+inp.dataset.wlimg+'.json?print=silent',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(url)},20000);
       if(!r.ok) throw new Error('HTTP '+r.status); toast('✅ 그림을 올렸어요'); wlOpenImgs(uk);
-    }catch(e){ alert('그림 올리기 실패: '+(e&&e.message||e)); }
+    }catch(e){ alert(wlNetErr(e,'그림 올리기 실패')); }
   });
   ov.querySelectorAll('[data-wlimgdel]').forEach(b=>b.onclick=async()=>{
     if(!confirm('이 단계를 기본 그림으로 되돌릴까요?')) return;
     try{ await fbFetch(wlDbBase()+'/walletImg/'+uk+'/'+b.dataset.wlimgdel+'.json?print=silent',{method:'DELETE'},15000); wlOpenImgs(uk); }catch(e){ alert('실패 — 인터넷을 확인해주세요.'); }
   });
 }
+// 반 순서는 [반 정보]에서 정한 순서(classOrder)를 그대로 따른다 — 학원별로 순서표를 만들어 두고, 순서표에 없는 반은 뒤로, 미배정은 맨 뒤로
+function wlOrderMaps(){ const m={}; academies().forEach(a=>{ const o={}; try{ classOrderEffective(a).forEach((n,i)=>{ o[n]=i; }); }catch(e){} m[a]=o; }); return m; }
+function wlClassRank(maps,s){ const cn=classNameInMonth(s,state.month); if(!cn) return 1e6; const r=(maps[s.academy]||{})[cn]; return r==null?1e5:r; }
 function wlRows(){
   const q=String(state.wlQ||'').trim().toLowerCase();
   let rows=store.students.filter(s=>!s._deleted && s.status==='재원' && (state.ac==='all'||s.academy===state.ac)).map(s=>({s,u:wlUnit(s)})).filter(x=>x.u);
   if(state.wlDept&&state.wlDept!=='all') rows=rows.filter(x=>x.u.dept===state.wlDept);
   if(state.wlClass&&state.wlClass!=='all') rows=rows.filter(x=>(classNameInMonth(x.s,state.month)||'미배정')===state.wlClass);
   if(q) rows=rows.filter(x=>[x.s.nameKo,x.s.nameEn,classNameInMonth(x.s,state.month)].some(v=>v&&String(v).toLowerCase().includes(q)));
-  const dord={'초등':0,'중등':1,'고등':2};
-  rows.sort((a,b)=>(dord[a.u.dept]-dord[b.u.dept])||String(classNameInMonth(a.s,state.month)||'힣').localeCompare(String(classNameInMonth(b.s,state.month)||'힣'),'ko',{numeric:true})||(a.s.nameKo||'').localeCompare(b.s.nameKo||'','ko'));
+  const maps=wlOrderMaps(); const acs=academies();
+  rows.sort((a,b)=>(acs.indexOf(a.s.academy)-acs.indexOf(b.s.academy))||(wlClassRank(maps,a.s)-wlClassRank(maps,b.s))||String(classNameInMonth(a.s,state.month)||'').localeCompare(String(classNameInMonth(b.s,state.month)||''),'ko',{numeric:true})||(a.s.nameKo||'').localeCompare(b.s.nameKo||'','ko'));
   return rows;
 }
 function renderWallet(){
   state.wlDept=state.wlDept||'all'; state.wlClass=state.wlClass||'all';
   const all=store.students.filter(s=>!s._deleted && s.status==='재원' && (state.ac==='all'||s.academy===state.ac)).map(s=>({s,u:wlUnit(s)})).filter(x=>x.u);
-  const classes=[...new Set(all.filter(x=>state.wlDept==='all'||x.u.dept===state.wlDept).map(x=>classNameInMonth(x.s,state.month)||'미배정'))].sort((a,b)=>a.localeCompare(b,'ko',{numeric:true}));
+  const omaps=wlOrderMaps(); const oacs=academies();
+  const classes=[...new Set(all.filter(x=>state.wlDept==='all'||x.u.dept===state.wlDept).sort((a,b)=>(oacs.indexOf(a.s.academy)-oacs.indexOf(b.s.academy))||(wlClassRank(omaps,a.s)-wlClassRank(omaps,b.s))).map(x=>classNameInMonth(x.s,state.month)||'미배정'))];
   if(state.wlClass!=='all' && !classes.includes(state.wlClass)) state.wlClass='all';
   const rows=wlRows();
   const sum={'달러':0,'코인':0}; rows.forEach(x=>{ sum[x.u.name]+=wlBal(x.s.id); });
@@ -17837,7 +17850,7 @@ function renderWallet(){
     ${[['all','전체'],['초등','초등 · 달러'],['중등','중등 · 코인'],['고등','고등 · 코인']].map(([k,l])=>`<button class="chip ${state.wlDept===k?'on':''}" data-wldept="${k}">${l}</button>`).join('')}
     <select data-wlclass style="padding:7px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit"><option value="all">모든 반</option>${classes.map(c=>`<option value="${esc(c)}" ${state.wlClass===c?'selected':''}>${esc(c)}</option>`).join('')}</select>
     <input type="search" id="wlSearch" value="${esc(state.wlQ||'')}" placeholder="🔍 이름 검색 (Enter)" style="padding:7px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;min-width:150px">
-    <span style="font-size:.82rem;color:var(--sub);font-weight:700">${rows.length}명${sum['달러']?` · 💵 ${sum['달러'].toLocaleString()}달러`:''}${sum['코인']?` · 🪙 ${sum['코인'].toLocaleString()}코인`:''}</span></div>
+    <span style="font-size:.82rem;color:var(--sub);font-weight:700">${rows.length}명${sum['달러']?` · 💵 ${sum['달러'].toLocaleString()}달러`:''}${sum['코인']?` · ${wlSymHtml({name:'코인'})} ${sum['코인'].toLocaleString()}코인`:''}</span></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"><button class="btn" data-wlprintall>🖨 현재 목록 QR 인쇄</button><button class="btn" data-wlrepub>🔄 QR 전체 다시 올리기</button>${admin?'<button class="btn" data-wlimgs>🖼 저금통 그림</button>':''}
     <span style="font-size:.76rem;color:var(--sub);align-self:center">초등부는 달러, 중등·고등부는 코인이에요 · 적립·사용은 모든 선생님이 입력할 수 있어요 · 사유는 안 적어도 돼요(비우면 담당 과목으로 기록)</span></div>`;
   if(!rows.length) return h+'<div class="empty">표시할 학생이 없어요. (반이 정해진 재원생만 나와요)</div>';
@@ -17845,9 +17858,9 @@ function renderWallet(){
   rows.forEach(({s,u})=>{
     const bal=wlBal(s.id); const last=wlEntries(s.id)[0];
     const TD='border:1px solid #d5dae3;padding:6px 8px;text-align:center';
-    h+=`<tr><td style="${TD};text-align:left;font-weight:800;white-space:nowrap">${esc(s.nameKo)}${MODE==='all'?' '+bdg(s.academy):''}</td>
+    h+=`<tr><td style="${TD};text-align:left;font-weight:800;white-space:nowrap">${wlName(s)}${MODE==='all'?' '+bdg(s.academy):''}</td>
       <td style="${TD};color:var(--sub);white-space:nowrap">${esc(classNameInMonth(s,state.month)||'미배정')}</td>
-      <td style="${TD};font-weight:900;white-space:nowrap">${esc(u.sym)} ${bal.toLocaleString()} <span style="font-weight:400;color:var(--sub);font-size:.74rem">${u.name}</span></td>
+      <td style="${TD};font-weight:900;white-space:nowrap">${wlSymHtml(u)} ${bal.toLocaleString()} <span style="font-weight:400;color:var(--sub);font-size:.74rem">${u.name}</span></td>
       <td style="${TD};font-size:.78rem;color:var(--sub)">${last?`${esc(String(last.date).slice(5).replace('-','/'))} ${last.type==='in'?'+':'−'}${(Number(last.amount)||0).toLocaleString()} · ${esc(wlLabel(last))}`:'-'}</td>
       <td style="${TD};white-space:nowrap"><button class="btn small" data-wlopen="${s.id}|in">＋ 적립</button> <button class="btn small" data-wlopen="${s.id}|out">－ 사용</button> <button class="btn small" data-wlopen="${s.id}|led">📒 통장</button> <button class="btn small" data-wlqr="${s.id}">QR</button></td></tr>`;
   });
