@@ -17709,8 +17709,9 @@ function wlOverlay(html){
   let ov=document.getElementById('wlOv'); if(ov) ov.remove();
   ov=document.createElement('div'); ov.id='wlOv';
   ov.style.cssText='position:fixed;inset:0;background:rgba(20,24,40,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:14px';
-  ov.innerHTML=`<div style="background:#fff;border-radius:14px;max-width:460px;width:100%;max-height:90vh;overflow:auto;padding:16px;box-shadow:0 10px 40px rgba(0,0,0,.3)">${html}</div>`;
+  ov.innerHTML=`<div class="wlbox" style="background:#fff;border-radius:14px;max-width:460px;width:100%;max-height:90vh;overflow:auto;padding:16px;box-shadow:0 10px 40px rgba(0,0,0,.3)">${html}</div>`;
   document.body.appendChild(ov);
+  { const bx=ov.querySelector('.wlbox'); const z=Math.max(1,Math.min(window.innerWidth/460,2.4)); if(z>1.05){ bx.style.zoom=z; bx.style.maxHeight=(90/z)+'vh'; } } /* 폰이 '데스크톱 사이트' 모드처럼 화면 폭이 넓게 잡혀도 창이 작아 보이지 않게 키움 */
   ov.querySelectorAll('[data-wlclose]').forEach(b=>b.onclick=()=>ov.remove());
   return ov;
 }
@@ -17926,7 +17927,7 @@ function renderWallet(){
     <input type="search" id="wlSearch" value="${esc(state.wlQ||'')}" placeholder="🔍 이름 검색 (Enter)" style="padding:7px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;min-width:150px">
     <span style="font-size:.82rem;color:var(--sub);font-weight:700">${rows.length}명${sum['달러']?` · 💵 ${sum['달러'].toLocaleString()}달러`:''}${sum['코인']?` · ${wlSymHtml({name:'코인'})} ${sum['코인'].toLocaleString()}코인`:''}</span></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"><button class="btn" data-wlprintall>🖨 현재 목록 카드 인쇄 (${rows.length}명)</button><button class="btn" data-wlprintsel>🖨 선택한 학생 카드 인쇄 (<span id="wlSelN">${rows.filter(x=>(state.wlSel||{})[x.s.id]).length}</span>명)</button><button class="btn" data-wlrepub>🔄 QR 전체 다시 올리기</button>${admin?'<button class="btn" data-wlimgs>🖼 저금통 그림</button>':''}
-    <span style="font-size:.76rem;color:var(--sub);align-self:center">초등부는 달러, 중등·고등부는 코인이에요 · 적립·사용은 모든 선생님이 입력할 수 있어요 · 사유는 안 적어도 돼요(비우면 담당 과목으로 기록)</span><span style="font-size:.7rem;color:#9aa3b5;align-self:center">화면 버전 11/11-D (뒷면=PDF)</span></div>`;
+    <span style="font-size:.76rem;color:var(--sub);align-self:center">초등부는 달러, 중등·고등부는 코인이에요 · 적립·사용은 모든 선생님이 입력할 수 있어요 · 사유는 안 적어도 돼요(비우면 담당 과목으로 기록)</span><span style="font-size:.7rem;color:#9aa3b5;align-self:center">화면 버전 11/11-E</span></div>`;
   if(!rows.length) return h+'<div class="empty">표시할 학생이 없어요. (반이 정해진 재원생만 나와요)</div>';
   h+=`<div style="overflow:auto"><table class="wlt" style="border-collapse:collapse;width:100%;font-size:.88rem;background:#fff"><thead><tr>${['<input type="checkbox" data-wlselall title="전체 선택">','학생','반','잔액','최근 내역',''].map(t=>`<th style="background:#e8ecf3;border:1px solid #c5ccd8;padding:6px 8px;text-align:center;white-space:nowrap">${t}</th>`).join('')}</tr></thead><tbody>`;
   rows.forEach(({s,u})=>{
@@ -17945,7 +17946,7 @@ function bindWallet(){
   v.querySelectorAll('[data-wldept]').forEach(b=>b.onclick=()=>{ state.wlDept=b.dataset.wldept; state.wlClass='all'; render(true); });
   const cs=v.querySelector('[data-wlclass]'); if(cs) cs.onchange=()=>{ state.wlClass=cs.value; render(true); };
   const sr=v.querySelector('#wlSearch'); if(sr) sr.onchange=()=>{ state.wlQ=sr.value; render(true); };
-  v.querySelectorAll('[data-wlopen]').forEach(b=>b.onclick=()=>{ const [id,t]=b.dataset.wlopen.split('|'); wlOpenLedger(id, t==='led'?'in':t); });
+  v.querySelectorAll('[data-wlopen]').forEach(b=>b.onclick=()=>{ const [id,t]=b.dataset.wlopen.split('|'); if(t==='led') wlOpenLedger(id,'in'); else wlQuick(id,t); });
   v.querySelectorAll('[data-wlqr]').forEach(b=>b.onclick=()=>wlOpenQr(b.dataset.wlqr));
   const pa=v.querySelector('[data-wlprintall]'); if(pa) pa.onclick=()=>wlPrintQrs(wlRows().map(x=>x.s.id));
   const selN=()=>{ const el=v.querySelector('#wlSelN'); if(el){ const ids=wlRows().map(x=>x.s.id); el.textContent=ids.filter(i=>(state.wlSel||{})[i]).length; } };
@@ -17957,14 +17958,14 @@ function bindWallet(){
 }
 
 /* 학생 QR을 로그인한 기기로 찍었을 때 뜨는 "빠른 입출금" 전체 화면 — 폰에서 크게 보이도록 화면 폭에 맞춰 키움 */
-function wlQuick(sid){
+function wlQuick(sid,t0){
   const s=store.students.find(x=>x.id===sid&&!x._deleted); if(!s) return;
   const u=wlUnit(s)||{name:'코인'};
   let ov=document.getElementById('wlQ'); if(ov) ov.remove();
   ov=document.createElement('div'); ov.id='wlQ';
   ov.style.cssText='position:fixed;inset:0;z-index:10000;background:#f3f5fa;overflow:auto;-webkit-overflow-scrolling:touch';
   document.body.appendChild(ov);
-  let type='in';
+  let type=(t0==='out')?'out':'in';
   const fit=()=>{ const w=ov.querySelector('.wq'); if(w) w.style.zoom=Math.max(1,Math.min(window.innerWidth/420,2.8)); };
   const draw=()=>{
     const bal=wlBal(sid); const en=String(s.nameEn||'').trim();
@@ -18016,6 +18017,20 @@ function wlDeepLink(){
     toast('이 QR의 학생을 찾지 못했어요 (학생 명단/QR이 이 대시보드에 있는지 확인해주세요)'); return; }
   state.tab='wallet'; render(true); wlQuick(s.id);
 }
+/* 학생 QR 화면(wallet.html)에서 로그인한 선생님이 바로 입출금할 수 있게, 숨은 창(?bridge=1)으로 이 대시보드의 적립/사용 기능을 빌려준다 */
+window.addEventListener('message',async e=>{
+  try{
+    if(e.origin!==location.origin) return; const m=e.data; if(!m||m.wlq!==1) return;
+    const rep=o=>{ try{ e.source.postMessage(Object.assign({wlr:1,id:m.id},o),location.origin); }catch(x){} };
+    if(!store.login && MODE!=='all'){ rep({ok:false,why:'login'}); return; }
+    const rec=(store.walletTokens||[]).find(x=>x.token===m.token); const st=rec&&store.students.find(x=>x.id===rec.id&&!x._deleted);
+    if(!st){ rep({ok:false,why:'nostudent'}); return; }
+    if(m.op==='hello'){ const lt=loginTeacher(); rep({ok:true,bal:wlBal(st.id),who:lt?lt.t.name:'관리자'}); return; }
+    if(m.op==='add'){ const err=wlAdd(st.id,m.type,m.amount,m.reason,''); if(err){ rep({ok:true,err}); return; } const pub=await wlPublish(st.id); rep({ok:true,bal:wlBal(st.id),pub:!!pub}); }
+  }catch(x){ try{ e.source.postMessage({wlr:1,id:(e.data||{}).id,ok:true,err:'처리 중 오류: '+x.message},location.origin); }catch(y){} }
+});
+function wlBridgeReady(){ try{ if(window.parent!==window) window.parent.postMessage({wlr:1,ready:1},location.origin); }catch(e){} }
+setTimeout(wlBridgeReady,1200); setTimeout(wlBridgeReady,3500);
 setTimeout(()=>{ try{ wlDeepLink(); }catch(e){} },700);
 
 render();
