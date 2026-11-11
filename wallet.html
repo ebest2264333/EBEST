@@ -34,7 +34,11 @@ button{margin-top:10px;border:0;background:var(--acc);color:#fff;border-radius:1
 // 학원 화폐 통장 — 학생이 QR을 찍으면 열리는 화면(읽기 전용). 학원 관리 화면이 서버에 올려둔 wallet/<코드> 한 칸만 읽는다.
 var DB='https://ebest-b41ce-default-rtdb.asia-southeast1.firebasedatabase.app';
 var T=(new URLSearchParams(location.search).get('t')||'').trim();
+// 대시보드에 로그인된 기기(같은 주소의 저장공간에 로그인 기록이 있는 폰/PC)로 찍으면 → 학생 화면 대신 대시보드의 적립·사용 창으로 바로 넘어간다 (&view=1 을 붙이면 학생 화면 그대로 볼 수 있음)
+try{ if(T && !/[?&]view=1/.test(location.search)){ var _s=JSON.parse(localStorage.getItem('academy-dash-v2')||'null'); if(_s && _s.login){ location.replace('index.html?wl='+encodeURIComponent(T)); } } }catch(e){}
 var app=document.getElementById('app');
+// 선생님용 작은 링크 — 로그인 기록을 못 알아본 브라우저(카메라 앱 안의 브라우저 등)에서도 눌러서 대시보드로 갈 수 있다
+if(T){ var _f=document.createElement('div'); _f.style.cssText='text-align:center;margin:6px 0 22px;font-size:.72rem'; _f.innerHTML='<a href="index.html?wl='+encodeURIComponent(T)+'" style="color:#9aa3b5;text-decoration:none">선생님 입출금 ›</a>'; document.body.appendChild(_f); }
 // 화면 폭에 맞춰 통째로 키운다 — 폰의 '데스크톱 사이트' 보기나 태블릿처럼 화면이 넓게 잡혀도 카드가 화면을 꽉 채운다(일반 폰은 그대로)
 function fit(){ var z=Math.max(1,Math.min(window.innerWidth/420,2.8)); app.style.zoom=z; }
 fit(); window.addEventListener('resize',fit); window.addEventListener('orientationchange',fit);

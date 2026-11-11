@@ -17956,7 +17956,9 @@ function wlDeepLink(){
   window.__wlDeepDone=true;
   const rec=(store.walletTokens||[]).find(x=>x.token===tk);
   const s=rec&&store.students.find(x=>x.id===rec.id&&!x._deleted);
-  if(!s){ toast('이 QR의 학생을 찾지 못했어요 (동기화 후 다시 찍어보세요)'); return; }
+  if(!s){
+    if(!window.__wlDeepRetry && syncOn()){ window.__wlDeepRetry=true; window.__wlDeepDone=false; toast('최신 명단을 불러오는 중…'); try{ pullShared(true); }catch(e){} setTimeout(()=>{ try{ wlDeepLink(); }catch(e){} },3500); return; }
+    toast('이 QR의 학생을 찾지 못했어요 (학생 명단/QR이 이 대시보드에 있는지 확인해주세요)'); return; }
   state.tab='wallet'; render(true); wlOpenLedger(s.id,'in');
 }
 setTimeout(()=>{ try{ wlDeepLink(); }catch(e){} },700);
