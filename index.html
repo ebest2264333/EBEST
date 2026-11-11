@@ -87,6 +87,9 @@ select#month{padding:8px 13px;border-radius:10px;border:1px solid rgba(255,255,2
 main{max-width:1180px;margin:14px auto 64px;padding:0 20px}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 @media(max-width:880px){.grid{grid-template-columns:1fr}}
+.grid.rsg{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+@media(max-width:1180px){.grid.rsg{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){.grid.rsg{grid-template-columns:1fr}}
 
 .card{background:var(--card);border-radius:var(--radius);border:1px solid var(--line);border-left:4px solid var(--ebest);padding:16px 18px;box-shadow:var(--shadow);transition:box-shadow .15s ease,transform .15s ease}
 .card:hover{box-shadow:var(--shadow-md)}
@@ -289,6 +292,10 @@ footer{max-width:1180px;margin:0 auto;padding:0 20px 40px;font-size:.73rem;color
   #printarea tr,#printarea img,#printarea svg{page-break-inside:avoid;break-inside:avoid}
   #printarea thead{display:table-header-group}
 }
+/* 인수인계표 드래그 칸 · 학원 화폐 모바일 카드 */
+.hg-gcell{cursor:grab;user-select:none}.hg-gcell:active{cursor:grabbing}
+.hg-grip{color:#6b7690;font-size:.95rem;line-height:1;padding:2px 3px;border-radius:4px;user-select:none}.hg-grip:hover{background:#e6e9f0;color:#333}.hg-grip:active{cursor:grabbing}tr.hg-over>td{background:#ede9fe!important;box-shadow:inset 0 2px 0 #6d28d9}
+
 </style>
 </head>
 <body>
@@ -4745,7 +4752,7 @@ function renderRoster(list){
       return ia-ib;
     });
     const body=gradeKeys.map(g=>`<div class="ysec" style="margin-bottom:10px"><h3>${esc(state.rosterSchool)} · ${esc(g)} <span style="font-size:.74rem;font-weight:400;color:var(--sub)">${byGrade[g].length}명</span></h3>
-      <div style="padding:0 16px 14px"><div class="grid">${byGrade[g].map(s=>studentCard(s,admin)).join('')}</div></div></div>`).join('');
+      <div style="padding:0 16px 14px"><div class="grid rsg">${byGrade[g].map(s=>studentCard(s,admin)).join('')}</div></div></div>`).join('');
     return statusSel+viewChips+toolbar+schoolSel+body;
   }
   if(state.rosterView==='class'){
@@ -4772,11 +4779,11 @@ function renderRoster(list){
       <button class="btn small" data-rsbulkgrade="${esc(state.rosterClass)}">학년 전체 +1</button>
     </div>`:'';
     const body=`<div class="ysec"><h3>${esc(state.rosterClass)} <span style="font-size:.74rem;font-weight:400;color:var(--sub)">${students.length}명</span></h3>
-      <div style="padding:0 16px 14px"><div class="grid">${students.map(s=>studentCard(s,admin)).join('')}</div></div></div>`;
+      <div style="padding:0 16px 14px"><div class="grid rsg">${students.map(s=>studentCard(s,admin)).join('')}</div></div></div>`;
     return statusSel+viewChips+toolbar+classSel+bulkBar+body;
   }
   rows.sort((a,b)=>(a.nameKo||'').localeCompare(b.nameKo||'','ko'));
-  return statusSel+viewChips+toolbar+'<div class="grid">'+rows.map(s=>studentCard(s,admin)).join('')+'</div>';
+  return statusSel+viewChips+toolbar+'<div class="grid rsg">'+rows.map(s=>studentCard(s,admin)).join('')+'</div>';
 }
 function bindRoster(){
   const v=document.getElementById('view');
@@ -11738,7 +11745,6 @@ const YS_CSS=`<style>
 .ystb td.today{outline:2px solid #6d28d9;outline-offset:-2px}
 .ysd{font-weight:700;font-size:.74rem;display:flex;gap:4px;align-items:baseline;flex-wrap:wrap}
 .ysh{font-size:.58rem;font-weight:600;color:#d64545;line-height:1.1}
-.hg-gcell{cursor:grab;user-select:none}.hg-gcell:active{cursor:grabbing}.hg-grip{color:#6b7690;font-size:.95rem;line-height:1;padding:2px 3px;border-radius:4px;user-select:none}.hg-grip:hover{background:#e6e9f0;color:#333}.hg-grip:active{cursor:grabbing}tr.hg-over>td{background:#ede9fe!important;box-shadow:inset 0 2px 0 #6d28d9}
 .yschip[draggable=true]{cursor:grab}.ystb td.ysover{background:#ede9fe}
 .ysev{font-size:.6rem;font-weight:700;color:#fff;border-radius:4px;padding:1px 4px;margin-top:2px;line-height:1.2;white-space:normal;word-break:keep-all}
 .yschip{font-size:.6rem;font-weight:800;border:1px solid;border-radius:5px;padding:1px 3px;margin-top:2px;line-height:1.2;white-space:normal}
@@ -17724,7 +17730,7 @@ function wlOpenLedger(sid, type){
     <div style="display:flex;gap:6px;margin-bottom:6px"><input type="number" id="wlAmt" min="1" step="1" inputmode="numeric" placeholder="금액" style="${WL_INP};flex:1"><input type="date" id="wlDate" value="${todayISO()}" style="${WL_INP};flex:1"></div>
     <input type="text" id="wlReason" placeholder="사유 (안 적어도 돼요 — 비우면 담당 과목으로 기록)" style="${WL_INP}">
     <button class="btn primary" id="wlGo" style="width:100%;margin-top:8px">${type==='in'?'＋ 적립 기록':'－ 사용 기록'}</button>
-    <div style="margin-top:14px;font-weight:800;font-size:.86rem">📒 통장 내역 <span style="font-weight:400;color:var(--sub)">(${ents.length}건)</span></div>
+    <div style="margin-top:14px;font-weight:800;font-size:.86rem">📒 내역 <span style="font-weight:400;color:var(--sub)">(${ents.length}건)</span></div>
     <div style="margin-top:6px">${ents.length?ents.map(x=>state.wlEditId===x.id?`<div style="padding:8px;margin:6px 0;border:1.5px solid #6366f1;border-radius:10px;background:#f5f6ff">
         <div style="display:flex;gap:6px;margin-bottom:6px"><select data-wlet style="${WL_INP};flex:1"><option value="in" ${x.type==='in'?'selected':''}>＋ 적립</option><option value="out" ${x.type==='out'?'selected':''}>－ 사용</option></select><input type="number" data-wlea min="1" step="1" value="${Number(x.amount)||0}" style="${WL_INP};flex:1"></div>
         <div style="display:flex;gap:6px;margin-bottom:6px"><input type="date" data-wled value="${esc(x.date||'')}" style="${WL_INP};flex:1"><input type="text" data-wler value="${esc(x.reason||'')}" placeholder="사유 (비우면 담당 과목)" style="${WL_INP};flex:2"></div>
@@ -17873,15 +17879,15 @@ function renderWallet(){
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"><button class="btn" data-wlprintall>🖨 현재 목록 QR 인쇄</button><button class="btn" data-wlrepub>🔄 QR 전체 다시 올리기</button>${admin?'<button class="btn" data-wlimgs>🖼 저금통 그림</button>':''}
     <span style="font-size:.76rem;color:var(--sub);align-self:center">초등부는 달러, 중등·고등부는 코인이에요 · 적립·사용은 모든 선생님이 입력할 수 있어요 · 사유는 안 적어도 돼요(비우면 담당 과목으로 기록)</span></div>`;
   if(!rows.length) return h+'<div class="empty">표시할 학생이 없어요. (반이 정해진 재원생만 나와요)</div>';
-  h+=`<div style="overflow:auto"><table style="border-collapse:collapse;width:100%;font-size:.88rem;background:#fff"><thead><tr>${['학생','반','잔액','최근 내역',''].map(t=>`<th style="background:#e8ecf3;border:1px solid #c5ccd8;padding:6px 8px;text-align:center;white-space:nowrap">${t}</th>`).join('')}</tr></thead><tbody>`;
+  h+=`<div style="overflow:auto"><table class="wlt" style="border-collapse:collapse;width:100%;font-size:.88rem;background:#fff"><thead><tr>${['학생','반','잔액','최근 내역',''].map(t=>`<th style="background:#e8ecf3;border:1px solid #c5ccd8;padding:6px 8px;text-align:center;white-space:nowrap">${t}</th>`).join('')}</tr></thead><tbody>`;
   rows.forEach(({s,u})=>{
     const bal=wlBal(s.id); const last=wlEntries(s.id)[0];
     const TD='border:1px solid #d5dae3;padding:6px 8px;text-align:center';
-    h+=`<tr><td style="${TD};text-align:left;font-weight:800;white-space:nowrap">${wlName(s)}${MODE==='all'?' '+bdg(s.academy):''}</td>
-      <td style="${TD};color:var(--sub);white-space:nowrap">${esc(classNameInMonth(s,state.month)||'미배정')}</td>
-      <td style="${TD};font-weight:900;white-space:nowrap">${wlSymHtml(u)} ${bal.toLocaleString()} <span style="font-weight:400;color:var(--sub);font-size:.74rem">${u.name}</span></td>
-      <td style="${TD};font-size:.78rem;color:var(--sub)">${last?`${esc(String(last.date).slice(5).replace('-','/'))} ${last.type==='in'?'+':'−'}${(Number(last.amount)||0).toLocaleString()} · ${esc(wlLabel(last))}`:'-'}</td>
-      <td style="${TD};white-space:nowrap"><button class="btn small" data-wlopen="${s.id}|in">＋ 적립</button> <button class="btn small" data-wlopen="${s.id}|out">－ 사용</button> <button class="btn small" data-wlopen="${s.id}|led">내역</button> <button class="btn small" data-wlqr="${s.id}">QR</button></td></tr>`;
+    h+=`<tr><td class="wl-n" style="${TD};text-align:left;font-weight:800;white-space:nowrap">${wlName(s)}${MODE==='all'?' '+bdg(s.academy):''}</td>
+      <td class="wl-c" style="${TD};color:var(--sub);white-space:nowrap">${esc(classNameInMonth(s,state.month)||'미배정')}</td>
+      <td class="wl-b" style="${TD};font-weight:900;white-space:nowrap">${wlSymHtml(u)} ${bal.toLocaleString()} <span style="font-weight:400;color:var(--sub);font-size:.74rem">${u.name}</span></td>
+      <td class="wl-l" style="${TD};font-size:.78rem;color:var(--sub)">${last?`${esc(String(last.date).slice(5).replace('-','/'))} ${last.type==='in'?'+':'−'}${(Number(last.amount)||0).toLocaleString()} · ${esc(wlLabel(last))}`:'-'}</td>
+      <td class="wl-a" style="${TD};white-space:nowrap"><button class="btn small" data-wlopen="${s.id}|in">＋ 적립</button> <button class="btn small" data-wlopen="${s.id}|out">－ 사용</button> <button class="btn small" data-wlopen="${s.id}|led">내역</button> <button class="btn small" data-wlqr="${s.id}">QR</button></td></tr>`;
   });
   return h+'</tbody></table></div>';
 }

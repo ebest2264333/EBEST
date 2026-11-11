@@ -8,14 +8,14 @@
 @media (prefers-color-scheme:dark){:root{--bg:#10131c;--card:#1a1f2d;--ink:#eef1f8;--sub:#9aa5bd;--line:#2a3144;--in:#34d399;--out:#f87171;--acc:#818cf8}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:'Pretendard','Malgun Gothic',system-ui,sans-serif;min-height:100vh}
-.wrap{max-width:460px;margin:0 auto;padding:18px 16px 40px}
+.wrap{max-width:460px;margin:0 auto;padding:18px 16px 40px;transform-origin:top center}
 .hello{font-size:.95rem;color:var(--sub);margin:6px 2px 12px}
 .hello{margin:8px 2px 14px}.hello .en{color:var(--ink);font-size:1.7rem;font-weight:900;letter-spacing:-.01em}.hello .ko{color:#9aa5bd;font-size:.82rem;font-weight:400;margin-left:4px}
 .bal{background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border-radius:20px;padding:22px 20px;box-shadow:0 8px 24px rgba(79,70,229,.3)}
 .bal .l{font-size:.82rem;opacity:.85}
 .bal .n{font-size:2.6rem;font-weight:900;margin-top:4px;letter-spacing:-.02em}
 .balwrap{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.jar{width:84px;flex:none;text-align:center}.jar svg,.jar img{width:84px;height:auto;display:block;filter:drop-shadow(0 4px 8px rgba(0,0,0,.25))}
+.jar{width:104px;flex:none;text-align:center}.jar svg,.jar img{width:104px;height:auto;display:block;filter:drop-shadow(0 4px 8px rgba(0,0,0,.25))}
 .bal .n small{font-size:1rem;font-weight:700;margin-left:4px;opacity:.9}
 .list{background:var(--card);border:1px solid var(--line);border-radius:16px;margin-top:16px;padding:6px 14px}
 .list h2{font-size:.92rem;margin:12px 0 4px}
@@ -35,6 +35,9 @@ button{margin-top:10px;border:0;background:var(--acc);color:#fff;border-radius:1
 var DB='https://ebest-b41ce-default-rtdb.asia-southeast1.firebasedatabase.app';
 var T=(new URLSearchParams(location.search).get('t')||'').trim();
 var app=document.getElementById('app');
+// 화면 폭에 맞춰 통째로 키운다 — 폰의 '데스크톱 사이트' 보기나 태블릿처럼 화면이 넓게 잡혀도 카드가 화면을 꽉 채운다(일반 폰은 그대로)
+function fit(){ var z=Math.max(1,Math.min(window.innerWidth/420,2.8)); app.style.zoom=z; }
+fit(); window.addEventListener('resize',fit); window.addEventListener('orientationchange',fit);
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function sym(d){ return d.u==='코인'?'<svg viewBox="0 0 24 24" width="0.9em" height="0.9em" style="vertical-align:-.1em"><circle cx="12" cy="12" r="11" fill="#fbbf24" stroke="#b36b00" stroke-width="1.6"/><circle cx="12" cy="12" r="7" fill="none" stroke="#d98a0b" stroke-width="1.5"/><text x="12" y="16" font-size="10" font-weight="900" text-anchor="middle" fill="#a85f00" font-family="Arial,sans-serif">C</text></svg>':esc(d.s||''); }
 function fmt(n){return Number(n||0).toLocaleString('ko-KR');}
