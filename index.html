@@ -427,6 +427,7 @@ if(!store.bookCfg) store.bookCfg={orderDay:20}; // 교재 재고 설정 — orde
 if(!store.bookBilling) store.bookBilling=[]; // 교재비 청구 완료 기록 {id,sk(학생키),upTo(이 시각까지 배부분 청구),amount,count,date,by,_deleted}
 if(!store.bookOrders) store.bookOrders=[]; // 주문 대기 {id,itemId,qty,date,eta,received,receivedAt,by,_deleted}
 if(!store.bookNeed) store.bookNeed={}; // 다음달 교재 소요 — {YYYY-MM: {반키|과목키: {teacher:true, by, at}}} 교사용 필요 체크
+if(!store.walletLog) store.walletLog=[]; if(!store.walletTokens) store.walletTokens=[]; // 학원 화폐 내역·QR 코드
 if(!store.bookStock) store.bookStock=[]; // 교재 재고 품목 {id,academy,name,cat,min,base(기준일),_deleted}
 if(!store.bookStockLog) store.bookStockLog=[]; // 입고·출고 기록 {id,itemId,type:'in'|'out',qty,date,memo,by}
 if(!store.bookGiveLog) store.bookGiveLog=[]; // 교재 배부 내역(언제·누구에게·무슨 교재) — 같은 교재를 여러 번 배부해도 매번 남는다
@@ -683,7 +684,7 @@ store.syllabusSeeded=true; // 예전에 기본으로 들어있던 'Spider Phonic
 if(!store.examAnalysis) store.examAnalysis=[]; // 내신 분석 — {id, academy, school, grade, examTitle, examRange, examDate, prepStart, prepEnd, teacherLecture, teacherIBT, note, categories:[{name,count,questions:[{id,no,question,points,difficulty}]}], updatedAt, updatedBy} · 월 상관없이 항상 보임, 모든 선생님 열람·수정 가능(Syllabus처럼 보관용)
 if(!store.absentNotes) store.absentNotes={}; // 날짜별 결석생 요약의 '특이사항' 자유 메모 {YYYY-MM-DD: text}
 if(!store.examTrends) store.examTrends=[]; // 동향 분석 리포트 — {id, academy, school, grade, title, memo, source:'ai'|'upload', entryIds, snaps, files, report:{headline,strategy,metrics,changes,teaching}, aiModel, createdAt, updatedAt, createdBy, _deleted} · 내신 분석 탭 안의 두 번째 탭, AI로 만든 리포트는 자동 저장
-const SHARE_FIELDS=['bookCfg','bookBilling','bookOrders','bookNeed','bookGiveLog','bookStock','bookStockLog','wordBooks','uploads','bookedit','bookdone','daysedit','timeedit','calendar','calendarTombstones','calCatColors','meetings','teachers','adminEmail','enrollment','newStudents','dropouts','compSeats','classOrder','consultRoles','students','admissionConsults','wordTests','attend','homework','stayback','bookGiven','uploadTombstones','uploadStamps','wordbookOptions','testPaperOptions','giveSel','consultRequests','records','assign','cmemo','worklog','weekplan','submits','handover','boardPosts','handoverGrid','monthOverride','examAnalysis','examTrends','absentNotes','bookCatalog','tuitionCatalog','papercheckEnabled','papercheckCols','papercheckData','worklogMonthly','worklogWeekly','wlMemo','yearSched','ttVersions','ttVerAuto','classMoves'];
+const SHARE_FIELDS=['walletLog','walletTokens','bookCfg','bookBilling','bookOrders','bookNeed','bookGiveLog','bookStock','bookStockLog','wordBooks','uploads','bookedit','bookdone','daysedit','timeedit','calendar','calendarTombstones','calCatColors','meetings','teachers','adminEmail','enrollment','newStudents','dropouts','compSeats','classOrder','consultRoles','students','admissionConsults','wordTests','attend','homework','stayback','bookGiven','uploadTombstones','uploadStamps','wordbookOptions','testPaperOptions','giveSel','consultRequests','records','assign','cmemo','worklog','weekplan','submits','handover','boardPosts','handoverGrid','monthOverride','examAnalysis','examTrends','absentNotes','bookCatalog','tuitionCatalog','papercheckEnabled','papercheckCols','papercheckData','worklogMonthly','worklogWeekly','wlMemo','yearSched','ttVersions','ttVerAuto','classMoves'];
 // syllabus(실러버스)는 PDF/한글/워드 첨부가 커서 별도 경로(/syllabus)로, 낮은 빈도로만 동기화합니다 — 그래야 매 5초/매 입력마다 전체를 전송하지 않습니다.
 // 반 자료·학생 명단처럼 "삭제"가 중요한 항목은 병합하지 않고 통째로 교체한다(마지막 저장이 우선).
 // 병합 방식(mergeById)에는 삭제라는 개념이 없어서, 지운 반·학생이 다른 기기 자료와 합쳐지며 계속 되살아나기 때문.
@@ -1866,7 +1867,7 @@ let state = {tab:(localStorage.getItem(LASTTAB_KEY)||'today'), sub:'class', toda
 /* ---------- 탭별 주소 (예: /EBEST/students_list, /EBEST/schedule) ----------
    GitHub Pages에서 주소를 직접 열거나 새로고침해도 열리도록, 저장소 맨 위에 404.html(함께 드린 파일)을 같이 올려둔다.
    그 파일이 /EBEST/schedule 같은 주소를 /EBEST/?go=schedule 로 되돌려주면, 이 앱이 그 탭을 열고 주소를 다시 /EBEST/schedule 로 바꿔 보여준다. */
-var ROUTE_SLUGS={today:'home',consult:'consult',report:'work_report',dash:'classes',bookgive:'book_delivery',books:'books',wordrange:'words',hwrange:'homework',syllabus:'syllabus',examrpt:'exam_analysis',roster:'students_list',timetable:'schedule',seat:'computer_seats',attend:'attendance',yearly:'yearly_books',yearsched:'year_schedule',cal:'calendar',board:'board',archive:'archive',stats:'student_stats',set:'settings'};
+var ROUTE_SLUGS={today:'home',consult:'consult',report:'work_report',dash:'classes',bookgive:'book_delivery',books:'books',wordrange:'words',hwrange:'homework',syllabus:'syllabus',examrpt:'exam_analysis',roster:'students_list',timetable:'schedule',seat:'computer_seats',wallet:'coins',attend:'attendance',yearly:'yearly_books',yearsched:'year_schedule',cal:'calendar',board:'board',archive:'archive',stats:'student_stats',set:'settings'};
 var ROUTE_TABS=(function(){ const o={}; for(const k in ROUTE_SLUGS) o[ROUTE_SLUGS[k]]=k; return o; })();
 // 탭 안에서 버튼으로 바뀌는 화면은 /탭/화면 형태로 주소를 따로 갖는다 (예: /EBEST/words/make)
 var ROUTE_SUBS={
@@ -2162,6 +2163,7 @@ function tabLegacyMap(){ // 예전 [반·교재]·[교재배부] 탭은 [학생 
 }
 function tabDefs(){
   const r=tabDefsBase(); const lt=loginTeacher();
+  { const i=r.more.findIndex(x=>x[0]==='roster'); r.more.splice(i>=0?i+1:r.more.length,0,['wallet','💰 학원 화폐']); }
   if(!lt || isMgr() || csIsIbtTeacher(lt)){ // 관리자·실장, 그리고 IBT 수업을 맡은 선생님만 컴퓨터 자리 메뉴가 보인다
     const i=r.more.findIndex(x=>x[0]==='timetable');
     r.more.splice(i>=0?i+1:r.more.length,0,['seat','💻 컴퓨터 자리']);
@@ -4492,6 +4494,12 @@ function assignedItemsHTML(s, admin){
   }
   return h;
 }
+function rsKeep(id){ // 카드를 펼치거나 접거나 편집을 열고 닫아도 보던 카드가 화면의 같은 자리에 그대로 있게 한다(맨 위로 튀지 않음)
+  const el0=document.getElementById('stu_'+id); const top=el0?el0.getBoundingClientRect().top:null; const x=window.scrollX, y=window.scrollY;
+  render(true);
+  const fix=()=>{ const el=document.getElementById('stu_'+id); if(top!=null&&el){ const d=el.getBoundingClientRect().top-top; if(Math.abs(d)>1) window.scrollBy(0,d); } else window.scrollTo(x,y); };
+  fix(); requestAnimationFrame(fix); setTimeout(fix,80); setTimeout(fix,300);
+}
 function studentCard(s, admin){
   const canNote = admin || !!loginTeacher();
   const statusColor = s.status==='퇴원' ? '#c0392b' : s.status==='휴원' ? '#b45309' : '#0e9f6e';
@@ -4500,17 +4508,19 @@ function studentCard(s, admin){
   const sibLinks=sibs.map(x=>`<span data-rsgoto="${x.id}" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px">${esc(x.name)}</span>`).join(', ');
   const open = admin && state.rosterOpen[s.id];
   if(!open){
+    // 평소엔 이름·반·학년·학교·번호만 보이게 접어두고, 카드(이름 줄)를 누르면 특이사항·형제자매 등이 펼쳐진다
+    const exp=!!(state.rosterExpAll || (state.rosterExp&&state.rosterExp[s.id]));
+    const hasMore=!!(s.note||s.preCheck||sibs.length||(s.status!=='재원'&&s.statusReason));
     return `<article class="card ${AC[s.academy].cls}" id="stu_${s.id}">
-      <h2>${esc(s.nameKo)}${s.nameEn?' <span style="font-weight:400;color:var(--sub)">('+esc(s.nameEn)+')</span>':''}
+      <h2 data-rsexp="${s.id}" style="cursor:pointer"><span style="color:var(--sub);font-size:.78rem">${exp?'▾':'▸'}</span> ${esc(s.nameKo)}${s.nameEn?' <span style="font-weight:400;color:var(--sub)">('+esc(s.nameEn)+')</span>':''}
         <span class="badge" style="background:${statusColor};color:#fff">${esc(s.status)}</span>
         ${admin?`<button class="btn small" style="float:right;font-size:.72rem;padding:4px 9px" data-rstoggle="${s.id}">✎ 편집</button>`:''}</h2>
-      <div class="meta">${esc(classNameInMonth(s,state.month)||'미배정')}${s.grade?' · '+esc(s.grade):''}${s.school?' · '+esc(s.school):''}${s.parentPhone?' · 📞 '+esc(s.parentPhone):''}</div>
-      ${s.preCheck?`<div class="rnote">🔎 상담 전 확인: ${esc(s.preCheck)}</div>`:''}
+      <div class="meta" data-rsexp="${s.id}" style="cursor:pointer">${esc(classNameInMonth(s,state.month)||'미배정')}${s.grade?' · '+esc(s.grade):''}${s.school?' · '+esc(s.school):''}${s.parentPhone?' · 📞 '+esc(s.parentPhone):''}${(!exp&&hasMore)?' · 📝':''}</div>
+      ${!exp?'':`${s.preCheck?`<div class="rnote">🔎 상담 전 확인: ${esc(s.preCheck)}</div>`:''}
       ${s.status!=='재원'&&s.statusReason?`<div class="rnote">${esc(s.status)} 사유: ${esc(s.statusReason)}</div>`:''}
       ${sibs.length?`<div style="font-size:.78rem;color:var(--sub);margin-top:4px">👨‍👩‍👧‍👦 형제자매: ${sibLinks}</div>`:''}
-      ${false?`<div style="font-size:.76rem;color:#c0392b;font-weight:800;margin-top:4px">💰 미납 ${studentUnpaidCount(s)}건</div>`:''}
       ${canNote?`<textarea data-rsnote="${s.id}" placeholder="특이사항 코멘트…" style="width:100%;min-height:44px;margin-top:8px;border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-family:inherit;font-size:.83rem">${esc(s.note||'')}</textarea>`
-        :(s.note?`<div class="note">${esc(s.note)}</div>`:'')}
+        :(s.note?`<div class="note">${esc(s.note)}</div>`:'')}`}
     </article>`;
   }
   const statusOpts=['재원','휴원','퇴원'];
@@ -4674,6 +4684,7 @@ function renderRoster(list){
       ${['재원','휴원','퇴원','전체'].map(st=>`<option value="${st}" ${state.rosterStatus===st?'selected':''}>${st==='전체'?'전체 상태':st+' 학생만 보기'}</option>`).join('')}
     </select>
     <span style="font-size:.84rem;font-weight:800;color:var(--sub)">총 ${rows.length}명</span>
+    <button class="btn small" data-rsexpall>${state.rosterExpAll?'▾ 모두 접기':'▸ 모두 펼치기'}</button>
   </div>`;
   let toolbar='';
   if(admin){
@@ -4813,8 +4824,14 @@ function bindRoster(){
       state.rsPending=state.rsPending||{};
       delete state.rsPending[id]; // 다시 열 때는 예전에 취소된 보류 값이 남아있지 않게 깨끗이 시작
     }
-    state.rosterOpen[id]=!wasOpen; render(true);
+    state.rosterOpen[id]=!wasOpen; rsKeep(id);
   });
+  v.querySelectorAll('[data-rsexp]').forEach(el=>el.addEventListener('click',e=>{
+    if(e.target.closest('button,input,textarea,select,a,label,[data-rsgoto]')) return;
+    const id=el.dataset.rsexp; state.rosterExp=state.rosterExp||{}; state.rosterExp[id]=!(state.rosterExpAll||state.rosterExp[id]); if(state.rosterExpAll){ state.rosterExpAll=false; store.students.forEach(x=>{ state.rosterExp[x.id]=true; }); state.rosterExp[id]=false; }
+    rsKeep(id);
+  }));
+  const expAll=v.querySelector('[data-rsexpall]'); if(expAll) expAll.onclick=()=>{ state.rosterExpAll=!state.rosterExpAll; state.rosterExp={}; render(true); };
   v.querySelectorAll('[data-rsdel]').forEach(b=>b.onclick=()=>removeStudentRecord(b.dataset.rsdel));
   v.querySelectorAll('[data-rsgoto]').forEach(el=>el.onclick=(e)=>{ e.stopPropagation(); gotoStudent(el.dataset.rsgoto); });
   v.querySelectorAll('[data-rsfield]').forEach(el=>el.onchange=()=>{
@@ -4827,7 +4844,7 @@ function bindRoster(){
     state.rsPending=state.rsPending||{};
     state.rsPending[id]=state.rsPending[id]||{};
     state.rsPending[id][field]=el.value;
-    render(true);
+    rsKeep(id);
   });
   v.querySelectorAll('[data-rsfield-note]').forEach(t=>t.onchange=()=>updateStudentField(t.dataset.rsfieldNote,'note',t.value));
   v.querySelectorAll('[data-rsalertdone]').forEach(b=>b.onclick=()=>updateStudentField(b.dataset.rsalertdone,'alertNote',''));
@@ -4997,7 +5014,9 @@ function upsertWordTest(studentId,academy,date,field,value){
   }
   r[field]=value;
   if(field==='retestNeeded' && !value){ r.retestCompleted=false; r.retestCompletedDate=''; }
-  if(field==='absent' && value){ r.retestNeeded=false; r.retestCompleted=false; r.retestCompletedDate=''; }
+  if(field==='absent' && value){ r.retestNeeded=false; r.retestCompleted=false; r.retestCompletedDate=''; r.nsRetestNeeded=false; r.nsRetestCompleted=false; r.nsRetestCompletedDate=''; }
+  if(field==='nsRetestNeeded' && !value){ r.nsRetestCompleted=false; r.nsRetestCompletedDate=''; }
+  if(field==='mockAbsent'){ r.mockMakeupDate=value?'':todayISO(); }
   if(field==='accumulate' && value){
     const twoDays=prevTwoWordTests(studentId, date);
     const ranges=twoDays.map(x=>x.range).filter(Boolean);
@@ -5007,10 +5026,21 @@ function upsertWordTest(studentId,academy,date,field,value){
   save(); render(true);
 }
 function markRetestDone(id){
+  const isNs=String(id).endsWith('#ns'); if(isNs) id=String(id).slice(0,-3);
   const r=store.wordTests.find(x=>x.id===id); if(!r) return;
-  r.retestCompleted=true; r.retestCompletedDate=todayISO();
+  if(isNs){ r.nsRetestCompleted=true; r.nsRetestCompletedDate=todayISO(); }
+  else { r.retestCompleted=true; r.retestCompletedDate=todayISO(); }
   r.updatedAt=Date.now();
   save(); render(true);
+}
+// 🎓 모의고사 미응시 → 나중에 응시: 응시 완료 처리 + 점수 입력 (모의고사는 재시험이 없고, 못 본 날 나중에 따로 본다)
+function mockIsBoth(s){ const c=classOfStudent(s, state.month); return classWordTestOn(c)&&classMockExamOn(c); }
+function markMockMadeUp(id, score){
+  const r=store.wordTests.find(x=>x.id===id); if(!r) return;
+  const st=store.students.find(x=>x.id===r.studentId);
+  r.mockAbsent=false; r.mockMakeupDate=todayISO();
+  if(String(score||'').trim()){ if(st && mockIsBoth(st)) r.mockScore=String(score).trim(); else r.score=String(score).trim(); }
+  r.updatedAt=Date.now(); save(); render(true);
 }
 const WORDBOOK_OPTIONS_DEFAULT=['초등 베이직','초등 컴플리트','중등 실력','중등 고난도','고등 베이직','수능 2000','하이스트','하이퍼'];
 function wbOptionsFor(a){
@@ -5062,40 +5092,46 @@ function wtFieldsFor(s, date){
     r = prev ? {wordbook:prev.wordbook||'', lang:prev.lang||''} : {};
   }
   const dim = r.absent ? 'opacity:.5' : '';
+  // 모의고사의 미응시(mockAbsent)는 단어장·내신단어 미응시(absent)와 따로 둔다. 예전 기록(mockAbsent 없음)은 미응시를 그대로 따라간다.
+  const absM = (r.mockAbsent!==undefined) ? !!r.mockAbsent : !!r.absent;
+  const dimM = absM ? 'opacity:.5' : '';
   const absentLabel=`<label style="font-size:.8rem;color:${r.absent?'#6b7280':'var(--sub)'};font-weight:${r.absent?'800':'400'}"><input type="checkbox" data-wtabsent="${s.id}|${date}" ${r.absent?'checked':''}> 미응시</label>`;
+  const mockAbsentLabel=`<label style="font-size:.8rem;color:${absM?'#7c3aed':'var(--sub)'};font-weight:${absM?'800':'400'}" title="모의고사는 재시험이 없고, 못 본 경우 나중에 응시해요 — 미응시를 체크해 두면 [재시험·미응시 명단]에 올라오고, 그때 응시 완료와 점수를 입력해요"><input type="checkbox" data-wtmockabsent="${s.id}|${date}" ${absM?'checked':''}> 미응시</label>${(!absM && r.mockMakeupDate)?`<span style="font-size:.7rem;color:#7c3aed">(${esc(r.mockMakeupDate.slice(5).replace('-','/'))} 응시)</span>`:''}`;
   // 🎓 모의고사: 단어장·유형·범위·누적 없이, 회차(1~10) 선택 + 점수만 매일 기록한다.
   // 단어시험과 동시에 켜져 있을 때는(both) 점수 필드가 단어시험 점수와 겹치지 않도록 별도 필드(mockScore)를 쓴다 —
   // 모의고사만 켜진 기존 반은 그대로 'score' 필드를 계속 쓰므로 기존에 저장된 데이터는 전혀 영향받지 않는다.
   const mockScoreField=both?'mockScore':'score';
   const mockScoreVal=both?(r.mockScore||''):(r.score||'');
   const mockBlock=()=>{
-    const roundSel=`<select data-wtfield="${s.id}|${date}|round" ${r.absent?'disabled':''} style="width:110px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
+    const roundSel=`<select data-wtfield="${s.id}|${date}|round" ${absM?'disabled':''} style="width:110px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dimM}">
       <option value="">회차 선택</option>
       ${MOCKEXAM_ROUND_OPTIONS.map(n=>`<option value="${n}" ${String(r.round||'')===n?'selected':''}>${n}회</option>`).join('')}
       ${r.round==='내신단어'?'<option value="내신단어" selected>📖 내신 단어 (이전 기록)</option>':''}
     </select>`;
-    const mockScoreInp=`<input type="text" placeholder="점수 (예: 85점, 2등급)" value="${esc(mockScoreVal)}" data-wtfield="${s.id}|${date}|${mockScoreField}" ${r.absent?'disabled':''} style="width:120px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">`;
+    const mockScoreInp=`<input type="text" placeholder="점수 (예: 85점, 2등급)" value="${esc(mockScoreVal)}" data-wtfield="${s.id}|${date}|${mockScoreField}" ${absM?'disabled':''} style="width:120px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dimM}">`;
     // 📖 "내신 단어"를 고르면 단어장 목록에서 내신 단어장·유형(한글/믹스/영어)·범위를 같이 고를 수 있다(단어시험과 동시에 켜진 반은 아래 단어시험 칸을 그대로 쓴다)
     let nsExtra='';
     if(r.round==='내신단어' && !both){
-      const st='padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;'+dim;
-      nsExtra=`<select data-wtfield="${s.id}|${date}|wordbook" ${r.absent?'disabled':''} style="width:120px;${st}"><option value="">단어장 선택</option>${wbOptionsFor(s.academy).map(o=>`<option value="${esc(o)}" ${r.wordbook===o?'selected':''}>${esc(o)}</option>`).join('')}</select>
-        <input type="text" placeholder="범위" value="${esc(r.range||'')}" data-wtfield="${s.id}|${date}|range" ${r.absent?'disabled':''} style="width:110px;${st}">`;
+      const st='padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;'+dimM;
+      nsExtra=`<select data-wtfield="${s.id}|${date}|wordbook" ${absM?'disabled':''} style="width:120px;${st}"><option value="">단어장 선택</option>${wbOptionsFor(s.academy).map(o=>`<option value="${esc(o)}" ${r.wordbook===o?'selected':''}>${esc(o)}</option>`).join('')}</select>
+        <input type="text" placeholder="범위" value="${esc(r.range||'')}" data-wtfield="${s.id}|${date}|range" ${absM?'disabled':''} style="width:110px;${st}">`;
     }
-    return `🎓 ${roundSel} ${nsExtra} ${mockScoreInp}`;
+    return `🎓 ${roundSel} ${nsExtra} ${mockScoreInp} ${mockAbsentLabel}`;
   };
   // 📖 내신 단어 — 고등부만: 기본 단어시험·모의고사와 별개로 내신 단어를 한 번 더 본다(단어장·범위·점수를 따로 기록)
   const nsBlock=()=>{
     if(cls ? !classNsWordOn(cls) : !studentIsHigh(s)) return '';
+    const nsAbs=(mOn&&!wOn)?absM:!!r.absent; const dim=nsAbs?'opacity:.5':'';
     const st='padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;'+dim;
     const opts=[...wbOptionsFor(s.academy)].sort((a,b)=>(String(b).includes('내신')?1:0)-(String(a).includes('내신')?1:0));
     return `<span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:4px 6px;background:#ecfdf5;border-radius:8px"><b style="font-size:.78rem;color:#047857">📖 내신단어</b>
-      <select data-wtfield="${s.id}|${date}|nsWordbook" ${r.absent?'disabled':''} style="width:120px;${st}"><option value="">단어장 선택</option>${opts.map(o=>`<option value="${esc(o)}" ${r.nsWordbook===o?'selected':''}>${esc(o)}</option>`).join('')}</select>
-      <input type="text" placeholder="범위" value="${esc(r.nsRange||'')}" data-wtfield="${s.id}|${date}|nsRange" ${r.absent?'disabled':''} style="width:110px;${st}">
-      <input type="text" placeholder="점수 (예: 18/20)" value="${esc(r.nsScore||'')}" data-wtfield="${s.id}|${date}|nsScore" ${r.absent?'disabled':''} style="width:90px;${st}"></span>`;
+      <select data-wtfield="${s.id}|${date}|nsWordbook" ${nsAbs?'disabled':''} style="width:120px;${st}"><option value="">단어장 선택</option>${opts.map(o=>`<option value="${esc(o)}" ${r.nsWordbook===o?'selected':''}>${esc(o)}</option>`).join('')}</select>
+      <input type="text" placeholder="범위" value="${esc(r.nsRange||'')}" data-wtfield="${s.id}|${date}|nsRange" ${nsAbs?'disabled':''} style="width:110px;${st}">
+      <input type="text" placeholder="점수 (예: 18/20)" value="${esc(r.nsScore||'')}" data-wtfield="${s.id}|${date}|nsScore" ${nsAbs?'disabled':''} style="width:90px;${st}">
+      <label style="font-size:.8rem;color:${r.nsRetestNeeded?'#c0392b':'var(--sub)'};${dim}"><input type="checkbox" data-wtnsretest="${s.id}|${date}" ${r.nsRetestNeeded?'checked':''} ${nsAbs?'disabled':''}> 재시험(O)</label></span>`;
   };
   if(mOn && !wOn){
-    return `${mockBlock()} ${nsBlock()} ${absentLabel}`;
+    return `${mockBlock()} ${nsBlock()}`;
   }
   const wordBlock=()=>{
     const wbSel=`<select data-wtfield="${s.id}|${date}|wordbook" ${r.absent?'disabled':''} style="width:120px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
@@ -5117,12 +5153,11 @@ function wtFieldsFor(s, date){
   if(both){
     // 📖🎓 단어시험 + 모의고사 동시 사용: 두 입력 그룹을 나란히 보여주고, 미응시 체크는 하나만 공유한다(그 날 안 왔으면 둘 다 결석)
     return `<span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:4px 6px;background:#f5f3ff;border-radius:8px">${mockBlock()}</span>
-      <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:4px 6px;background:#eff6ff;border-radius:8px">${wordBlock()}</span>
       ${nsBlock()}
-      ${absentLabel}`;
+      <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:4px 6px;background:#eff6ff;border-radius:8px">${wordBlock()} ${absentLabel}</span>`;
   }
   // 단어시험만 켜진 경우(기본값, 기존 동작)
-  return `${wordBlock()} ${nsBlock()} ${absentLabel}`;
+  return `${nsBlock()} ${wordBlock()} ${absentLabel}`;
 }
 function wtStudentRow(s, date){
   const nameCol=`<span class="key">${esc(s.nameKo)}${s.nameEn?' <span style="font-weight:400;color:var(--sub)">('+esc(s.nameEn)+')</span>':''} ${MODE==='all'?bdg(s.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(classNameInMonth(s,state.month)||'')}</span></span>`;
@@ -5212,8 +5247,8 @@ function classDeptForName(academy, className){
 const DEPT_SORT_ORDER={'초등':0,'중등':1,'고등':2};
 const CLASS_PREFIX_ORDER={'EC':0,'RG':1,'PJ':2,'JM':3,'JF':4,'JB':5}; // 그리드 시간표 반 배열 순서 — 초등(EC,RG,PJ) 다음 중등(JM,JF,JB)
 function renderWordTestPending(){
-  const pending=store.wordTests.filter(r=>r.retestNeeded && !r.retestCompleted && !r.absent && (state.ac==='all'||r.academy===state.ac));
-  pending.sort((a,b)=>{
+  const inAc=r=>(state.ac==='all'||r.academy===state.ac);
+  const sortFn=(a,b)=>{
     const sa=store.students.find(x=>x.id===a.studentId), sb=store.students.find(x=>x.id===b.studentId);
     const da=sa?classDeptForName(sa.academy, sa.className):'', db=sb?classDeptForName(sb.academy, sb.className):'';
     const ra=DEPT_SORT_ORDER[da]!=null?DEPT_SORT_ORDER[da]:99, rb=DEPT_SORT_ORDER[db]!=null?DEPT_SORT_ORDER[db]:99;
@@ -5221,41 +5256,57 @@ function renderWordTestPending(){
     const ca=sa?(sa.className||''):'', cb=sb?(sb.className||''):'';
     if(ca!==cb) return ca.localeCompare(cb,'ko',{numeric:true});
     return a.date.localeCompare(b.date);
-  });
-  if(!pending.length) return '<div class="empty">재시험 대기 학생이 없습니다.</div>';
-  return '<div class="rowlist">'+pending.map(r=>{
-    const s=store.students.find(x=>x.id===r.studentId);
-    const nameDisp = s ? studentDisplayName(s.academy, s.nameKo, s.className) : '(삭제된 학생)';
+  };
+  const nameOf=r=>{ const s=store.students.find(x=>x.id===r.studentId); return {s, disp:s?studentDisplayName(s.academy, s.nameKo, s.className):'(삭제된 학생)'}; };
+  const sec=(title,color,list,rowFn)=>`<div style="font-weight:800;color:${color};margin:14px 0 6px">${title} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${list.length}명</span></div>`+(list.length?'<div class="rowlist">'+list.map(rowFn).join('')+'</div>':'<div class="empty" style="padding:8px 0">대기 학생이 없습니다.</div>');
+  const word=store.wordTests.filter(r=>r.retestNeeded && !r.retestCompleted && !r.absent && inAc(r)).sort(sortFn);
+  const ns=store.wordTests.filter(r=>r.nsRetestNeeded && !r.nsRetestCompleted && !r.absent && inAc(r)).sort(sortFn);
+  const mock=store.wordTests.filter(r=>r.mockAbsent===true && inAc(r)).sort(sortFn);
+  const rowW=r=>{ const {s,disp}=nameOf(r);
     const meta=[s?s.className:'', r.date, r.wordbook||'', r.lang||'', r.range||''].filter(Boolean).join(' · ');
-    return `<div class="rowitem" style="align-items:center">
-      <span class="key">${esc(nameDisp)} ${MODE==='all'?bdg(r.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(meta)}</span></span>
-      <span class="val"><button class="btn small" data-wtdone="${r.id}">✔ 재시험 완료 처리</button></span></div>`;
-  }).join('')+'</div>';
+    return `<div class="rowitem" style="align-items:center"><span class="key">${esc(disp)} ${MODE==='all'?bdg(r.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(meta)}</span></span>
+      <span class="val"><button class="btn small" data-wtdone="${r.id}">✔ 재시험 완료 처리</button></span></div>`; };
+  const rowN=r=>{ const {s,disp}=nameOf(r);
+    const meta=[s?s.className:'', r.date, r.nsWordbook||'', r.nsRange||''].filter(Boolean).join(' · ');
+    return `<div class="rowitem" style="align-items:center"><span class="key">${esc(disp)} ${MODE==='all'?bdg(r.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(meta)}</span></span>
+      <span class="val"><button class="btn small" data-wtdone="${r.id}#ns">✔ 재시험 완료 처리</button></span></div>`; };
+  const rowM=r=>{ const {s,disp}=nameOf(r);
+    const meta=[s?s.className:'', r.date, r.round?r.round+'회':''].filter(Boolean).join(' · ');
+    return `<div class="rowitem" style="align-items:center;flex-wrap:wrap"><span class="key">${esc(disp)} ${MODE==='all'?bdg(r.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(meta)}</span></span>
+      <span class="val" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><input type="text" placeholder="점수 (예: 85점, 2등급)" data-wtmockscore="${r.id}" style="width:130px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem"><button class="btn small" data-wtmockdone="${r.id}">✔ 응시 완료</button></span></div>`; };
+  return sec('🎓 모의고사 미응시 — 나중에 응시 (재시험 없음)','#7c3aed',mock,rowM)
+    +sec('📖 내신단어 재시험','#047857',ns,rowN)
+    +sec('📖 단어장 재시험','#1d4ed8',word,rowW);
 }
 function renderWordTestStats(){
-  const recs=store.wordTests.filter(r=>r.retestNeeded && (state.ac==='all'||r.academy===state.ac));
+  const inAc=r=>(state.ac==='all'||r.academy===state.ac);
   const curWeekStart=weekOf(todayISO())[0];
   const curMonth=todayISO().slice(0,7);
-  const weekRecs=recs.filter(r=>weekOf(r.date)[0]===curWeekStart);
-  const monthRecs=recs.filter(r=>r.date.slice(0,7)===curMonth);
-  const byW={}, byM={};
-  weekRecs.forEach(r=>{ byW[r.studentId]=(byW[r.studentId]||0)+1; });
-  monthRecs.forEach(r=>{ byM[r.studentId]=(byM[r.studentId]||0)+1; });
-  const ids=[...new Set([...Object.keys(byW),...Object.keys(byM)])];
-  const rows=ids.map(sid=>{
+  const kinds=[['w','단어장',r=>r.retestNeeded],['n','내신단어',r=>r.nsRetestNeeded]];
+  const by={}; const tot={};
+  kinds.forEach(([k,,f])=>{
+    const recs=store.wordTests.filter(r=>f(r)&&inAc(r));
+    tot[k]={w:0,m:0};
+    recs.forEach(r=>{
+      const sid=r.studentId; by[sid]=by[sid]||{w:{w:0,m:0},n:{w:0,m:0}};
+      if(weekOf(r.date)[0]===curWeekStart){ by[sid][k].w++; tot[k].w++; }
+      if(r.date.slice(0,7)===curMonth){ by[sid][k].m++; tot[k].m++; }
+    });
+  });
+  const rows=Object.keys(by).filter(sid=>by[sid].w.w+by[sid].w.m+by[sid].n.w+by[sid].n.m>0).map(sid=>{
     const s=store.students.find(x=>x.id===sid);
     const dept = s ? classDeptForName(s.academy, s.className) : '';
-    return {name:s?studentDisplayName(s.academy,s.nameKo,s.className):'(삭제된 학생)', className:s?(s.className||''):'', dept, week:byW[sid]||0, month:byM[sid]||0};
+    return {name:s?studentDisplayName(s.academy,s.nameKo,s.className):'(삭제된 학생)', className:s?(s.className||''):'', dept, d:by[sid]};
   }).sort((a,b)=>{
     const ra=DEPT_SORT_ORDER[a.dept]!=null?DEPT_SORT_ORDER[a.dept]:99, rb=DEPT_SORT_ORDER[b.dept]!=null?DEPT_SORT_ORDER[b.dept]:99;
     if(ra!==rb) return ra-rb;
     if(a.className!==b.className) return a.className.localeCompare(b.className,'ko',{numeric:true});
-    return b.month-a.month || b.week-a.week;
+    return (b.d.w.m+b.d.n.m)-(a.d.w.m+a.d.n.m) || (b.d.w.w+b.d.n.w)-(a.d.w.w+a.d.n.w);
   });
-  let h=`<div style="font-size:.85rem;margin-bottom:10px"><b>이번주 재시험</b> 총 ${weekRecs.length}건 · <b>이번달 재시험</b> 총 ${monthRecs.length}건</div>`;
+  let h=`<div style="font-size:.85rem;margin-bottom:10px"><b>단어장 재시험</b> 이번주 ${tot.w.w}건 · 이번달 ${tot.w.m}건 &nbsp;|&nbsp; <b>내신단어 재시험</b> 이번주 ${tot.n.w}건 · 이번달 ${tot.n.m}건</div>`;
   if(!rows.length) return h+'<div class="empty">재시험 기록이 없습니다.</div>';
-  h+='<table style="width:100%"><thead><tr><th>학생</th><th>반</th><th>이번주</th><th>이번달</th></tr></thead><tbody>'+
-    rows.map(r=>`<tr><td>${esc(r.name)}</td><td style="text-align:center;color:var(--sub);font-size:.82rem">${esc(r.className)}</td><td style="text-align:center">${r.week}</td><td style="text-align:center">${r.month}</td></tr>`).join('')+
+  h+='<table style="width:100%"><thead><tr><th rowspan="2">학생</th><th rowspan="2">반</th><th colspan="2">단어장</th><th colspan="2">내신단어</th></tr><tr><th>이번주</th><th>이번달</th><th>이번주</th><th>이번달</th></tr></thead><tbody>'+
+    rows.map(r=>`<tr><td>${esc(r.name)}</td><td style="text-align:center;color:var(--sub);font-size:.82rem">${esc(r.className)}</td><td style="text-align:center">${r.d.w.w}</td><td style="text-align:center">${r.d.w.m}</td><td style="text-align:center">${r.d.n.w}</td><td style="text-align:center">${r.d.n.m}</td></tr>`).join('')+
     '</tbody></table>';
   return h;
 }
@@ -5265,7 +5316,7 @@ function renderWordTest(){
   state.wtView=state.wtView||'today';
   let chips=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
     <button class="chip ${state.wtView==='today'?'on':''}" data-wtview="today">오늘 입력</button>
-    ${admin?`<button class="chip ${state.wtView==='pending'?'on':''}" data-wtview="pending">재시험자 명단</button>
+    ${admin?`<button class="chip ${state.wtView==='pending'?'on':''}" data-wtview="pending">재시험·미응시 명단</button>
     <button class="chip ${state.wtView==='stats'?'on':''}" data-wtview="stats">주간·월간 통계</button>`:''}
   </div>`;
   let body;
@@ -5299,6 +5350,20 @@ function bindWordTest(){
     const [sid,date]=cb.dataset.wtaccum.split('|');
     const s=store.students.find(x=>x.id===sid); if(!s) return;
     upsertWordTest(sid,s.academy,date,'accumulate',cb.checked);
+  });
+  v.querySelectorAll('[data-wtnsretest]').forEach(cb=>cb.onchange=()=>{
+    const [sid,date]=cb.dataset.wtnsretest.split('|');
+    const s=store.students.find(x=>x.id===sid); if(!s) return;
+    upsertWordTest(sid,s.academy,date,'nsRetestNeeded',cb.checked);
+  });
+  v.querySelectorAll('[data-wtmockabsent]').forEach(cb=>cb.onchange=()=>{
+    const [sid,date]=cb.dataset.wtmockabsent.split('|');
+    const s=store.students.find(x=>x.id===sid); if(!s) return;
+    upsertWordTest(sid,s.academy,date,'mockAbsent',cb.checked);
+  });
+  v.querySelectorAll('[data-wtmockdone]').forEach(b=>b.onclick=()=>{
+    const inp=v.querySelector(`[data-wtmockscore="${b.dataset.wtmockdone}"]`);
+    markMockMadeUp(b.dataset.wtmockdone, inp?inp.value:'');
   });
   v.querySelectorAll('[data-wtabsent]').forEach(cb=>cb.onchange=()=>{
     const [sid,date]=cb.dataset.wtabsent.split('|');
@@ -8630,6 +8695,11 @@ function todayClasses(list){
     // 오늘(그 요일) 과목이 전부 "단어시험"뿐이면 오늘 기록 카드에서는 숨긴다 (단어시험은 하단 [단어시험] 섹션에서 별도 기록)
     const daySubjs=(c.subjects||[]).filter(s=>subjOnDay(s,wd));
     if(daySubjs.length && daySubjs.every(isWordTestSubject)) return false;
+    // 오늘 수업(과목)이 하나도 없는 반은 "내 수업만 보기"가 아니어도 홈에 안 보이게 한다 (합반 상대 반에 오늘 수업이 있으면 그 카드 안에서 같이 보이므로 그대로 둔다)
+    if(!daySubjs.length){
+      const mp=mergedCounterpart(c);
+      if(!(mp && (mp.subjects||[]).some(s=>subjOnDay(s,wd)))) return false;
+    }
     return true;
   });
 
@@ -8982,15 +9052,16 @@ function renderToday(list){
     if(partner && (classMeets(partner, wd) || !(partner.subjects||[]).some(x=>subjOnDay(x,wd))) && partner.students && partner.students.length) collectStay(partner, c);
   });
  // 재시험 대상 학생도 "오늘 남는 학생"에 자동으로 합쳐서 보여준다 (재시험은 보통 남아서 다시 봐야 하므로)
-  store.wordTests.filter(r=>r.date===state.date && r.retestNeeded && !r.retestCompleted && !r.absent).forEach(r=>{
+  [['w',r=>r.retestNeeded && !r.retestCompleted && !r.absent],['n',r=>r.nsRetestNeeded && !r.nsRetestCompleted && !r.absent]].forEach(([kind,fil])=>
+  store.wordTests.filter(r=>r.date===state.date && fil(r)).forEach(r=>{
     const st=store.students.find(x=>x.id===r.studentId); if(!st) return;
     const nameKey=st.academy+'|'+st.nameKo;
-    const retestSubj={subj:'📖 재시험', memo:(r.wordbook?r.wordbook:'')+(r.range?' · '+r.range:''), done:false, isRetest:true, wtId:r.id};
+    const retestSubj=kind==='n'?{subj:'📖 내신단어 재시험', memo:(r.nsWordbook?r.nsWordbook:'')+(r.nsRange?' · '+r.nsRange:''), done:false, isRetest:true, wtId:r.id+'#ns'}:{subj:'📖 재시험', memo:(r.wordbook?r.wordbook:'')+(r.range?' · '+r.range:''), done:false, isRetest:true, wtId:r.id};
     const existing=stayList.find(x=>!x.isRetest && x.academy===st.academy && x.student===studentDisplayName(st.academy,st.nameKo,st.className));
     if(existing){ existing.subjects.push(retestSubj); return; } // 이미 다른 이유로 남는 학생이면 같은 줄에 재시험 칸만 추가
     seenStayName.add(nameKey);
     stayList.push({className:st.className||'-', academy:st.academy, student:studentDisplayName(st.academy,st.nameKo,st.className), subjects:[retestSubj], k:'', s:''});
-  });
+  }));
   const staySection=isAdminRole()?`<div class="ysec" style="margin-top:16px;border-top:4px solid #b45309"><h3>🙋 오늘 남는 학생 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">${state.date} 전체 반 기준 (${stayList.length}명, 재시험 대상 포함)</span></h3>
     <div style="padding:0 16px 14px">
       ${stayList.length?stayList.map(x=>{
@@ -17369,6 +17440,8 @@ function renderInner(keepOpen){
     v.innerHTML=renderBoard(); bindBoard();
   } else if(state.tab==='syllabus'){
     v.innerHTML=renderSyllabus(); bindSyllabus();
+  } else if(state.tab==='wallet'){
+    v.innerHTML=renderWallet(); bindWallet();
   } else if(state.tab==='seat'){
     v.innerHTML=renderSeat(); bindSeat();
   } else if(state.tab==='examrpt'){
@@ -17531,7 +17604,271 @@ function backfillNoHwAllPast(){
 }
 backfillNoHwAllPast();
 migrateWorklogPeriodStores();
+/* ---------- 💰 학원 화폐 (초등 달러 · 중등 코인) — 학생별 통장 내역 + QR로 잔액·최근 10건 확인 ---------- */
+// walletLog: 입출금 내역 {id,studentId,academy,date,type:'in'|'out',amount,reason,by,subj,createdAt,updatedAt,_deleted}
+// walletTokens: 학생별 QR 주소용 긴 비밀 문자열 {id:학생id, token, updatedAt} — 서버의 wallet/<token> 에 잔액·최근 10건만 따로 올려서 wallet.html 이 읽는다
+function wlDept(s){
+  let d=''; try{ d=classDeptForName(s.academy, classNameInMonth(s,state.month))||''; }catch(e){}
+  if(!d){ const sc=String(s.school||'').trim(); d=sc.endsWith('초')?'초등':sc.endsWith('중')?'중등':sc.endsWith('고')?'고등':''; }
+  return d;
+}
+function wlUnit(s){ const d=wlDept(s); if(!d) return null; if(d==='초등') return {name:'달러',sym:'$',dept:d}; return {name:'코인',sym:'🪙',dept:d}; } // 초등부만 달러, 중등·고등부는 코인
+function wlEntries(sid){ return (store.walletLog||[]).filter(x=>!x._deleted && x.studentId===sid).sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||0)-(a.createdAt||0)); }
+function wlBal(sid){ return wlEntries(sid).reduce((t,x)=>t+(x.type==='in'?1:-1)*(Number(x.amount)||0),0); }
+// 사유를 안 적으면 입력한 선생님의 담당 과목으로만 기록한다(과목을 못 찾으면 선생님 이름)
+function wlLabel(x){ const r=String(x.reason||'').trim(); return r || x.subj || x.by || '-'; }
+function wlSubjFor(s, lt){
+  if(!lt) return '';
+  const nm=String(lt.t.name||'').trim().toLowerCase(); const cn=classNameInMonth(s,state.month); if(!cn) return '';
+  const out=[];
+  classesFor(state.month).filter(c=>c.academy===s.academy && c.name===cn && !c.examOnly).forEach(c=>(c.subjects||[]).forEach(x=>{
+    if(x.teacher && String(x.teacher).trim().toLowerCase()===nm && x.subject && !out.includes(x.subject)) out.push(x.subject);
+  }));
+  return out.join('/');
+}
+function wlMask(n){ n=String(n||'').trim(); if(n.length<=1) return n; if(n.length===2) return n[0]+'*'; return n[0]+'*'.repeat(n.length-2)+n[n.length-1]; }
+function wlTokRec(sid){ return (store.walletTokens||[]).find(x=>x.id===sid && x.token); }
+function wlNewToken(){ const a=new Uint8Array(16); (window.crypto||window.msCrypto).getRandomValues(a); return [...a].map(b=>(b%36).toString(36)).join('')+Date.now().toString(36); }
+function wlToken(sid, create){
+  let r=wlTokRec(sid);
+  if(!r && create){ r={id:sid, token:wlNewToken(), updatedAt:Date.now()}; store.walletTokens=(store.walletTokens||[]).filter(x=>x.id!==sid); store.walletTokens.push(r); save(); }
+  return r?r.token:'';
+}
+function wlUrl(tk){ return location.origin+routeBase()+'wallet.html?t='+tk; }
+function wlDbBase(){ let u=String((store.sync&&store.sync.url)||'').trim().replace(/\/+$/,''); if(u && !/^https:\/\//.test(u)) u='https://'+u; return u; }
+function wlPubData(s){
+  const u=wlUnit(s)||{name:'',sym:''};
+  return {n:wlMask(s.nameKo), ac:s.academy, u:u.name, s:u.sym, bal:wlBal(s.id), rec:wlEntries(s.id).slice(0,300).map(x=>({d:x.date,t:x.type,a:Number(x.amount)||0,r:wlLabel(x)})), upd:new Date().toISOString()};
+}
+async function wlPublish(sid){
+  const s=store.students.find(x=>x.id===sid); const tk=wlToken(sid,false);
+  if(!s || !tk || !syncOn()) return false;
+  try{ const r=await fbFetch(wlDbBase()+'/wallet/'+tk+'.json?print=silent',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(wlPubData(s))},15000); return r.ok; }
+  catch(e){ return false; }
+}
+// 저금통 그림 단계의 기준이 되는 "학원별·단위별 전체 평균"(재원생 전원 기준, 잔액 0인 학생 포함) — 학생 화면이 자기 잔액과 비교해서 빈 병~가득 찬 병을 고른다
+function wlAvgFor(ac){
+  const sum={'달러':0,'코인':0}, cnt={'달러':0,'코인':0};
+  store.students.forEach(s=>{ if(s._deleted||s.status!=='재원'||s.academy!==ac) return; const u=wlUnit(s); if(!u) return; sum[u.name]+=wlBal(s.id); cnt[u.name]++; });
+  return {'달러':cnt['달러']?sum['달러']/cnt['달러']:0,'코인':cnt['코인']?sum['코인']/cnt['코인']:0,upd:new Date().toISOString()};
+}
+async function wlPublishAvg(ac){
+  if(!ac || !syncOn()) return false;
+  try{ const r=await fbFetch(wlDbBase()+'/walletMeta/'+encodeURIComponent(ac)+'.json?print=silent',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(wlAvgFor(ac))},15000); return r.ok; }catch(e){ return false; }
+}
+const _wlTimers={};
+const _wlAvgT={};
+function wlAvgSoon(ac){ clearTimeout(_wlAvgT[ac]); _wlAvgT[ac]=setTimeout(()=>wlPublishAvg(ac),600); }
+function wlPublishSoon(sid){
+  clearTimeout(_wlTimers[sid]);
+  const st0=store.students.find(x=>x.id===sid); if(st0) wlAvgSoon(st0.academy);
+  _wlTimers[sid]=setTimeout(async()=>{ if(!wlTokRec(sid)) return; const ok=await wlPublish(sid); if(!ok) toast('⚠ QR 화면(잔액) 갱신 실패 — 인터넷 확인 후 [QR 전체 다시 올리기]를 눌러주세요'); },400);
+}
+function wlAdd(sid,type,amount,reason,date){
+  const s=store.students.find(x=>x.id===sid); if(!s) return '학생을 찾을 수 없어요';
+  amount=Math.floor(Number(amount)); if(!(amount>0)) return '금액을 1 이상의 숫자로 입력하세요';
+  if(type==='out' && amount>wlBal(sid)) return '잔액이 부족해요 (현재 '+wlBal(sid).toLocaleString()+')';
+  const lt=loginTeacher();
+  store.walletLog=store.walletLog||[];
+  store.walletLog.push({id:genStudentId(), studentId:sid, academy:s.academy, date:date||todayISO(), type, amount, reason:String(reason||'').trim(), by:lt?lt.t.name:'관리자', subj:lt?wlSubjFor(s,lt):'', createdAt:Date.now(), updatedAt:Date.now()});
+  save(); wlPublishSoon(sid); return '';
+}
+function wlCanDel(x){ if(isAdminRole()) return true; const lt=loginTeacher(); return !!(lt && x.by===lt.t.name); }
+function wlDel(id){
+  const x=(store.walletLog||[]).find(y=>y.id===id); if(!x) return '';
+  if(x.type==='in'){ const after=wlBal(x.studentId)-(Number(x.amount)||0); if(after<0) return '이 적립을 지우면 잔액이 음수가 돼요. 먼저 뒤의 사용 내역을 지워주세요.'; }
+  x._deleted=true; x.updatedAt=Date.now(); save(); wlPublishSoon(x.studentId); return '';
+}
+function wlOverlay(html){
+  let ov=document.getElementById('wlOv'); if(ov) ov.remove();
+  ov=document.createElement('div'); ov.id='wlOv';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(20,24,40,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:14px';
+  ov.innerHTML=`<div style="background:#fff;border-radius:14px;max-width:460px;width:100%;max-height:90vh;overflow:auto;padding:16px;box-shadow:0 10px 40px rgba(0,0,0,.3)">${html}</div>`;
+  document.body.appendChild(ov);
+  ov.querySelectorAll('[data-wlclose]').forEach(b=>b.onclick=()=>ov.remove());
+  return ov;
+}
+const WL_INP='width:100%;box-sizing:border-box;padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.9rem';
+function wlOpenLedger(sid, type){
+  const s=store.students.find(x=>x.id===sid); if(!s) return;
+  const u=wlUnit(s)||{name:'',sym:''}; type=type||state.wlType||'in'; state.wlType=type;
+  const ents=wlEntries(sid); const bal=wlBal(sid);
+  const ov=wlOverlay(`<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+      <div><b style="font-size:1.05rem">${esc(s.nameKo)}</b> <span style="color:var(--sub);font-size:.8rem">${esc(classNameInMonth(s,state.month)||'')}</span></div>
+      <button class="btn small" data-wlclose>✕ 닫기</button></div>
+    <div style="margin:10px 0;padding:12px;border-radius:12px;background:${type==='in'?'#ecfdf5':'#fef2f2'};text-align:center">
+      <div style="font-size:.78rem;color:var(--sub)">현재 잔액</div>
+      <div style="font-size:1.9rem;font-weight:900">${esc(u.sym)} ${bal.toLocaleString()} <span style="font-size:.9rem;font-weight:700">${esc(u.name)}</span></div></div>
+    <div style="display:flex;gap:6px;margin-bottom:8px">
+      <button class="chip ${type==='in'?'on':''}" data-wltype="in" style="flex:1">＋ 적립</button>
+      <button class="chip ${type==='out'?'on':''}" data-wltype="out" style="flex:1">－ 사용</button></div>
+    <div style="display:flex;gap:6px;margin-bottom:6px"><input type="number" id="wlAmt" min="1" step="1" inputmode="numeric" placeholder="금액" style="${WL_INP};flex:1"><input type="date" id="wlDate" value="${todayISO()}" style="${WL_INP};flex:1"></div>
+    <input type="text" id="wlReason" placeholder="사유 (안 적어도 돼요 — 비우면 담당 과목으로 기록)" style="${WL_INP}">
+    <button class="btn primary" id="wlGo" style="width:100%;margin-top:8px">${type==='in'?'＋ 적립 기록':'－ 사용 기록'}</button>
+    <div style="margin-top:14px;font-weight:800;font-size:.86rem">📒 통장 내역 <span style="font-weight:400;color:var(--sub)">(${ents.length}건)</span></div>
+    <div style="margin-top:6px">${ents.length?ents.map(x=>`<div style="display:flex;gap:8px;align-items:center;padding:7px 0;border-bottom:1px dashed var(--line)">
+        <span style="color:var(--sub);font-size:.76rem;min-width:46px">${esc(String(x.date||'').slice(5).replace('-','/'))}</span>
+        <span style="flex:1;font-size:.84rem">${esc(wlLabel(x))}<br><span style="color:#9aa3b5;font-size:.7rem">${esc(x.by||'')}</span></span>
+        <b style="color:${x.type==='in'?'#0e9f6e':'#c0392b'}">${x.type==='in'?'+':'−'}${(Number(x.amount)||0).toLocaleString()}</b>
+        ${wlCanDel(x)?`<button class="btn small" data-wldel="${x.id}" style="padding:2px 7px;font-size:.7rem">삭제</button>`:''}</div>`).join(''):'<div style="color:var(--sub);font-size:.82rem;padding:8px 0">아직 내역이 없어요.</div>'}</div>`);
+  ov.querySelectorAll('[data-wltype]').forEach(b=>b.onclick=()=>wlOpenLedger(sid,b.dataset.wltype));
+  const go=ov.querySelector('#wlGo');
+  const submit=()=>{
+    const err=wlAdd(sid,type,ov.querySelector('#wlAmt').value,ov.querySelector('#wlReason').value,ov.querySelector('#wlDate').value);
+    if(err){ alert(err); return; }
+    wlOpenLedger(sid,type); render(true);
+  };
+  go.onclick=submit;
+  ov.querySelectorAll('#wlAmt,#wlReason').forEach(i=>i.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); submit(); } }));
+  ov.querySelectorAll('[data-wldel]').forEach(b=>b.onclick=()=>{
+    if(!confirm('이 내역을 삭제할까요?')) return;
+    const err=wlDel(b.dataset.wldel); if(err){ alert(err); return; }
+    wlOpenLedger(sid,type); render(true);
+  });
+  setTimeout(()=>{ const a=ov.querySelector('#wlAmt'); if(a) a.focus(); },50);
+}
+function wlQrSvg(text){ const q=qrcode(0,'M'); q.addData(text); q.make(); return q.createSvgTag({cellSize:4,margin:2,scalable:true}); }
+function wlOpenQr(sid){
+  const s=store.students.find(x=>x.id===sid); if(!s) return;
+  const tk=wlToken(sid,true); const url=wlUrl(tk); const u=wlUnit(s)||{name:''};
+  const warn=(!/^https?:$/.test(location.protocol))?'<div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:8px;font-size:.78rem;margin-bottom:8px">⚠ 지금은 인터넷 주소(GitHub Pages)로 연 화면이 아니라서, 이 QR은 학생 휴대폰에서 열리지 않아요. 홈페이지 주소로 접속한 뒤 다시 만들어주세요.</div>':(syncOn()?'':'<div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:8px;font-size:.78rem;margin-bottom:8px">⚠ 실시간 동기화가 꺼져 있어서 QR 화면에 잔액을 올릴 수 없어요. 설정에서 동기화를 켜주세요.</div>');
+  const ov=wlOverlay(`<div style="display:flex;justify-content:space-between;align-items:center"><b>${esc(s.nameKo)} · ${esc(u.name)} 통장 QR</b><button class="btn small" data-wlclose>✕ 닫기</button></div>
+    <div style="margin-top:10px">${warn}<div style="width:230px;max-width:100%;margin:0 auto">${wlQrSvg(url)}</div>
+    <input type="text" readonly value="${esc(url)}" onclick="this.select()" style="${WL_INP};margin-top:10px;font-size:.72rem">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><button class="btn small" id="wlCopy">📋 주소 복사</button><button class="btn small" id="wlPrintOne">🖨 이 QR 인쇄</button>${isAdminRole()?'<button class="btn small" id="wlRegen" style="margin-left:auto;color:#c0392b">🔁 새 QR로 바꾸기</button>':''}</div>
+    <div style="font-size:.74rem;color:var(--sub);margin-top:8px;line-height:1.5">학생이 QR을 찍으면 이름(가운데는 *로 가림)·잔액·통장 내역(처음엔 10건, 더보기로 이어서)만 보여요. QR을 잃어버렸거나 다른 사람이 알게 된 경우 [새 QR로 바꾸기]를 누르면 예전 QR은 바로 못 쓰게 돼요.</div></div>`);
+  wlPublish(sid).then(ok=>{ if(!ok && syncOn()) toast('⚠ QR 화면(잔액) 올리기 실패 — 인터넷을 확인해주세요'); });
+  wlPublishAvg(s.academy);
+  ov.querySelector('#wlCopy').onclick=()=>{ try{ navigator.clipboard.writeText(url); toast('복사했어요'); }catch(e){ ov.querySelector('input').select(); document.execCommand('copy'); } };
+  ov.querySelector('#wlPrintOne').onclick=()=>wlPrintQrs([sid]);
+  const rg=ov.querySelector('#wlRegen');
+  if(rg) rg.onclick=async()=>{
+    if(!confirm('새 QR로 바꿀까요? 지금 QR(이미 나눠준 것 포함)은 바로 못 쓰게 돼요.')) return;
+    const old=tk; const r=wlTokRec(sid); r.token=wlNewToken(); r.updatedAt=Date.now(); save();
+    try{ if(syncOn()) await fbFetch(wlDbBase()+'/wallet/'+old+'.json?print=silent',{method:'DELETE'},15000); }catch(e){}
+    await wlPublish(sid); wlOpenQr(sid);
+  };
+}
+function wlPrintQrs(ids){
+  const items=ids.map(id=>store.students.find(x=>x.id===id)).filter(Boolean);
+  if(!items.length){ alert('인쇄할 학생이 없어요.'); return; }
+  items.forEach(s=>wlToken(s.id,true));
+  const cards=items.map(s=>{ const u=wlUnit(s)||{name:''}; const tk=wlToken(s.id,false);
+    return `<div class="c"><div class="t">${esc(s.nameKo)}</div><div class="m">${esc(classNameInMonth(s,state.month)||'')}</div><div class="q">${wlQrSvg(wlUrl(tk))}</div><div class="g">${esc(u.name)} 통장 · QR을 찍어보세요</div></div>`; }).join('');
+  const w=window.open('','_blank');
+  if(!w){ alert('팝업이 막혀 있어요. 이 사이트의 팝업을 허용한 뒤 다시 눌러주세요.'); return; }
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>학원 화폐 QR</title><style>
+    @page{size:A4;margin:10mm} body{font-family:'Malgun Gothic',sans-serif;margin:0}
+    .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6mm}
+    .c{border:1.5px dashed #999;border-radius:8px;padding:8px;text-align:center;break-inside:avoid;page-break-inside:avoid}
+    .t{font-weight:800;font-size:15pt}.m{font-size:9pt;color:#666;margin-bottom:4px}.q{width:46mm;margin:0 auto}.g{font-size:8pt;color:#444;margin-top:4px}
+    </style></head><body><div class="grid">${cards}</div><script>setTimeout(function(){window.print()},400)<\/script></body></html>`);
+  w.document.close();
+  wlRepublishAll(ids,true);
+}
+async function wlRepublishAll(ids,quiet){
+  const list=ids||(store.walletTokens||[]).filter(x=>x.token).map(x=>x.id);
+  let ok=0,fail=0; academies().forEach(a=>wlPublishAvg(a)); for(const id of list){ if(!wlTokRec(id)) continue; (await wlPublish(id))?ok++:fail++; }
+  if(!quiet || fail) toast(fail?`⚠ ${ok}명 올림 · ${fail}명 실패 (인터넷 확인)`:`✅ QR 화면 ${ok}명 최신으로 올렸어요`);
+}
+/* 저금통 그림: 기본 그림(아래 SVG)은 wallet.html 에 들어있고, 여기서 단계별로 직접 올린 그림이 있으면 그걸 우선 쓴다 (서버 walletImg/<dollar|coin>/<0~4>) */
+const WL_LV=['비었을 때 (0)','1/3 · 평균보다 적음','절반 · 평균 근처','2/3 · 평균보다 많음','가득 · 평균의 2배 이상'];
+function wlJarSvg(lv,unit){
+  const frac=[0,1/3,1/2,2/3,1][lv], dollar=(unit==='달러'), bot=182, H=134, y=bot-frac*H, id='p'+lv;
+  const body='M40 40 Q40 34 54 34 H106 Q120 34 120 40 V160 Q120 182 98 182 H62 Q40 182 40 160 Z';
+  const pat=dollar?`<pattern id="${id}" width="26" height="15" patternUnits="userSpaceOnUse"><rect width="26" height="15" fill="#2f9e5b"/><rect x="1.5" y="1.5" width="23" height="12" rx="2" fill="#4cc27a" stroke="#1e7d3a"/><circle cx="13" cy="7.5" r="3.6" fill="#2f9e5b"/></pattern>`:`<pattern id="${id}" width="22" height="13" patternUnits="userSpaceOnUse"><rect width="22" height="13" fill="#d98a0b"/><ellipse cx="11" cy="6.5" rx="9.5" ry="5.6" fill="#fbbf24" stroke="#b36b00"/></pattern>`;
+  return `<svg viewBox="0 0 160 190" xmlns="http://www.w3.org/2000/svg" style="width:70px;height:auto"><defs>${pat}<clipPath id="c${id}"><path d="${body}"/></clipPath></defs><rect x="46" y="6" width="68" height="18" rx="5" fill="#cfd6e6"/><path d="${body}" fill="#e9edf7"/><g clip-path="url(#c${id})">${frac>0?`<rect x="40" y="${y}" width="80" height="${bot-y}" fill="url(#${id})"/>`:''}</g><path d="${body}" fill="none" stroke="#9aa5bd" stroke-width="3"/></svg>`;
+}
+function wlResizeImg(file){
+  return new Promise((res,rej)=>{ const fr=new FileReader(); fr.onerror=()=>rej(new Error('파일을 읽지 못했어요'));
+    fr.onload=()=>{ const im=new Image(); im.onerror=()=>rej(new Error('그림 파일을 열 수 없어요'));
+      im.onload=()=>{ let max=300,q=.88; const w0=im.naturalWidth||300,h0=im.naturalHeight||300;
+        for(let t=0;t<4;t++){ const sc=Math.min(1,max/Math.max(w0,h0)); const c=document.createElement('canvas'); c.width=Math.max(1,Math.round(w0*sc)); c.height=Math.max(1,Math.round(h0*sc));
+          c.getContext('2d').drawImage(im,0,0,c.width,c.height); const out=c.toDataURL('image/webp',q);
+          if(out.length<180000||t===3) return res(out); max*=.8; q-=.12; } };
+      im.src=fr.result; };
+    fr.readAsDataURL(file); });
+}
+async function wlOpenImgs(unitKey){
+  if(!isAdminRole()) return;
+  if(!syncOn()){ alert('실시간 동기화가 켜져 있어야 그림을 올릴 수 있어요. (설정에서 동기화를 켜주세요)'); return; }
+  const uk=unitKey||state.wlImgUnit||'dollar'; state.wlImgUnit=uk; const uname=uk==='dollar'?'달러':'코인';
+  let data={}; try{ const r=await fbFetch(wlDbBase()+'/walletImg/'+uk+'.json',null,15000); if(!r.ok) throw new Error('HTTP '+r.status); data=(await r.json())||{}; }catch(e){ alert('저장된 그림을 불러오지 못했어요 — 인터넷을 확인해주세요.'); return; }
+  const get=i=>(Array.isArray(data)?data[i]:data[i]);
+  const ov=wlOverlay(`<div style="display:flex;justify-content:space-between;align-items:center"><b>🖼 저금통 그림 (${uname})</b><button class="btn small" data-wlclose>✕ 닫기</button></div>
+    <div style="display:flex;gap:6px;margin:10px 0"><button class="chip ${uk==='dollar'?'on':''}" data-wliu="dollar">달러 (초등)</button><button class="chip ${uk==='coin'?'on':''}" data-wliu="coin">코인 (중등·고등)</button></div>
+    <div style="font-size:.76rem;color:var(--sub);margin-bottom:8px;line-height:1.5">단계별로 그림을 올리면 학생 QR 화면에서 그 그림이 나와요. 안 올린 단계는 기본 저금통 그림이 나와요. (큰 그림은 자동으로 줄여서 저장해요)</div>
+    ${WL_LV.map((l,i)=>{ const im=get(i); const has=typeof im==='string'&&im.startsWith('data:image/'); return `<div style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px dashed var(--line)">
+      <div style="width:84px;height:84px;display:flex;align-items:center;justify-content:center;background:#f1f4fa;border-radius:10px;flex:none">${has?`<img src="${im}" style="max-width:80px;max-height:80px">`:wlJarSvg(i,uname)}</div>
+      <div style="flex:1;font-size:.84rem"><b>${i+1}단계</b> <span style="color:var(--sub)">${l}</span><br><span style="font-size:.72rem;color:${has?'#0e9f6e':'var(--sub)'}">${has?'올린 그림 사용 중':'기본 그림'}</span></div>
+      <div style="display:flex;flex-direction:column;gap:4px"><label class="btn small" style="cursor:pointer;text-align:center">올리기<input type="file" accept="image/*" data-wlimg="${i}" style="display:none"></label>${has?`<button class="btn small" data-wlimgdel="${i}">기본으로</button>`:''}</div></div>`; }).join('')}`);
+  ov.querySelectorAll('[data-wliu]').forEach(b=>b.onclick=()=>wlOpenImgs(b.dataset.wliu));
+  ov.querySelectorAll('[data-wlimg]').forEach(inp=>inp.onchange=async()=>{
+    const f=inp.files&&inp.files[0]; if(!f) return;
+    try{ const url=await wlResizeImg(f);
+      const r=await fbFetch(wlDbBase()+'/walletImg/'+uk+'/'+inp.dataset.wlimg+'.json?print=silent',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(url)},20000);
+      if(!r.ok) throw new Error('HTTP '+r.status); toast('✅ 그림을 올렸어요'); wlOpenImgs(uk);
+    }catch(e){ alert('그림 올리기 실패: '+(e&&e.message||e)); }
+  });
+  ov.querySelectorAll('[data-wlimgdel]').forEach(b=>b.onclick=async()=>{
+    if(!confirm('이 단계를 기본 그림으로 되돌릴까요?')) return;
+    try{ await fbFetch(wlDbBase()+'/walletImg/'+uk+'/'+b.dataset.wlimgdel+'.json?print=silent',{method:'DELETE'},15000); wlOpenImgs(uk); }catch(e){ alert('실패 — 인터넷을 확인해주세요.'); }
+  });
+}
+function wlRows(){
+  const q=String(state.wlQ||'').trim().toLowerCase();
+  let rows=store.students.filter(s=>!s._deleted && s.status==='재원' && (state.ac==='all'||s.academy===state.ac)).map(s=>({s,u:wlUnit(s)})).filter(x=>x.u);
+  if(state.wlDept&&state.wlDept!=='all') rows=rows.filter(x=>x.u.dept===state.wlDept);
+  if(state.wlClass&&state.wlClass!=='all') rows=rows.filter(x=>(classNameInMonth(x.s,state.month)||'미배정')===state.wlClass);
+  if(q) rows=rows.filter(x=>[x.s.nameKo,x.s.nameEn,classNameInMonth(x.s,state.month)].some(v=>v&&String(v).toLowerCase().includes(q)));
+  const dord={'초등':0,'중등':1,'고등':2};
+  rows.sort((a,b)=>(dord[a.u.dept]-dord[b.u.dept])||String(classNameInMonth(a.s,state.month)||'힣').localeCompare(String(classNameInMonth(b.s,state.month)||'힣'),'ko',{numeric:true})||(a.s.nameKo||'').localeCompare(b.s.nameKo||'','ko'));
+  return rows;
+}
+function renderWallet(){
+  state.wlDept=state.wlDept||'all'; state.wlClass=state.wlClass||'all';
+  const all=store.students.filter(s=>!s._deleted && s.status==='재원' && (state.ac==='all'||s.academy===state.ac)).map(s=>({s,u:wlUnit(s)})).filter(x=>x.u);
+  const classes=[...new Set(all.filter(x=>state.wlDept==='all'||x.u.dept===state.wlDept).map(x=>classNameInMonth(x.s,state.month)||'미배정'))].sort((a,b)=>a.localeCompare(b,'ko',{numeric:true}));
+  if(state.wlClass!=='all' && !classes.includes(state.wlClass)) state.wlClass='all';
+  const rows=wlRows();
+  const sum={'달러':0,'코인':0}; rows.forEach(x=>{ sum[x.u.name]+=wlBal(x.s.id); });
+  const admin=isAdminRole();
+  let h=`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+    ${[['all','전체'],['초등','초등 · 달러'],['중등','중등 · 코인'],['고등','고등 · 코인']].map(([k,l])=>`<button class="chip ${state.wlDept===k?'on':''}" data-wldept="${k}">${l}</button>`).join('')}
+    <select data-wlclass style="padding:7px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit"><option value="all">모든 반</option>${classes.map(c=>`<option value="${esc(c)}" ${state.wlClass===c?'selected':''}>${esc(c)}</option>`).join('')}</select>
+    <input type="search" id="wlSearch" value="${esc(state.wlQ||'')}" placeholder="🔍 이름 검색 (Enter)" style="padding:7px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;min-width:150px">
+    <span style="font-size:.82rem;color:var(--sub);font-weight:700">${rows.length}명${sum['달러']?` · 💵 ${sum['달러'].toLocaleString()}달러`:''}${sum['코인']?` · 🪙 ${sum['코인'].toLocaleString()}코인`:''}</span></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"><button class="btn" data-wlprintall>🖨 현재 목록 QR 인쇄</button><button class="btn" data-wlrepub>🔄 QR 전체 다시 올리기</button>${admin?'<button class="btn" data-wlimgs>🖼 저금통 그림</button>':''}
+    <span style="font-size:.76rem;color:var(--sub);align-self:center">초등부는 달러, 중등·고등부는 코인이에요 · 적립·사용은 모든 선생님이 입력할 수 있어요 · 사유는 안 적어도 돼요(비우면 담당 과목으로 기록)</span></div>`;
+  if(!rows.length) return h+'<div class="empty">표시할 학생이 없어요. (반이 정해진 재원생만 나와요)</div>';
+  h+=`<div style="overflow:auto"><table style="border-collapse:collapse;width:100%;font-size:.88rem;background:#fff"><thead><tr>${['학생','반','잔액','최근 내역',''].map(t=>`<th style="background:#e8ecf3;border:1px solid #c5ccd8;padding:6px 8px;text-align:center;white-space:nowrap">${t}</th>`).join('')}</tr></thead><tbody>`;
+  rows.forEach(({s,u})=>{
+    const bal=wlBal(s.id); const last=wlEntries(s.id)[0];
+    const TD='border:1px solid #d5dae3;padding:6px 8px;text-align:center';
+    h+=`<tr><td style="${TD};text-align:left;font-weight:800;white-space:nowrap">${esc(s.nameKo)}${MODE==='all'?' '+bdg(s.academy):''}</td>
+      <td style="${TD};color:var(--sub);white-space:nowrap">${esc(classNameInMonth(s,state.month)||'미배정')}</td>
+      <td style="${TD};font-weight:900;white-space:nowrap">${esc(u.sym)} ${bal.toLocaleString()} <span style="font-weight:400;color:var(--sub);font-size:.74rem">${u.name}</span></td>
+      <td style="${TD};font-size:.78rem;color:var(--sub)">${last?`${esc(String(last.date).slice(5).replace('-','/'))} ${last.type==='in'?'+':'−'}${(Number(last.amount)||0).toLocaleString()} · ${esc(wlLabel(last))}`:'-'}</td>
+      <td style="${TD};white-space:nowrap"><button class="btn small" data-wlopen="${s.id}|in">＋ 적립</button> <button class="btn small" data-wlopen="${s.id}|out">－ 사용</button> <button class="btn small" data-wlopen="${s.id}|led">📒 통장</button> <button class="btn small" data-wlqr="${s.id}">QR</button></td></tr>`;
+  });
+  return h+'</tbody></table></div>';
+}
+function bindWallet(){
+  const v=document.getElementById('view');
+  v.querySelectorAll('[data-wldept]').forEach(b=>b.onclick=()=>{ state.wlDept=b.dataset.wldept; state.wlClass='all'; render(true); });
+  const cs=v.querySelector('[data-wlclass]'); if(cs) cs.onchange=()=>{ state.wlClass=cs.value; render(true); };
+  const sr=v.querySelector('#wlSearch'); if(sr) sr.onchange=()=>{ state.wlQ=sr.value; render(true); };
+  v.querySelectorAll('[data-wlopen]').forEach(b=>b.onclick=()=>{ const [id,t]=b.dataset.wlopen.split('|'); wlOpenLedger(id, t==='led'?undefined:t); });
+  v.querySelectorAll('[data-wlqr]').forEach(b=>b.onclick=()=>wlOpenQr(b.dataset.wlqr));
+  const pa=v.querySelector('[data-wlprintall]'); if(pa) pa.onclick=()=>wlPrintQrs(wlRows().map(x=>x.s.id));
+  const gi=v.querySelector('[data-wlimgs]'); if(gi) gi.onclick=()=>wlOpenImgs();
+  const rp=v.querySelector('[data-wlrepub]'); if(rp) rp.onclick=()=>wlRepublishAll(null,false);
+}
+
 render();
+</script>
+<script>/* QR Code Generator (c) Kazuhiko Arase, MIT */
+var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],f={},c=function(t,r){o=function(t){for(var r=new Array(t),e=0;e<t;e+=1){r[e]=new Array(t);for(var n=0;n<t;n+=1)r[e][n]=null}return r}(i=4*e+17),l(0,0),l(i-7,0),l(0,i-7),s(),h(),d(t,r),e>=7&&v(t),null==a&&(a=p(e,n,u)),w(a,r)},l=function(t,r){for(var e=-1;e<=7;e+=1)if(!(t+e<=-1||i<=t+e))for(var n=-1;n<=7;n+=1)r+n<=-1||i<=r+n||(o[t+e][r+n]=0<=e&&e<=6&&(0==n||6==n)||0<=n&&n<=6&&(0==e||6==e)||2<=e&&e<=4&&2<=n&&n<=4)},h=function(){for(var t=8;t<i-8;t+=1)null==o[t][6]&&(o[t][6]=t%2==0);for(var r=8;r<i-8;r+=1)null==o[6][r]&&(o[6][r]=r%2==0)},s=function(){for(var t=B.getPatternPosition(e),r=0;r<t.length;r+=1)for(var n=0;n<t.length;n+=1){var i=t[r],a=t[n];if(null==o[i][a])for(var u=-2;u<=2;u+=1)for(var f=-2;f<=2;f+=1)o[i+u][a+f]=-2==u||2==u||-2==f||2==f||0==u&&0==f}},v=function(t){for(var r=B.getBCHTypeNumber(e),n=0;n<18;n+=1){var a=!t&&1==(r>>n&1);o[Math.floor(n/3)][n%3+i-8-3]=a}for(n=0;n<18;n+=1){a=!t&&1==(r>>n&1);o[n%3+i-8-3][Math.floor(n/3)]=a}},d=function(t,r){for(var e=n<<3|r,a=B.getBCHTypeInfo(e),u=0;u<15;u+=1){var f=!t&&1==(a>>u&1);u<6?o[u][8]=f:u<8?o[u+1][8]=f:o[i-15+u][8]=f}for(u=0;u<15;u+=1){f=!t&&1==(a>>u&1);u<8?o[8][i-u-1]=f:u<9?o[8][15-u-1+1]=f:o[8][15-u-1]=f}o[i-8][8]=!t},w=function(t,r){for(var e=-1,n=i-1,a=7,u=0,f=B.getMaskFunction(r),c=i-1;c>0;c-=2)for(6==c&&(c-=1);;){for(var g=0;g<2;g+=1)if(null==o[n][c-g]){var l=!1;u<t.length&&(l=1==(t[u]>>>a&1)),f(n,c-g)&&(l=!l),o[n][c-g]=l,-1==(a-=1)&&(u+=1,a=7)}if((n+=e)<0||i<=n){n-=e,e=-e;break}}},p=function(t,r,e){for(var n=A.getRSBlocks(t,r),o=b(),i=0;i<e.length;i+=1){var a=e[i];o.put(a.getMode(),4),o.put(a.getLength(),B.getLengthInBits(a.getMode(),t)),a.write(o)}var u=0;for(i=0;i<n.length;i+=1)u+=n[i].dataCount;if(o.getLengthInBits()>8*u)throw"code length overflow. ("+o.getLengthInBits()+">"+8*u+")";for(o.getLengthInBits()+4<=8*u&&o.put(0,4);o.getLengthInBits()%8!=0;)o.putBit(!1);for(;!(o.getLengthInBits()>=8*u||(o.put(236,8),o.getLengthInBits()>=8*u));)o.put(17,8);return function(t,r){for(var e=0,n=0,o=0,i=new Array(r.length),a=new Array(r.length),u=0;u<r.length;u+=1){var f=r[u].dataCount,c=r[u].totalCount-f;n=Math.max(n,f),o=Math.max(o,c),i[u]=new Array(f);for(var g=0;g<i[u].length;g+=1)i[u][g]=255&t.getBuffer()[g+e];e+=f;var l=B.getErrorCorrectPolynomial(c),h=k(i[u],l.getLength()-1).mod(l);for(a[u]=new Array(l.getLength()-1),g=0;g<a[u].length;g+=1){var s=g+h.getLength()-a[u].length;a[u][g]=s>=0?h.getAt(s):0}}var v=0;for(g=0;g<r.length;g+=1)v+=r[g].totalCount;var d=new Array(v),w=0;for(g=0;g<n;g+=1)for(u=0;u<r.length;u+=1)g<i[u].length&&(d[w]=i[u][g],w+=1);for(g=0;g<o;g+=1)for(u=0;u<r.length;u+=1)g<a[u].length&&(d[w]=a[u][g],w+=1);return d}(o,n)};f.addData=function(t,r){var e=null;switch(r=r||"Byte"){case"Numeric":e=M(t);break;case"Alphanumeric":e=x(t);break;case"Byte":e=m(t);break;case"Kanji":e=L(t);break;default:throw"mode:"+r}u.push(e),a=null},f.isDark=function(t,r){if(t<0||i<=t||r<0||i<=r)throw t+","+r;return o[t][r]},f.getModuleCount=function(){return i},f.make=function(){if(e<1){for(var t=1;t<40;t++){for(var r=A.getRSBlocks(t,n),o=b(),i=0;i<u.length;i++){var a=u[i];o.put(a.getMode(),4),o.put(a.getLength(),B.getLengthInBits(a.getMode(),t)),a.write(o)}var g=0;for(i=0;i<r.length;i++)g+=r[i].dataCount;if(o.getLengthInBits()<=8*g)break}e=t}c(!1,function(){for(var t=0,r=0,e=0;e<8;e+=1){c(!0,e);var n=B.getLostPoint(f);(0==e||t>n)&&(t=n,r=e)}return r}())},f.createTableTag=function(t,r){t=t||2;var e="";e+='<table style="',e+=" border-width: 0px; border-style: none;",e+=" border-collapse: collapse;",e+=" padding: 0px; margin: "+(r=void 0===r?4*t:r)+"px;",e+='">',e+="<tbody>";for(var n=0;n<f.getModuleCount();n+=1){e+="<tr>";for(var o=0;o<f.getModuleCount();o+=1)e+='<td style="',e+=" border-width: 0px; border-style: none;",e+=" border-collapse: collapse;",e+=" padding: 0px; margin: 0px;",e+=" width: "+t+"px;",e+=" height: "+t+"px;",e+=" background-color: ",e+=f.isDark(n,o)?"#000000":"#ffffff",e+=";",e+='"/>';e+="</tr>"}return e+="</tbody>",e+="</table>"},f.createSvgTag=function(t,r,e,n){var o={};"object"==typeof arguments[0]&&(t=(o=arguments[0]).cellSize,r=o.margin,e=o.alt,n=o.title),t=t||2,r=void 0===r?4*t:r,(e="string"==typeof e?{text:e}:e||{}).text=e.text||null,e.id=e.text?e.id||"qrcode-description":null,(n="string"==typeof n?{text:n}:n||{}).text=n.text||null,n.id=n.text?n.id||"qrcode-title":null;var i,a,u,c,g=f.getModuleCount()*t+2*r,l="";for(c="l"+t+",0 0,"+t+" -"+t+",0 0,-"+t+"z ",l+='<svg version="1.1" xmlns="http://www.w3.org/2000/svg"',l+=o.scalable?"":' width="'+g+'px" height="'+g+'px"',l+=' viewBox="0 0 '+g+" "+g+'" ',l+=' preserveAspectRatio="xMinYMin meet"',l+=n.text||e.text?' role="img" aria-labelledby="'+y([n.id,e.id].join(" ").trim())+'"':"",l+=">",l+=n.text?'<title id="'+y(n.id)+'">'+y(n.text)+"</title>":"",l+=e.text?'<description id="'+y(e.id)+'">'+y(e.text)+"</description>":"",l+='<rect width="100%" height="100%" fill="white" cx="0" cy="0"/>',l+='<path d="',a=0;a<f.getModuleCount();a+=1)for(u=a*t+r,i=0;i<f.getModuleCount();i+=1)f.isDark(a,i)&&(l+="M"+(i*t+r)+","+u+c);return l+='" stroke="transparent" fill="black"/>',l+="</svg>"},f.createDataURL=function(t,r){t=t||2,r=void 0===r?4*t:r;var e=f.getModuleCount()*t+2*r,n=r,o=e-r;return I(e,e,function(r,e){if(n<=r&&r<o&&n<=e&&e<o){var i=Math.floor((r-n)/t),a=Math.floor((e-n)/t);return f.isDark(a,i)?0:1}return 1})},f.createImgTag=function(t,r,e){t=t||2,r=void 0===r?4*t:r;var n=f.getModuleCount()*t+2*r,o="";return o+="<img",o+=' src="',o+=f.createDataURL(t,r),o+='"',o+=' width="',o+=n,o+='"',o+=' height="',o+=n,o+='"',e&&(o+=' alt="',o+=y(e),o+='"'),o+="/>"};var y=function(t){for(var r="",e=0;e<t.length;e+=1){var n=t.charAt(e);switch(n){case"<":r+="&lt;";break;case">":r+="&gt;";break;case"&":r+="&amp;";break;case'"':r+="&quot;";break;default:r+=n}}return r};return f.createASCII=function(t,r){if((t=t||1)<2)return function(t){t=void 0===t?2:t;var r,e,n,o,i,a=1*f.getModuleCount()+2*t,u=t,c=a-t,g={"██":"█","█ ":"▀"," █":"▄","  ":" "},l={"██":"▀","█ ":"▀"," █":" ","  ":" "},h="";for(r=0;r<a;r+=2){for(n=Math.floor((r-u)/1),o=Math.floor((r+1-u)/1),e=0;e<a;e+=1)i="█",u<=e&&e<c&&u<=r&&r<c&&f.isDark(n,Math.floor((e-u)/1))&&(i=" "),u<=e&&e<c&&u<=r+1&&r+1<c&&f.isDark(o,Math.floor((e-u)/1))?i+=" ":i+="█",h+=t<1&&r+1>=c?l[i]:g[i];h+="\n"}return a%2&&t>0?h.substring(0,h.length-a-1)+Array(a+1).join("▀"):h.substring(0,h.length-1)}(r);t-=1,r=void 0===r?2*t:r;var e,n,o,i,a=f.getModuleCount()*t+2*r,u=r,c=a-r,g=Array(t+1).join("██"),l=Array(t+1).join("  "),h="",s="";for(e=0;e<a;e+=1){for(o=Math.floor((e-u)/t),s="",n=0;n<a;n+=1)i=1,u<=n&&n<c&&u<=e&&e<c&&f.isDark(o,Math.floor((n-u)/t))&&(i=0),s+=i?g:l;for(o=0;o<t;o+=1)h+=s+"\n"}return h.substring(0,h.length-1)},f.renderTo2dContext=function(t,r){r=r||2;for(var e=f.getModuleCount(),n=0;n<e;n++)for(var o=0;o<e;o++)t.fillStyle=f.isDark(n,o)?"black":"white",t.fillRect(n*r,o*r,r,r)},f};t.stringToBytes=(t.stringToBytesFuncs={default:function(t){for(var r=[],e=0;e<t.length;e+=1){var n=t.charCodeAt(e);r.push(255&n)}return r}}).default,t.createStringToBytes=function(t,r){var e=function(){for(var e=S(t),n=function(){var t=e.read();if(-1==t)throw"eof";return t},o=0,i={};;){var a=e.read();if(-1==a)break;var u=n(),f=n()<<8|n();i[String.fromCharCode(a<<8|u)]=f,o+=1}if(o!=r)throw o+" != "+r;return i}(),n="?".charCodeAt(0);return function(t){for(var r=[],o=0;o<t.length;o+=1){var i=t.charCodeAt(o);if(i<128)r.push(i);else{var a=e[t.charAt(o)];"number"==typeof a?(255&a)==a?r.push(a):(r.push(a>>>8),r.push(255&a)):r.push(n)}}return r}};var r,e,n,o,i,a=1,u=2,f=4,c=8,g={L:1,M:0,Q:3,H:2},l=0,h=1,s=2,v=3,d=4,w=5,p=6,y=7,B=(r=[[],[6,18],[6,22],[6,26],[6,30],[6,34],[6,22,38],[6,24,42],[6,26,46],[6,28,50],[6,30,54],[6,32,58],[6,34,62],[6,26,46,66],[6,26,48,70],[6,26,50,74],[6,30,54,78],[6,30,56,82],[6,30,58,86],[6,34,62,90],[6,28,50,72,94],[6,26,50,74,98],[6,30,54,78,102],[6,28,54,80,106],[6,32,58,84,110],[6,30,58,86,114],[6,34,62,90,118],[6,26,50,74,98,122],[6,30,54,78,102,126],[6,26,52,78,104,130],[6,30,56,82,108,134],[6,34,60,86,112,138],[6,30,58,86,114,142],[6,34,62,90,118,146],[6,30,54,78,102,126,150],[6,24,50,76,102,128,154],[6,28,54,80,106,132,158],[6,32,58,84,110,136,162],[6,26,54,82,110,138,166],[6,30,58,86,114,142,170]],e=1335,n=7973,i=function(t){for(var r=0;0!=t;)r+=1,t>>>=1;return r},(o={}).getBCHTypeInfo=function(t){for(var r=t<<10;i(r)-i(e)>=0;)r^=e<<i(r)-i(e);return 21522^(t<<10|r)},o.getBCHTypeNumber=function(t){for(var r=t<<12;i(r)-i(n)>=0;)r^=n<<i(r)-i(n);return t<<12|r},o.getPatternPosition=function(t){return r[t-1]},o.getMaskFunction=function(t){switch(t){case l:return function(t,r){return(t+r)%2==0};case h:return function(t,r){return t%2==0};case s:return function(t,r){return r%3==0};case v:return function(t,r){return(t+r)%3==0};case d:return function(t,r){return(Math.floor(t/2)+Math.floor(r/3))%2==0};case w:return function(t,r){return t*r%2+t*r%3==0};case p:return function(t,r){return(t*r%2+t*r%3)%2==0};case y:return function(t,r){return(t*r%3+(t+r)%2)%2==0};default:throw"bad maskPattern:"+t}},o.getErrorCorrectPolynomial=function(t){for(var r=k([1],0),e=0;e<t;e+=1)r=r.multiply(k([1,C.gexp(e)],0));return r},o.getLengthInBits=function(t,r){if(1<=r&&r<10)switch(t){case a:return 10;case u:return 9;case f:case c:return 8;default:throw"mode:"+t}else if(r<27)switch(t){case a:return 12;case u:return 11;case f:return 16;case c:return 10;default:throw"mode:"+t}else{if(!(r<41))throw"type:"+r;switch(t){case a:return 14;case u:return 13;case f:return 16;case c:return 12;default:throw"mode:"+t}}},o.getLostPoint=function(t){for(var r=t.getModuleCount(),e=0,n=0;n<r;n+=1)for(var o=0;o<r;o+=1){for(var i=0,a=t.isDark(n,o),u=-1;u<=1;u+=1)if(!(n+u<0||r<=n+u))for(var f=-1;f<=1;f+=1)o+f<0||r<=o+f||0==u&&0==f||a==t.isDark(n+u,o+f)&&(i+=1);i>5&&(e+=3+i-5)}for(n=0;n<r-1;n+=1)for(o=0;o<r-1;o+=1){var c=0;t.isDark(n,o)&&(c+=1),t.isDark(n+1,o)&&(c+=1),t.isDark(n,o+1)&&(c+=1),t.isDark(n+1,o+1)&&(c+=1),0!=c&&4!=c||(e+=3)}for(n=0;n<r;n+=1)for(o=0;o<r-6;o+=1)t.isDark(n,o)&&!t.isDark(n,o+1)&&t.isDark(n,o+2)&&t.isDark(n,o+3)&&t.isDark(n,o+4)&&!t.isDark(n,o+5)&&t.isDark(n,o+6)&&(e+=40);for(o=0;o<r;o+=1)for(n=0;n<r-6;n+=1)t.isDark(n,o)&&!t.isDark(n+1,o)&&t.isDark(n+2,o)&&t.isDark(n+3,o)&&t.isDark(n+4,o)&&!t.isDark(n+5,o)&&t.isDark(n+6,o)&&(e+=40);var g=0;for(o=0;o<r;o+=1)for(n=0;n<r;n+=1)t.isDark(n,o)&&(g+=1);return e+=Math.abs(100*g/r/r-50)/5*10},o),C=function(){for(var t=new Array(256),r=new Array(256),e=0;e<8;e+=1)t[e]=1<<e;for(e=8;e<256;e+=1)t[e]=t[e-4]^t[e-5]^t[e-6]^t[e-8];for(e=0;e<255;e+=1)r[t[e]]=e;var n={glog:function(t){if(t<1)throw"glog("+t+")";return r[t]},gexp:function(r){for(;r<0;)r+=255;for(;r>=256;)r-=255;return t[r]}};return n}();function k(t,r){if(void 0===t.length)throw t.length+"/"+r;var e=function(){for(var e=0;e<t.length&&0==t[e];)e+=1;for(var n=new Array(t.length-e+r),o=0;o<t.length-e;o+=1)n[o]=t[o+e];return n}(),n={getAt:function(t){return e[t]},getLength:function(){return e.length},multiply:function(t){for(var r=new Array(n.getLength()+t.getLength()-1),e=0;e<n.getLength();e+=1)for(var o=0;o<t.getLength();o+=1)r[e+o]^=C.gexp(C.glog(n.getAt(e))+C.glog(t.getAt(o)));return k(r,0)},mod:function(t){if(n.getLength()-t.getLength()<0)return n;for(var r=C.glog(n.getAt(0))-C.glog(t.getAt(0)),e=new Array(n.getLength()),o=0;o<n.getLength();o+=1)e[o]=n.getAt(o);for(o=0;o<t.getLength();o+=1)e[o]^=C.gexp(C.glog(t.getAt(o))+r);return k(e,0).mod(t)}};return n}var A=function(){var t=[[1,26,19],[1,26,16],[1,26,13],[1,26,9],[1,44,34],[1,44,28],[1,44,22],[1,44,16],[1,70,55],[1,70,44],[2,35,17],[2,35,13],[1,100,80],[2,50,32],[2,50,24],[4,25,9],[1,134,108],[2,67,43],[2,33,15,2,34,16],[2,33,11,2,34,12],[2,86,68],[4,43,27],[4,43,19],[4,43,15],[2,98,78],[4,49,31],[2,32,14,4,33,15],[4,39,13,1,40,14],[2,121,97],[2,60,38,2,61,39],[4,40,18,2,41,19],[4,40,14,2,41,15],[2,146,116],[3,58,36,2,59,37],[4,36,16,4,37,17],[4,36,12,4,37,13],[2,86,68,2,87,69],[4,69,43,1,70,44],[6,43,19,2,44,20],[6,43,15,2,44,16],[4,101,81],[1,80,50,4,81,51],[4,50,22,4,51,23],[3,36,12,8,37,13],[2,116,92,2,117,93],[6,58,36,2,59,37],[4,46,20,6,47,21],[7,42,14,4,43,15],[4,133,107],[8,59,37,1,60,38],[8,44,20,4,45,21],[12,33,11,4,34,12],[3,145,115,1,146,116],[4,64,40,5,65,41],[11,36,16,5,37,17],[11,36,12,5,37,13],[5,109,87,1,110,88],[5,65,41,5,66,42],[5,54,24,7,55,25],[11,36,12,7,37,13],[5,122,98,1,123,99],[7,73,45,3,74,46],[15,43,19,2,44,20],[3,45,15,13,46,16],[1,135,107,5,136,108],[10,74,46,1,75,47],[1,50,22,15,51,23],[2,42,14,17,43,15],[5,150,120,1,151,121],[9,69,43,4,70,44],[17,50,22,1,51,23],[2,42,14,19,43,15],[3,141,113,4,142,114],[3,70,44,11,71,45],[17,47,21,4,48,22],[9,39,13,16,40,14],[3,135,107,5,136,108],[3,67,41,13,68,42],[15,54,24,5,55,25],[15,43,15,10,44,16],[4,144,116,4,145,117],[17,68,42],[17,50,22,6,51,23],[19,46,16,6,47,17],[2,139,111,7,140,112],[17,74,46],[7,54,24,16,55,25],[34,37,13],[4,151,121,5,152,122],[4,75,47,14,76,48],[11,54,24,14,55,25],[16,45,15,14,46,16],[6,147,117,4,148,118],[6,73,45,14,74,46],[11,54,24,16,55,25],[30,46,16,2,47,17],[8,132,106,4,133,107],[8,75,47,13,76,48],[7,54,24,22,55,25],[22,45,15,13,46,16],[10,142,114,2,143,115],[19,74,46,4,75,47],[28,50,22,6,51,23],[33,46,16,4,47,17],[8,152,122,4,153,123],[22,73,45,3,74,46],[8,53,23,26,54,24],[12,45,15,28,46,16],[3,147,117,10,148,118],[3,73,45,23,74,46],[4,54,24,31,55,25],[11,45,15,31,46,16],[7,146,116,7,147,117],[21,73,45,7,74,46],[1,53,23,37,54,24],[19,45,15,26,46,16],[5,145,115,10,146,116],[19,75,47,10,76,48],[15,54,24,25,55,25],[23,45,15,25,46,16],[13,145,115,3,146,116],[2,74,46,29,75,47],[42,54,24,1,55,25],[23,45,15,28,46,16],[17,145,115],[10,74,46,23,75,47],[10,54,24,35,55,25],[19,45,15,35,46,16],[17,145,115,1,146,116],[14,74,46,21,75,47],[29,54,24,19,55,25],[11,45,15,46,46,16],[13,145,115,6,146,116],[14,74,46,23,75,47],[44,54,24,7,55,25],[59,46,16,1,47,17],[12,151,121,7,152,122],[12,75,47,26,76,48],[39,54,24,14,55,25],[22,45,15,41,46,16],[6,151,121,14,152,122],[6,75,47,34,76,48],[46,54,24,10,55,25],[2,45,15,64,46,16],[17,152,122,4,153,123],[29,74,46,14,75,47],[49,54,24,10,55,25],[24,45,15,46,46,16],[4,152,122,18,153,123],[13,74,46,32,75,47],[48,54,24,14,55,25],[42,45,15,32,46,16],[20,147,117,4,148,118],[40,75,47,7,76,48],[43,54,24,22,55,25],[10,45,15,67,46,16],[19,148,118,6,149,119],[18,75,47,31,76,48],[34,54,24,34,55,25],[20,45,15,61,46,16]],r=function(t,r){var e={};return e.totalCount=t,e.dataCount=r,e},e={};return e.getRSBlocks=function(e,n){var o=function(r,e){switch(e){case g.L:return t[4*(r-1)+0];case g.M:return t[4*(r-1)+1];case g.Q:return t[4*(r-1)+2];case g.H:return t[4*(r-1)+3];default:return}}(e,n);if(void 0===o)throw"bad rs block @ typeNumber:"+e+"/errorCorrectionLevel:"+n;for(var i=o.length/3,a=[],u=0;u<i;u+=1)for(var f=o[3*u+0],c=o[3*u+1],l=o[3*u+2],h=0;h<f;h+=1)a.push(r(c,l));return a},e}(),b=function(){var t=[],r=0,e={getBuffer:function(){return t},getAt:function(r){var e=Math.floor(r/8);return 1==(t[e]>>>7-r%8&1)},put:function(t,r){for(var n=0;n<r;n+=1)e.putBit(1==(t>>>r-n-1&1))},getLengthInBits:function(){return r},putBit:function(e){var n=Math.floor(r/8);t.length<=n&&t.push(0),e&&(t[n]|=128>>>r%8),r+=1}};return e},M=function(t){var r=a,e=t,n={getMode:function(){return r},getLength:function(t){return e.length},write:function(t){for(var r=e,n=0;n+2<r.length;)t.put(o(r.substring(n,n+3)),10),n+=3;n<r.length&&(r.length-n==1?t.put(o(r.substring(n,n+1)),4):r.length-n==2&&t.put(o(r.substring(n,n+2)),7))}},o=function(t){for(var r=0,e=0;e<t.length;e+=1)r=10*r+i(t.charAt(e));return r},i=function(t){if("0"<=t&&t<="9")return t.charCodeAt(0)-"0".charCodeAt(0);throw"illegal char :"+t};return n},x=function(t){var r=u,e=t,n={getMode:function(){return r},getLength:function(t){return e.length},write:function(t){for(var r=e,n=0;n+1<r.length;)t.put(45*o(r.charAt(n))+o(r.charAt(n+1)),11),n+=2;n<r.length&&t.put(o(r.charAt(n)),6)}},o=function(t){if("0"<=t&&t<="9")return t.charCodeAt(0)-"0".charCodeAt(0);if("A"<=t&&t<="Z")return t.charCodeAt(0)-"A".charCodeAt(0)+10;switch(t){case" ":return 36;case"$":return 37;case"%":return 38;case"*":return 39;case"+":return 40;case"-":return 41;case".":return 42;case"/":return 43;case":":return 44;default:throw"illegal char :"+t}};return n},m=function(r){var e=f,n=t.stringToBytes(r),o={getMode:function(){return e},getLength:function(t){return n.length},write:function(t){for(var r=0;r<n.length;r+=1)t.put(n[r],8)}};return o},L=function(r){var e=c,n=t.stringToBytesFuncs.SJIS;if(!n)throw"sjis not supported.";!function(){var t=n("友");if(2!=t.length||38726!=(t[0]<<8|t[1]))throw"sjis not supported."}();var o=n(r),i={getMode:function(){return e},getLength:function(t){return~~(o.length/2)},write:function(t){for(var r=o,e=0;e+1<r.length;){var n=(255&r[e])<<8|255&r[e+1];if(33088<=n&&n<=40956)n-=33088;else{if(!(57408<=n&&n<=60351))throw"illegal char at "+(e+1)+"/"+n;n-=49472}n=192*(n>>>8&255)+(255&n),t.put(n,13),e+=2}if(e<r.length)throw"illegal char at "+(e+1)}};return i},D=function(){var t=[],r={writeByte:function(r){t.push(255&r)},writeShort:function(t){r.writeByte(t),r.writeByte(t>>>8)},writeBytes:function(t,e,n){e=e||0,n=n||t.length;for(var o=0;o<n;o+=1)r.writeByte(t[o+e])},writeString:function(t){for(var e=0;e<t.length;e+=1)r.writeByte(t.charCodeAt(e))},toByteArray:function(){return t},toString:function(){var r="";r+="[";for(var e=0;e<t.length;e+=1)e>0&&(r+=","),r+=t[e];return r+="]"}};return r},S=function(t){var r=t,e=0,n=0,o=0,i={read:function(){for(;o<8;){if(e>=r.length){if(0==o)return-1;throw"unexpected end of file./"+o}var t=r.charAt(e);if(e+=1,"="==t)return o=0,-1;t.match(/^\s$/)||(n=n<<6|a(t.charCodeAt(0)),o+=6)}var i=n>>>o-8&255;return o-=8,i}},a=function(t){if(65<=t&&t<=90)return t-65;if(97<=t&&t<=122)return t-97+26;if(48<=t&&t<=57)return t-48+52;if(43==t)return 62;if(47==t)return 63;throw"c:"+t};return i},I=function(t,r,e){for(var n=function(t,r){var e=t,n=r,o=new Array(t*r),i={setPixel:function(t,r,n){o[r*e+t]=n},write:function(t){t.writeString("GIF87a"),t.writeShort(e),t.writeShort(n),t.writeByte(128),t.writeByte(0),t.writeByte(0),t.writeByte(0),t.writeByte(0),t.writeByte(0),t.writeByte(255),t.writeByte(255),t.writeByte(255),t.writeString(","),t.writeShort(0),t.writeShort(0),t.writeShort(e),t.writeShort(n),t.writeByte(0);var r=a(2);t.writeByte(2);for(var o=0;r.length-o>255;)t.writeByte(255),t.writeBytes(r,o,255),o+=255;t.writeByte(r.length-o),t.writeBytes(r,o,r.length-o),t.writeByte(0),t.writeString(";")}},a=function(t){for(var r=1<<t,e=1+(1<<t),n=t+1,i=u(),a=0;a<r;a+=1)i.add(String.fromCharCode(a));i.add(String.fromCharCode(r)),i.add(String.fromCharCode(e));var f,c,g,l=D(),h=(f=l,c=0,g=0,{write:function(t,r){if(t>>>r!=0)throw"length over";for(;c+r>=8;)f.writeByte(255&(t<<c|g)),r-=8-c,t>>>=8-c,g=0,c=0;g|=t<<c,c+=r},flush:function(){c>0&&f.writeByte(g)}});h.write(r,n);var s=0,v=String.fromCharCode(o[s]);for(s+=1;s<o.length;){var d=String.fromCharCode(o[s]);s+=1,i.contains(v+d)?v+=d:(h.write(i.indexOf(v),n),i.size()<4095&&(i.size()==1<<n&&(n+=1),i.add(v+d)),v=d)}return h.write(i.indexOf(v),n),h.write(e,n),h.flush(),l.toByteArray()},u=function(){var t={},r=0,e={add:function(n){if(e.contains(n))throw"dup key:"+n;t[n]=r,r+=1},size:function(){return r},indexOf:function(r){return t[r]},contains:function(r){return void 0!==t[r]}};return e};return i}(t,r),o=0;o<r;o+=1)for(var i=0;i<t;i+=1)n.setPixel(i,o,e(i,o));var a=D();n.write(a);for(var u=function(){var t=0,r=0,e=0,n="",o={},i=function(t){n+=String.fromCharCode(a(63&t))},a=function(t){if(t<0);else{if(t<26)return 65+t;if(t<52)return t-26+97;if(t<62)return t-52+48;if(62==t)return 43;if(63==t)return 47}throw"n:"+t};return o.writeByte=function(n){for(t=t<<8|255&n,r+=8,e+=1;r>=6;)i(t>>>r-6),r-=6},o.flush=function(){if(r>0&&(i(t<<6-r),t=0,r=0),e%3!=0)for(var o=3-e%3,a=0;a<o;a+=1)n+="="},o.toString=function(){return n},o}(),f=a.toByteArray(),c=0;c<f.length;c+=1)u.writeByte(f[c]);return u.flush(),"data:image/gif;base64,"+u};return t}();qrcode.stringToBytesFuncs["UTF-8"]=function(t){return function(t){for(var r=[],e=0;e<t.length;e++){var n=t.charCodeAt(e);n<128?r.push(n):n<2048?r.push(192|n>>6,128|63&n):n<55296||n>=57344?r.push(224|n>>12,128|n>>6&63,128|63&n):(e++,n=65536+((1023&n)<<10|1023&t.charCodeAt(e)),r.push(240|n>>18,128|n>>12&63,128|n>>6&63,128|63&n))}return r}(t)},function(t){"function"==typeof define&&define.amd?define([],t):"object"==typeof exports&&(module.exports=t())}(function(){return qrcode});
 </script>
 </body>
 </html>
