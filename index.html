@@ -17688,6 +17688,15 @@ function wlNetErr(e,head){
   if(/HTTP 40[13]/.test(m)) return head+'\n\n서버(Firebase)가 이 칸의 읽기·쓰기를 막고 있어요 ('+m+').\nFirebase 콘솔 → Realtime Database → 규칙에 wallet / walletMeta / walletImg 를 열어야 해요. (안내는 대화창 참고)';
   return head+' — '+(m||'인터넷을 확인해주세요')+'\n(서버 규칙이 막은 경우에도 이렇게 보일 수 있어요)';
 }
+function wlUpdate(id,v){
+  const x=(store.walletLog||[]).find(y=>y.id===id); if(!x) return '내역을 찾을 수 없어요';
+  const amount=Math.floor(Number(v.amount)); if(!(amount>0)) return '금액을 1 이상의 숫자로 입력하세요';
+  const type=v.type==='out'?'out':'in'; const date=String(v.date||'').trim()||x.date;
+  const cur=(Number(x.amount)||0)*(x.type==='in'?1:-1), nxt=amount*(type==='in'?1:-1);
+  if(wlBal(x.studentId)-cur+nxt<0) return '이렇게 고치면 잔액이 음수가 돼요. (현재 '+wlBal(x.studentId).toLocaleString()+')';
+  x.amount=amount; x.type=type; x.date=date; x.reason=String(v.reason||'').trim(); x.updatedAt=Date.now(); x.editedBy=(loginTeacher()?loginTeacher().t.name:'관리자');
+  save(); wlPublishSoon(x.studentId); return '';
+}
 function wlOverlay(html){
   let ov=document.getElementById('wlOv'); if(ov) ov.remove();
   ov=document.createElement('div'); ov.id='wlOv';
@@ -17701,6 +17710,7 @@ const WL_INP='width:100%;box-sizing:border-box;padding:8px 10px;border:1.5px sol
 function wlOpenLedger(sid, type){
   const s=store.students.find(x=>x.id===sid); if(!s) return;
   const u=wlUnit(s)||{name:'',sym:''}; type=type||state.wlType||'in'; state.wlType=type;
+  if(state.wlEditSid!==sid){ state.wlEditId=null; state.wlEditSid=sid; }
   const ents=wlEntries(sid); const bal=wlBal(sid);
   const ov=wlOverlay(`<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
       <div><b style="font-size:1.05rem">${wlName(s)}</b> <span style="color:var(--sub);font-size:.8rem">${esc(classNameInMonth(s,state.month)||'')}</span></div>
@@ -17715,11 +17725,14 @@ function wlOpenLedger(sid, type){
     <input type="text" id="wlReason" placeholder="사유 (안 적어도 돼요 — 비우면 담당 과목으로 기록)" style="${WL_INP}">
     <button class="btn primary" id="wlGo" style="width:100%;margin-top:8px">${type==='in'?'＋ 적립 기록':'－ 사용 기록'}</button>
     <div style="margin-top:14px;font-weight:800;font-size:.86rem">📒 통장 내역 <span style="font-weight:400;color:var(--sub)">(${ents.length}건)</span></div>
-    <div style="margin-top:6px">${ents.length?ents.map(x=>`<div style="display:flex;gap:8px;align-items:center;padding:7px 0;border-bottom:1px dashed var(--line)">
+    <div style="margin-top:6px">${ents.length?ents.map(x=>state.wlEditId===x.id?`<div style="padding:8px;margin:6px 0;border:1.5px solid #6366f1;border-radius:10px;background:#f5f6ff">
+        <div style="display:flex;gap:6px;margin-bottom:6px"><select data-wlet style="${WL_INP};flex:1"><option value="in" ${x.type==='in'?'selected':''}>＋ 적립</option><option value="out" ${x.type==='out'?'selected':''}>－ 사용</option></select><input type="number" data-wlea min="1" step="1" value="${Number(x.amount)||0}" style="${WL_INP};flex:1"></div>
+        <div style="display:flex;gap:6px;margin-bottom:6px"><input type="date" data-wled value="${esc(x.date||'')}" style="${WL_INP};flex:1"><input type="text" data-wler value="${esc(x.reason||'')}" placeholder="사유 (비우면 담당 과목)" style="${WL_INP};flex:2"></div>
+        <div style="display:flex;gap:6px"><button class="btn small primary" data-wlesave="${x.id}">저장</button><button class="btn small" data-wlecancel>취소</button></div></div>`:`<div style="display:flex;gap:8px;align-items:center;padding:7px 0;border-bottom:1px dashed var(--line)">
         <span style="color:var(--sub);font-size:.76rem;min-width:46px">${esc(String(x.date||'').slice(5).replace('-','/'))}</span>
-        <span style="flex:1;font-size:.84rem">${esc(wlLabel(x))}<br><span style="color:#9aa3b5;font-size:.7rem">${esc(x.by||'')}</span></span>
+        <span style="flex:1;font-size:.84rem">${esc(wlLabel(x))}<br><span style="color:#9aa3b5;font-size:.7rem">${esc(x.by||'')}${x.editedBy?' · 수정됨':''}</span></span>
         <b style="color:${x.type==='in'?'#0e9f6e':'#c0392b'}">${x.type==='in'?'+':'−'}${(Number(x.amount)||0).toLocaleString()}</b>
-        ${wlCanDel(x)?`<button class="btn small" data-wldel="${x.id}" style="padding:2px 7px;font-size:.7rem">삭제</button>`:''}</div>`).join(''):'<div style="color:var(--sub);font-size:.82rem;padding:8px 0">아직 내역이 없어요.</div>'}</div>`);
+        ${wlCanDel(x)?`<button class="btn small" data-wledit="${x.id}" style="padding:2px 7px;font-size:.7rem">수정</button><button class="btn small" data-wldel="${x.id}" style="padding:2px 7px;font-size:.7rem">삭제</button>`:''}</div>`).join(''):'<div style="color:var(--sub);font-size:.82rem;padding:8px 0">아직 내역이 없어요.</div>'}</div>`);
   ov.querySelectorAll('[data-wltype]').forEach(b=>b.onclick=()=>wlOpenLedger(sid,b.dataset.wltype));
   const go=ov.querySelector('#wlGo');
   const submit=()=>{
@@ -17729,6 +17742,12 @@ function wlOpenLedger(sid, type){
   };
   go.onclick=submit;
   ov.querySelectorAll('#wlAmt,#wlReason').forEach(i=>i.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); submit(); } }));
+  ov.querySelectorAll('[data-wledit]').forEach(b=>b.onclick=()=>{ state.wlEditId=b.dataset.wledit; wlOpenLedger(sid,type); });
+  ov.querySelectorAll('[data-wlecancel]').forEach(b=>b.onclick=()=>{ state.wlEditId=null; wlOpenLedger(sid,type); });
+  ov.querySelectorAll('[data-wlesave]').forEach(b=>b.onclick=()=>{
+    const err=wlUpdate(b.dataset.wlesave,{type:ov.querySelector('[data-wlet]').value,amount:ov.querySelector('[data-wlea]').value,date:ov.querySelector('[data-wled]').value,reason:ov.querySelector('[data-wler]').value});
+    if(err){ alert(err); return; } state.wlEditId=null; wlOpenLedger(sid,type); render(true);
+  });
   ov.querySelectorAll('[data-wldel]').forEach(b=>b.onclick=()=>{
     if(!confirm('이 내역을 삭제할까요?')) return;
     const err=wlDel(b.dataset.wldel); if(err){ alert(err); return; }
@@ -17862,7 +17881,7 @@ function renderWallet(){
       <td style="${TD};color:var(--sub);white-space:nowrap">${esc(classNameInMonth(s,state.month)||'미배정')}</td>
       <td style="${TD};font-weight:900;white-space:nowrap">${wlSymHtml(u)} ${bal.toLocaleString()} <span style="font-weight:400;color:var(--sub);font-size:.74rem">${u.name}</span></td>
       <td style="${TD};font-size:.78rem;color:var(--sub)">${last?`${esc(String(last.date).slice(5).replace('-','/'))} ${last.type==='in'?'+':'−'}${(Number(last.amount)||0).toLocaleString()} · ${esc(wlLabel(last))}`:'-'}</td>
-      <td style="${TD};white-space:nowrap"><button class="btn small" data-wlopen="${s.id}|in">＋ 적립</button> <button class="btn small" data-wlopen="${s.id}|out">－ 사용</button> <button class="btn small" data-wlopen="${s.id}|led">📒 통장</button> <button class="btn small" data-wlqr="${s.id}">QR</button></td></tr>`;
+      <td style="${TD};white-space:nowrap"><button class="btn small" data-wlopen="${s.id}|in">＋ 적립</button> <button class="btn small" data-wlopen="${s.id}|out">－ 사용</button> <button class="btn small" data-wlopen="${s.id}|led">내역</button> <button class="btn small" data-wlqr="${s.id}">QR</button></td></tr>`;
   });
   return h+'</tbody></table></div>';
 }
@@ -17871,7 +17890,7 @@ function bindWallet(){
   v.querySelectorAll('[data-wldept]').forEach(b=>b.onclick=()=>{ state.wlDept=b.dataset.wldept; state.wlClass='all'; render(true); });
   const cs=v.querySelector('[data-wlclass]'); if(cs) cs.onchange=()=>{ state.wlClass=cs.value; render(true); };
   const sr=v.querySelector('#wlSearch'); if(sr) sr.onchange=()=>{ state.wlQ=sr.value; render(true); };
-  v.querySelectorAll('[data-wlopen]').forEach(b=>b.onclick=()=>{ const [id,t]=b.dataset.wlopen.split('|'); wlOpenLedger(id, t==='led'?undefined:t); });
+  v.querySelectorAll('[data-wlopen]').forEach(b=>b.onclick=()=>{ const [id,t]=b.dataset.wlopen.split('|'); wlOpenLedger(id, t==='led'?'in':t); });
   v.querySelectorAll('[data-wlqr]').forEach(b=>b.onclick=()=>wlOpenQr(b.dataset.wlqr));
   const pa=v.querySelector('[data-wlprintall]'); if(pa) pa.onclick=()=>wlPrintQrs(wlRows().map(x=>x.s.id));
   const gi=v.querySelector('[data-wlimgs]'); if(gi) gi.onclick=()=>wlOpenImgs();
