@@ -1188,6 +1188,8 @@ function mergeById(localArr, remoteArr){
     const cur=map[x.id];
     if(!cur){ map[x.id]=x; return; }
     const curTs=cur.updatedAt||cur.createdAt||0, newTs=x.updatedAt||x.createdAt||0;
+    /* 학생 QR 주소(token)는 이미 코팅해서 나눠준 것이라, 두 기기가 따로 만들어 서로 다를 때도 '먼저 만들어진 쪽'을 지킨다 (관리자가 [새 QR로 바꾸기]를 눌러 regen 표시가 붙은 경우에만 새 것이 이긴다) */
+    if(cur.token && x.token && cur.token!==x.token && !cur.regen && !x.regen){ if(newTs<curTs) map[x.id]=x; return; }
     if(newTs>=curTs) map[x.id]=x; // 동률이면 원격(더 최근에 성공한 전송)을 채택
   });
   return Object.values(map);
@@ -17654,7 +17656,7 @@ function wlTimetable(s){
     const c=classesFor(month).find(x=>x.academy===s.academy && x.name===cn && !x.examOnly); if(!c) return null;
     const cd=String(cdays(c)||'').split(',').map(x=>x.trim()).filter(Boolean); const mp=mergedCounterpart(c);
     const f12=x=>{ let h=Math.floor(x), m=Math.round((x-h)*60); if(m===60){ h++; m=0; } return ((h%12)||12)+':'+String(m).padStart(2,'0'); };
-    const occ=[];
+    const occ=[]; const a=c.academy;
     (c.subjects||[]).forEach(sb=>{
       if(!sb||!sb.subject) return;
       const days=sb.day?String(sb.day).split(',').map(x=>x.trim()).filter(Boolean).filter(d=>!cd.length||cd.includes(d)):cd;
@@ -17662,13 +17664,20 @@ function wlTimetable(s){
       if(!ts && mp){ const m=(mp.subjects||[]).find(x=>x.subject===sb.subject&&x.time); ts=(m&&m.time)||timeOf(mp)||''; }
       const r=parseRange(ts); if(!r) return;
       let tea=sb.teacher||''; if(!tea && mp){ const m=(mp.subjects||[]).find(x=>x.subject===sb.subject&&x.teacher); tea=(m&&m.teacher)||''; }
-      days.forEach(d=>occ.push({d,r,s:String(sb.subject),tc:tea,room:String(sb.room||''),col:teacherColorByName(c.academy,tea)||''}));
+      /* 시간표(그리드) 탭과 같은 표기: 단어시험은 연한 회색 + "강의실(담당약자)", 어학실이면 담당 이름 없이 "어학실"만 */
+      let txt,bg='',fg='',wt=isWordTestSubject(sb);
+      if(wt){ const code=ttgTeacherCode(a,tea); const room=String(sb.room||'').trim();
+        txt=room?(room.includes('어학실')?room:(code?`${room}(${code})`:room)):(code?`단어시험(${code})`:'단어시험'); bg='#e6e8ec'; fg='#222'; }
+      else { const isLc=/^(ibt|l\/c)$/i.test(String(sb.subject).replace(/\s/g,'')); const hex=isLc?'':ttgTeacherColorHex(a,tea);
+        const rm=String(sb.room||'').replace(/강의실|호|\s/g,''); const showRm=rm && !rm.includes('어학실') && !isLabSubject(sb.subject);
+        txt=(showRm?'('+rm+')':'')+sb.subject; bg=hex||''; fg=hex?(ttgIsDarkColor(hex)?'#fff':'#000'):''; }
+      days.forEach(d=>occ.push({d,r,wt,x:txt,bg,fg}));
     });
     const order=['월','화','수','목','금','토','일']; const days=order.filter(d=>occ.some(o=>o.d===d));
     const starts=[...new Set(occ.map(o=>o.r[0]))].sort((x,y)=>x-y); let n=0;
     const rows=starts.map(st=>{
-      const os=occ.filter(o=>o.r[0]===st); const r=os[0].r; const test=isWordTestSlot(r);
-      return {p:test?'TEST':(++n)+'교시', t:f12(r[0])+'~'+f12(r[1]), test, c:days.map(d=>os.filter(o=>o.d===d).map(o=>({s:o.s,tc:o.tc,rm:o.room,col:o.col})))};
+      const os=occ.filter(o=>o.r[0]===st); const r=os[0].r; const test=os.some(o=>o.wt);
+      return {p:test?'TEST':(++n)+'교시', t:f12(r[0])+'~'+f12(r[1]), test, c:days.map(d=>os.filter(o=>o.d===d).map(o=>({x:o.x,bg:o.bg,fg:o.fg})))};
     });
     return {cn, m:String(month||'').slice(5).replace(/^0/,''), days, rows};
   }catch(e){ return null; }
@@ -17798,8 +17807,8 @@ function wlOpenQr(sid){
   const ov=wlOverlay(`<div style="display:flex;justify-content:space-between;align-items:center"><b>${wlName(s)} · ${esc(u.name)} 통장 QR</b><button class="btn small" data-wlclose>✕ 닫기</button></div>
     <div style="margin-top:10px">${warn}<div style="width:230px;max-width:100%;margin:0 auto">${wlQrSvg(url)}</div>
     <input type="text" readonly value="${esc(url)}" onclick="this.select()" style="${WL_INP};margin-top:10px;font-size:.72rem">
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><button class="btn small" id="wlCopy">📋 주소 복사</button><button class="btn small" id="wlPrintOne">🖨 이 카드 인쇄</button><button class="btn small" id="wlSaveImg">🖼 카드 이미지 저장</button>${isAdminRole()?'<button class="btn small" id="wlRegen" style="margin-left:auto;color:#c0392b">🔁 새 QR로 바꾸기</button>':''}</div>
-    <div style="font-size:.74rem;color:var(--sub);margin-top:8px;line-height:1.5">학생이 QR을 찍으면 이름(가운데는 *로 가림)·잔액·통장 내역(처음엔 10건, 더보기로 이어서)만 보여요. QR을 잃어버렸거나 다른 사람이 알게 된 경우 [새 QR로 바꾸기]를 누르면 예전 QR은 바로 못 쓰게 돼요.</div></div>`);
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><button class="btn small" id="wlCopy">📋 주소 복사</button><button class="btn small" id="wlPrintOne">🖨 이 카드 인쇄</button><button class="btn small" id="wlSaveImg">🖼 카드 이미지 저장</button>${isAdminRole()?'<button class="btn small" id="wlRegen" style="margin-left:auto;color:#c0392b">🔁 새 QR로 바꾸기 (분실 시에만)</button>':''}</div>
+    <div style="font-size:.74rem;color:var(--sub);margin-top:8px;line-height:1.5">학생이 QR을 찍으면 이름(가운데는 *로 가림)·잔액·통장 내역(처음엔 10건, 더보기로 이어서)만 보여요. 한번 만든 QR은 바뀌지 않고, 잔액·내역·시간표 같은 내용만 계속 최신으로 바뀌어요. (분실·유출 때만 [새 QR로 바꾸기] — 누르면 예전 QR은 못 쓰게 돼요.)</div></div>`);
   wlPublish(sid).then(ok=>{ if(!ok && syncOn()) toast('⚠ QR 화면(잔액) 올리기 실패 — 인터넷을 확인해주세요'); });
   wlPublishAvg(s.academy);
   ov.querySelector('#wlCopy').onclick=()=>{ try{ navigator.clipboard.writeText(url); toast('복사했어요'); }catch(e){ ov.querySelector('input').select(); document.execCommand('copy'); } };
@@ -17807,8 +17816,8 @@ function wlOpenQr(sid){
   ov.querySelector('#wlSaveImg').onclick=()=>wlSaveCardImg(sid);
   const rg=ov.querySelector('#wlRegen');
   if(rg) rg.onclick=async()=>{
-    if(!confirm('새 QR로 바꿀까요? 지금 QR(이미 나눠준 것 포함)은 바로 못 쓰게 돼요.')) return;
-    const old=tk; const r=wlTokRec(sid); r.token=wlNewToken(); r.updatedAt=Date.now(); save();
+    if(!confirm('⚠ 이 학생의 QR을 새로 바꾸면, 이미 코팅해서 나눠준 QR은 바로 못 쓰게 돼요.\n분실·유출이 아니라면 누르지 마세요. 정말 바꿀까요?')) return;
+    const old=tk; const r=wlTokRec(sid); r.token=wlNewToken(); r.regen=true; r.updatedAt=Date.now(); save();
     try{ if(syncOn()) await fbFetch(wlDbBase()+'/wallet/'+old+'.json?print=silent',{method:'DELETE'},15000); }catch(e){}
     await wlPublish(sid); wlOpenQr(sid);
   };
