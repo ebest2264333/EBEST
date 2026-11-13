@@ -17647,9 +17647,35 @@ function wlToken(sid, create){
 }
 function wlUrl(tk){ return location.origin+routeBase()+'wallet.html?t='+tk; }
 function wlDbBase(){ let u=String((store.sync&&store.sync.url)||'').trim().replace(/\/+$/,''); if(u && !/^https:\/\//.test(u)) u='https://'+u; return u; }
+/* 학생 화면에 보여줄 "우리 반 시간표" — 시간표 탭과 같은 방식(시간 줄 × 요일 칸)으로 이번 달 반 자료에서 뽑는다 */
+function wlTimetable(s){
+  try{
+    const month=state.month; const cn=classNameInMonth(s,month); if(!cn) return null;
+    const c=classesFor(month).find(x=>x.academy===s.academy && x.name===cn && !x.examOnly); if(!c) return null;
+    const cd=String(cdays(c)||'').split(',').map(x=>x.trim()).filter(Boolean); const mp=mergedCounterpart(c);
+    const f12=x=>{ let h=Math.floor(x), m=Math.round((x-h)*60); if(m===60){ h++; m=0; } return ((h%12)||12)+':'+String(m).padStart(2,'0'); };
+    const occ=[];
+    (c.subjects||[]).forEach(sb=>{
+      if(!sb||!sb.subject) return;
+      const days=sb.day?String(sb.day).split(',').map(x=>x.trim()).filter(Boolean).filter(d=>!cd.length||cd.includes(d)):cd;
+      let ts=sb.time||c.time||'';
+      if(!ts && mp){ const m=(mp.subjects||[]).find(x=>x.subject===sb.subject&&x.time); ts=(m&&m.time)||timeOf(mp)||''; }
+      const r=parseRange(ts); if(!r) return;
+      let tea=sb.teacher||''; if(!tea && mp){ const m=(mp.subjects||[]).find(x=>x.subject===sb.subject&&x.teacher); tea=(m&&m.teacher)||''; }
+      days.forEach(d=>occ.push({d,r,s:String(sb.subject),tc:tea,room:String(sb.room||''),col:teacherColorByName(c.academy,tea)||''}));
+    });
+    const order=['월','화','수','목','금','토','일']; const days=order.filter(d=>occ.some(o=>o.d===d));
+    const starts=[...new Set(occ.map(o=>o.r[0]))].sort((x,y)=>x-y); let n=0;
+    const rows=starts.map(st=>{
+      const os=occ.filter(o=>o.r[0]===st); const r=os[0].r; const test=isWordTestSlot(r);
+      return {p:test?'TEST':(++n)+'교시', t:f12(r[0])+'~'+f12(r[1]), test, c:days.map(d=>os.filter(o=>o.d===d).map(o=>({s:o.s,tc:o.tc,rm:o.room,col:o.col})))};
+    });
+    return {cn, m:String(month||'').slice(5).replace(/^0/,''), days, rows};
+  }catch(e){ return null; }
+}
 function wlPubData(s){
   const u=wlUnit(s)||{name:'',sym:''};
-  return {n:wlMask(s.nameKo), e:String(s.nameEn||'').trim(), ac:s.academy, u:u.name, s:u.sym, bal:wlBal(s.id), rec:wlEntries(s.id).slice(0,300).map(x=>({d:x.date,t:x.type,a:Number(x.amount)||0,r:wlLabel(x)})), upd:new Date().toISOString()};
+  return {n:wlMask(s.nameKo), e:String(s.nameEn||'').trim(), ac:s.academy, u:u.name, s:u.sym, bal:wlBal(s.id), rec:wlEntries(s.id).slice(0,300).map(x=>({d:x.date,t:x.type,a:Number(x.amount)||0,r:wlLabel(x)})), tt:wlTimetable(s), upd:new Date().toISOString()};
 }
 async function wlPublish(sid){
   const s=store.students.find(x=>x.id===sid); const tk=wlToken(sid,false);
@@ -17711,7 +17737,7 @@ function wlOverlay(html){
   ov.style.cssText='position:fixed;inset:0;background:rgba(20,24,40,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:14px';
   ov.innerHTML=`<div class="wlbox" style="background:#fff;border-radius:14px;max-width:460px;width:100%;max-height:90vh;overflow:auto;padding:16px;box-shadow:0 10px 40px rgba(0,0,0,.3)">${html}</div>`;
   document.body.appendChild(ov);
-  { const bx=ov.querySelector('.wlbox'); const z=Math.max(1,Math.min(window.innerWidth/460,2.4)); if(z>1.05){ bx.style.zoom=z; bx.style.maxHeight=(90/z)+'vh'; } } /* 폰이 '데스크톱 사이트' 모드처럼 화면 폭이 넓게 잡혀도 창이 작아 보이지 않게 키움 */
+  { const bx=ov.querySelector('.wlbox'); const z=(typeof wlPhone==='function'&&wlPhone())?Math.max(1,Math.min(window.innerWidth/460,2.4)):1; if(z>1.05){ bx.style.zoom=z; bx.style.maxHeight=(90/z)+'vh'; } } /* 폰이 '데스크톱 사이트' 모드처럼 화면 폭이 넓게 잡혀도 창이 작아 보이지 않게 키움 */
   ov.querySelectorAll('[data-wlclose]').forEach(b=>b.onclick=()=>ov.remove());
   return ov;
 }
@@ -17958,6 +17984,7 @@ function bindWallet(){
 }
 
 /* 학생 QR을 로그인한 기기로 찍었을 때 뜨는 "빠른 입출금" 전체 화면 — 폰에서 크게 보이도록 화면 폭에 맞춰 키움 */
+function wlPhone(){ try{ return (navigator.maxTouchPoints>0) && Math.min(screen.width,screen.height)<800; }catch(e){ return false; } } /* 진짜 폰일 때만 화면 폭에 맞춰 키움 (컴퓨터는 그대로) */
 function wlQuick(sid,t0){
   const s=store.students.find(x=>x.id===sid&&!x._deleted); if(!s) return;
   const u=wlUnit(s)||{name:'코인'};
@@ -17966,7 +17993,7 @@ function wlQuick(sid,t0){
   ov.style.cssText='position:fixed;inset:0;z-index:10000;background:#f3f5fa;overflow:auto;-webkit-overflow-scrolling:touch';
   document.body.appendChild(ov);
   let type=(t0==='out')?'out':'in';
-  const fit=()=>{ const w=ov.querySelector('.wq'); if(w) w.style.zoom=Math.max(1,Math.min(window.innerWidth/420,2.8)); };
+  const fit=()=>{ const w=ov.querySelector('.wq'); if(w) w.style.zoom=wlPhone()?Math.max(1,Math.min(window.innerWidth/420,2.8)):1; };
   const draw=()=>{
     const bal=wlBal(sid); const en=String(s.nameEn||'').trim();
     const ents=wlEntries(sid).slice(0,8);
@@ -18031,6 +18058,8 @@ window.addEventListener('message',async e=>{
 });
 function wlBridgeReady(){ try{ if(window.parent!==window) window.parent.postMessage({wlr:1,ready:1},location.origin); }catch(e){} }
 setTimeout(wlBridgeReady,1200); setTimeout(wlBridgeReady,3500);
+/* 시간표가 바뀌어도 학생 화면이 낡지 않게, 관리자가 하루 한 번 처음 열 때 모든 학생 화면을 조용히 최신으로 올린다 */
+setTimeout(()=>{ try{ if(!syncOn()||!isAdminRole()||window.parent!==window) return; const k='wl_repub_day', t=todayISO(); if(localStorage.getItem(k)===t) return; localStorage.setItem(k,t); wlRepublishAll(null,true); }catch(e){} },9000);
 setTimeout(()=>{ try{ wlDeepLink(); }catch(e){} },700);
 
 render();
