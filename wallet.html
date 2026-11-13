@@ -8,7 +8,7 @@
 @media (prefers-color-scheme:dark){:root{--bg:#10131c;--card:#1a1f2d;--ink:#eef1f8;--sub:#9aa5bd;--line:#2a3144;--in:#34d399;--out:#f87171;--acc:#818cf8}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:'Pretendard','Malgun Gothic',system-ui,sans-serif;min-height:100vh}
-.wrap{max-width:460px;margin:0 auto;padding:18px 16px 40px;transform-origin:top center}
+.wrap{max-width:460px;margin:0 auto;padding:18px 16px 40px}
 .hello{font-size:.95rem;color:var(--sub);margin:6px 2px 12px}
 .hello{margin:8px 2px 14px}.hello .en{color:var(--ink);font-size:1.7rem;font-weight:900;letter-spacing:-.01em}.hello .ko{color:#9aa5bd;font-size:.82rem;font-weight:400;margin-left:4px}
 .bal{background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border-radius:20px;padding:22px 20px;box-shadow:0 8px 24px rgba(79,70,229,.3)}
@@ -130,7 +130,7 @@ function jar(lv,unit){
 function ttHtml(){
   var t=DATA&&DATA.tt; if(!t) return '<div class="list" style="margin-top:14px"><h2 style="margin:0 0 6px">📅 시간표</h2><div class="empty">시간표를 아직 받아오지 못했어요.<br>선생님께 다시 올려달라고 해주세요.</div></div>';
   var today=['일','월','화','수','목','금','토'][new Date().getDay()];
-  var days=t.days||[], rows=t.rows||[];
+  var days=t.days||[], rows=t.rows||[]; if(!Array.isArray(rows)) rows=Object.keys(rows).map(function(k){ return rows[k]; }); // 서버는 빈 배열(수업 없는 칸)을 저장하지 않으므로 아래에서 요일 수만큼 다시 채워 읽는다
   var body;
   if(!days.length||!rows.length){ body='<div class="empty">등록된 시간표가 없어요.</div>'; }
   else{
@@ -141,7 +141,7 @@ function ttHtml(){
         var tp=r.test?'padding:2px 3px;font-size:.7rem;':'padding:6px 3px;';
         var lab=r.test?'<b>TEST</b> <span style="color:var(--sub);font-size:.62rem">'+esc(r.t)+'</span>':'<b>'+esc(r.p)+'</b><br><span style="color:var(--sub);font-size:.7rem">'+esc(r.t)+'</span>';
         return '<tr><td style="'+tp+'text-align:center;border:1px solid var(--line);background:'+(r.test?'#e6e8ec;color:#222':'var(--bg)')+';line-height:1.25">'+lab+'</td>'+
-          r.c.map(function(cell){
+          days.map(function(_,di){ return (r.c&&r.c[di])||[]; }).map(function(cell){
             if(!cell.length) return '<td style="border:1px solid var(--line);'+(r.test?'background:#e6e8ec':'')+'"></td>';
             return '<td style="'+tp+'text-align:center;border:1px solid var(--line);line-height:1.25;font-weight:800;'+(cell[0].bg?'background:'+cell[0].bg+';color:'+cell[0].fg:'')+'">'+
               cell.map(function(x){ return '<div'+(cell.length>1&&x.bg?' style="background:'+x.bg+';color:'+x.fg+';padding:2px"':'')+'>'+esc(x.x)+'</div>'; }).join('')+'</td>'; }).join('')+'</tr>'; }).join('')+

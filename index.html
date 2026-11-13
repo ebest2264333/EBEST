@@ -1744,45 +1744,12 @@ function updateClassField(a,m,id,field,value){
   }
   save(); render(true);
 }
-// ckey에는 examOnly 여부가 섞여 들어가서(내신전용반은 같은 이름이어도 다른 key), 반을 내신전용↔일반으로 전환하면
-// 그 key로 저장돼 있던 이번 달 자료(상담 배정·메모·기록)와 날짜별 자료(출결·숙제), 반 자체에 붙는 자료(교재배부·수동 요일·시간 수정)가
-// 전부 "새 key엔 없음"이 되어 갑자기 사라진 것처럼 보인다 — 그래서 전환할 때 old key → new key로 자료를 그대로 옮겨준다.
-function migrateClassKey(oldKey, newKey, month){
-  if(oldKey===newKey) return;
-  ['assign','cmemo','records'].forEach(field=>{
-    const bucket=store[field] && store[field][month];
-    if(bucket && bucket[oldKey]!==undefined){
-      if(bucket[newKey]===undefined) bucket[newKey]=bucket[oldKey];
-      delete bucket[oldKey];
-    }
-  });
-  ['attend','homework'].forEach(field=>{
-    Object.keys(store[field]||{}).forEach(date=>{
-      const bucket=store[field][date];
-      if(bucket && bucket[oldKey]!==undefined){
-        if(bucket[newKey]===undefined) bucket[newKey]=bucket[oldKey];
-        delete bucket[oldKey];
-      }
-    });
-  });
-  ['bookGiven','daysedit','timeedit'].forEach(field=>{
-    if(store[field] && store[field][oldKey]!==undefined){
-      if(store[field][newKey]===undefined) store[field][newKey]=store[field][oldKey];
-      delete store[field][oldKey];
-    }
-  });
-}
 // 단어시험/모의고사 동시 사용 지원: c.mockExamOn(기존 필드, 그대로 유지)과 c.wordTestOn(신규) 두 개의 독립 플래그로 관리한다.
 // c.wordTestOn이 명시적으로 설정돼 있지 않은 기존 반은 "모의고사가 꺼져있으면 단어시험은 켜진 것"이라는 기존 동작을 그대로 유지한다(하위호환).
 function classWordTestOn(c){ if(!c) return true; return c.wordTestOn===true || (c.wordTestOn!==false && !c.mockExamOn); }
 function classMockExamOn(c){ return !!(c && c.mockExamOn); }
 // 📖 내신 단어(추가 단어시험 칸) — 🎓 내신(모의고사)와 함께 켜지고 꺼진다.
 function classNsWordOn(c){ return classMockExamOn(c); } // 🎓 내신(모의고사)를 켜면 내신단어 입력 칸이 자동으로 같이 나타난다
-function toggleNsWordOn(a,m,id){
-  const c=findClassById(a,m,id); if(!c) return;
-  c.nsWordOn=!classNsWordOn(c); c.updatedAt=Date.now();
-  save(); render(true);
-}
 function toggleMockExamOn(a,m,id){
   const c=findClassById(a,m,id); if(!c) return;
   c.mockExamOn=!c.mockExamOn;
@@ -1944,7 +1911,6 @@ function routeSync(){
     if(cur && cur!==want && !hasGo) history.pushState(null,'',url); else history.replaceState(null,'',url);
   }catch(e){}
 }
-const WL_DEEP=(function(){ try{ return new URLSearchParams(location.search).get('wl')||''; }catch(e){ return ''; } })(); /* routeInit()이 주소를 정리하기 전에 미리 챙겨둠 */
 routeInit();
 window.addEventListener('popstate',()=>{
   try{ const r=routeParse(location.pathname); if(r){ routeApply(r); render(); } }catch(e){}
@@ -2024,8 +1990,6 @@ function teacherColorByName(academy, name){
   const t=(store.teachers[academy]||[]).find(x=>x.name.trim().toLowerCase()===nm);
   return t?t.color:null;
 }
-const WORDTEST_SLOT_STARTS=[5+5/60, 7+25/60];
-function isWordTestSlot(r){ return !!r && WORDTEST_SLOT_STARTS.some(x=>Math.abs(r[0]-x)<0.01); }
 
 // [반·교재] 탭 반 정렬: 학원 → 초등 → 중등 → 고등 → 반 앞글자 순서(EC,RG,PJ / JM,JF,JB) → 이름(숫자는 크기순).
 // 부서(dept)가 비어 있는 반(예: 시간표 업로드로 새로 생긴 반)은 이름으로 추정한다 — EC·RG·PJ·초 → 초등, JM·JF·JB·중 → 중등, 고 → 고등.
@@ -2140,7 +2104,6 @@ document.getElementById('lgGo').onclick=()=>{
   document.getElementById('lgPw').value='';
   refreshLoginSel(); mountLogin(); render();
   if(syncOn()) pullShared(true);
-  setTimeout(()=>{ try{ wlDeepLink(); }catch(e){} },300);
 };
 document.getElementById('lgPw').addEventListener('keydown',e=>{ if(e.key==='Enter') document.getElementById('lgGo').click(); });
 refreshLoginSel();
@@ -3582,7 +3545,7 @@ function renderTimetable(list){
 
   // ▼ 관리자·실장일 경우: 기존처럼 모든 편집 탭과 기능을 제공
   if(state.ttView==='grid'||state.ttView==='weekcard') state.ttView='week'; 
-  state.ttView=state.ttView||'day';
+  state.ttView=state.ttView||'week';
   const viewChips=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
     <button class="chip ${state.ttView==='week'?'on':''}" data-ttview="week">📋 전체 시간표</button>
     <button class="chip ${state.ttView==='day'?'on':''}" data-ttview="day">📅 요일별 편집</button>
@@ -3916,13 +3879,7 @@ function renderTimetableGrid(list){
         const isWt=hits.some(e=>e.isWordTest);
         // 합반으로 묶인 반(예: JM1·JM2)은 한 반처럼 가로 한 칸으로 합쳐 보여준다. 같은 시간에 과목·담당이 서로 다르면 한 칸 안에 위아래로 나눠 보여준다
         const sameHit=(h1,h2)=>{ if(!h1||!h2) return false; const q1=paint(h1), q2=paint(h2); return q1.txt===q2.txt && q1.bg===q2.bg; }; // 화면에 똑같이 보이면 같은 칸으로 본다 (단어시험은 강의실·담당 약자만 같으면 합침)
-        const paint=(h)=>{
-          if(h.isWordTest){ const code=ttgTeacherCode(a, h.teacher); const txt=h.room?(code?`${h.room}(${code})`:h.room):(code?`단어시험(${code})`:'단어시험'); return {bg:'#d9d9d9', fg:'#000', txt}; }
-          const isLc=/^(ibt|l\/c)$/i.test(String(h.subject).replace(/\s/g,'')); const hex=isLc?'':ttgTeacherColorHex(a, h.teacher); // IBT·L/C는 배경색 없이(눈 편하게)
-          // 강의실이 있는 수업은 "(강의실)과목"으로 표시 — 어학실에서 하는 수업(IBT·L/C 등)은 강의실 표기 없이 과목만
-          const rm=String(h.room||'').replace(/강의실|호|\s/g,''); const showRm=rm && !rm.includes('어학실') && !isLabSubject(h.subject);
-          return {bg:hex||'', fg:hex?(ttgIsDarkColor(hex)?'#fff':'#000'):'', txt:(showRm?'('+rm+')':'')+h.subject};
-        };
+        const paint=(h)=>ttgCellPaint(a,h,false);
         let tds='';
         groups.forEach(g=>{
           const gh=g.map(nm=>({nm, h:hits.find(e=>e.className===nm)})).filter(x=>x.h);
@@ -3945,103 +3902,6 @@ function renderTimetableGrid(list){
     return `<div class="ttgw">${acs.length>1||MODE==='all'?`<h3>${bdg(a)} ${AC[a].label}</h3>`:''}<div class="ttgleg"><span style="background:#d9d9d9">단어시험</span>${legend}</div>${edit?ttgTeacherPanel(a,cls):''}${dayBlocks||'<div class="empty">이 요일에 시간이 입력된 수업이 없습니다.</div>'}</div>`;
   }).join('');
   return css+chips+parts;
-}
-function renderTimetableWeek(list){
-  // 합반 상대(파트너) 반은 메인 반 안에서 함께 처리되므로, 전체 시간표에 별도 칸으로 중복 표시되지 않게 걸러낸다
-  const absorbedKeys=new Set();
-  list.forEach(c=>{
-    if(!c.mergedWith) return;
-    const partner=mergedPartnerClass(c);
-    if(!partner) return;
-    if(absorbedKeys.has(ckey(c))) return; // 양쪽이 서로를 합반 상대로 지정한 경우, 한쪽만 흡수시킨다
-    absorbedKeys.add(ckey(partner));
-  });
-  if(absorbedKeys.size) list=list.filter(c=>!absorbedKeys.has(ckey(c)));
-  const days=['월','화','수','목','금','토','일'];
-  // (반, 과목, 요일) 단위로 실제 발생하는 수업을 풀어낸다 — 한 반 안에서도 과목마다 시간이 다를 수 있음
-  const occ=[];
-  list.forEach(c=>{
-    const classDays=cdays(c).split(',').map(x=>x.trim()).filter(Boolean);
-    const subs=(c.subjects&&c.subjects.length)?c.subjects:[null];
-    const mp=mergedCounterpart(c); // 합반 상대 반 — 시간이 비어있으면 여기서 따라온다
-    subs.forEach(s=>{
-      const subjDays=(s&&s.day)?s.day.split(',').map(x=>x.trim()).filter(Boolean).filter(d=>!classDays.length||classDays.includes(d)):classDays;
-      let timeStr=(s&&s.time)||c.time||'';
-      if(!timeStr && mp){
-        const matchSub=(s&&s.subject&&mp.subjects)?mp.subjects.find(x=>x.subject===s.subject&&x.time):null;
-        timeStr=(matchSub&&matchSub.time)||timeOf(mp)||'';
-      }
-      const r=parseRange(timeStr);
-      (subjDays.length?subjDays:['']).forEach(d=>{ if(d) occ.push({c,s,d,r}); });
-    });
-  });
-  const activeDays=days.filter(d=>occ.some(o=>o.d===d));
-  const showDays=activeDays.length?activeDays:days.slice(0,6);
-  const timeSet=new Set();
-  occ.forEach(o=>{ if(o.r) timeSet.add(o.r[0]); });
-  const times=[...timeSet].sort((x,y)=>x-y);
-  const chip=(o)=>{
-    let tea=o.s&&o.s.teacher ? o.s.teacher : '';
-    const room=o.s&&o.s.room ? o.s.room : '';
-    if(!tea){
-      // 담당이 비어있으면 합반 상대 반(양방향)에서 담당을 찾아온다 — 위쪽 시간(time) fallback과 동일한 방식
-      const partner=mergedCounterpart(o.c);
-      if(partner && partner.subjects){
-        const matchSub=(o.s&&o.s.subject)?partner.subjects.find(x=>x.subject===o.s.subject&&x.teacher):null;
-        tea=(matchSub&&matchSub.teacher)||partner.subjects.map(x=>x.teacher).find(Boolean)||'';
-      }
-    }
-    const teaColor=teacherColorByName(o.c.academy, tea);
-    const wordTest=isWordTestSlot(o.r);
-    const mp=mergedPartnerClass(o.c);
-    let mainLine, bg, border;
-    if(wordTest){
-      mainLine=`${room?'('+esc(room)+') ':''}${esc(tea||'담당 미지정')}`;
-      bg='#e5e7eb'; border='#9ca3af';
-    } else {
-      const label=o.s&&o.s.subject ? o.s.subject : o.c.name;
-      mainLine=`<b>${esc(label)}</b>${room?`<span style="font-weight:400">(${esc(room)})</span>`:''}`;
-      bg = teaColor ? teaColor+'22' : (AC[o.c.academy].cls==='eb'?'#eaf1ff':'#fff2e6');
-      border = teaColor || (AC[o.c.academy].cls==='eb'?'var(--ebest)':'var(--icon)');
-    }
-    const sub2=(!wordTest && o.s&&o.s.subject) ? o.c.name : '';
-    return `<div data-ttjump="${o.d}|${o.c._id}" style="cursor:pointer;margin-bottom:4px;padding:5px 7px;border-radius:7px;font-size:.76rem;line-height:1.35;background:${bg};border:1px solid ${border}">
-      ${mainLine}${sub2?` <span style="font-weight:400;color:var(--sub)">${esc(sub2)}</span>`:''}${MODE==='all'?' '+bdg(o.c.academy):''}${mp?` <span title="합반: ${esc(mp.name)}" style="color:#6366f1;font-weight:800">🔗${esc(mp.name)}</span>`:''}${wordTest?'':`<br><span style="color:var(--sub)">${esc(tea||'담당 미지정')}</span>`}
-    </div>`;
-  };
-  let grid='';
-  if(!times.length){
-    grid='<div class="empty">시간이 입력된 반·과목이 없습니다. 반 편집에서 시간을 입력해주세요.</div>';
-  } else {
-    grid=`<div id="ttWeekScroll" style="overflow:auto;max-height:74vh;border:1px solid var(--line);border-radius:10px"><table style="border-collapse:collapse;width:100%;min-width:${(showDays.length+1)*130}px">
-      <thead><tr>
-        <th style="border:1px solid var(--line);padding:6px 10px;background:#f6f8fc;position:sticky;top:0;left:0;z-index:3">시간</th>
-        ${showDays.map(d=>`<th style="border:1px solid var(--line);padding:6px 10px;background:#f6f8fc;position:sticky;top:0;z-index:2">${d}요일</th>`).join('')}
-      </tr></thead><tbody>
-      ${times.map(t=>{
-        const cells=showDays.map(d=>{
-          const cs=occ.filter(o=>o.r && o.r[0]===t && o.d===d);
-          return `<td style="border:1px solid var(--line);padding:5px;vertical-align:top;min-width:120px">${cs.map(chip).join('')}</td>`;
-        }).join('');
-        return `<tr><td style="border:1px solid var(--line);padding:6px 10px;font-weight:800;color:var(--sub);white-space:nowrap;background:#fafbfd;position:sticky;left:0;z-index:1">${fmtH(t)}</td>${cells}</tr>`;
-      }).join('')}
-      </tbody></table></div>`;
-  }
-  const untimedOcc=occ.filter(o=>!o.r);
-  const untimedBlock=untimedOcc.length?`<div style="margin-top:12px"><div style="font-size:.82rem;font-weight:700;color:var(--sub);margin-bottom:6px">⏱ 시간 미정 (${untimedOcc.length}건)</div>
-    ${untimedOcc.map(o=>{
-      const label=o.s&&o.s.subject ? `${o.c.name} · ${o.s.subject}` : o.c.name;
-      let tea=o.s&&o.s.teacher ? o.s.teacher : '';
-      if(!tea){
-        const partner=mergedCounterpart(o.c);
-        if(partner && partner.subjects){
-          const matchSub=(o.s&&o.s.subject)?partner.subjects.find(x=>x.subject===o.s.subject&&x.teacher):null;
-          tea=(matchSub&&matchSub.teacher)||partner.subjects.map(x=>x.teacher).find(Boolean)||'';
-        }
-      }
-      return `<span data-ttjump="${o.d}|${o.c._id}" style="cursor:pointer;display:inline-block;margin:3px 4px 0 0;padding:5px 9px;border-radius:7px;font-size:.78rem;background:#f6f8fc;border:1px solid var(--line)">${esc(label)} (${o.d}) · ${esc(tea||'담당 미지정')}</span>`;
-    }).join('')}</div>`:'';
-  return grid+untimedBlock;
 }
 function renderTimetableDay(list){
   const wd=state.ttDay || wdOf(todayISO());
@@ -5897,22 +5757,6 @@ function bkAssignToolHTML(list){
   }
   return assignTool;
 }
-function renderBook(list){
-  const map={};
-  list.forEach(c=>(c.subjects||[]).forEach(s=>{ if(!s.book||s.book.startsWith('〃'))return;
-    s.book.split('/').map(b=>b.trim()).filter(Boolean).forEach(b=>{(map[b]=map[b]||[]).push({c,subj:s.subject});});}));
-  let keys=Object.keys(map).sort((a,b)=>a.localeCompare(b,'ko'));
-  if(state.q) keys=keys.filter(k=>matches(k)||map[k].some(u=>matches(u.c.name)));
-  const indexBody=!keys.length?'<div class="empty">조건에 맞는 교재가 없습니다.</div>':
-    '<div class="rowlist">'+keys.map(k=>`<div class="rowitem"><span class="key">${hl(k)}</span>
-    <span class="val">${map[k].map(u=>`<span class="pill ${AC[u.c.academy].cls}" data-go="${esc(u.c.name)}">${esc(u.c.name)} · ${esc(u.subj)}</span>`).join('')}</span></div>`).join('')+'</div>';
-  const indexTitle=`<div style="font-size:.78rem;font-weight:700;color:var(--sub);margin:14px 0 8px">📖 ${mLabel(state.month)} 교재별 사용 현황 (조회용)</div>`;
-  return (isAdminRole()?`<div style="font-size:.78rem;color:var(--sub);margin-bottom:8px">🆕 새 교재 일괄 배정은 [📦 배부] 화면 맨 위로 옮겼어요.</div>`:'')+indexTitle+indexBody;
-}
-function bindBook(){
-  const v=document.getElementById('view');
-  v.querySelectorAll('[data-baapply]').forEach(btn=>btn.onclick=()=>bulkAssignBook(btn.dataset.baapply));
-}
 /* ---------- 교재 배부 ---------- */
 function giveBlock(c, k, type, label, selected, options){
   // type: 'wb'(단어장) or 'tp'(단어 시험지) — 과목별 교재 배부와 같은 방식으로, 선택한 항목 기준으로 배부 체크를 한다
@@ -6008,146 +5852,10 @@ function effStudentsForGive(c){
 function catNewId(p){ return p+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
 function catList(key){ return (store[key]||[]).filter(x=>!x._deleted); }
 function fmtWon(n){ return (Number(n)||0).toLocaleString('ko-KR')+'원'; }
-function studentUnpaidCount(s){ return ((s.assignedBooks||[]).filter(x=>!x.paid && !x.canceledAt).length) + ((s.assignedTuitions||[]).filter(x=>!x.paid && !x.canceledAt).length); }
 function fmtDT(ts){ return ts? new Date(ts).toLocaleString('ko-KR',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Seoul'}) : ''; }
 const CAT_HIST_LABEL={assigned:'배정',reassigned:'재배정',canceled:'배정취소',paid:'결제완료',unpaid:'결제취소'};
 function catHistText(item){ return (item.history||[]).map(h=>`${fmtDT(h.at)} ${CAT_HIST_LABEL[h.action]||h.action}`).join('\n'); }
 function catPushHist(item, action){ item.history=item.history||[]; item.history.push({action, at:Date.now()}); }
-function renderCatalogSection(catKey, itemsKey, label){
-  const items=catList(catKey);
-  const acs=academies();
-  const activeStudents=store.students.filter(s=>!s._deleted && s.status==='재원' && acs.includes(s.academy)).sort((a,b)=>(a.nameKo||'').localeCompare(b.nameKo||'','ko'));
-  let h=`<div class="ysec" style="margin-bottom:14px"><h3>${label}</h3><div style="padding:0 16px 14px">
-    <div style="font-size:.76rem;color:var(--sub);margin-bottom:10px">이름과 금액을 등록해두면, 아래 [배정하기]에서 학생을 클릭해 바로 배정할 수 있어요. 결제 여부는 학생 명단(✎ 편집)에서 체크만 하면 기록으로 남습니다.</div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-      <input type="text" id="${catKey}NewName" placeholder="이름 (예: Grammar in Use)" style="flex:1;min-width:160px;padding:7px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
-      <input type="number" id="${catKey}NewPrice" placeholder="금액" style="width:120px;padding:7px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
-      <button class="btn primary small" id="${catKey}AddBtn">➕ 추가</button>
-    </div>`;
-  if(!items.length){ h+='<div class="empty">등록된 항목이 없습니다.</div>'; }
-  else{
-    items.forEach(it=>{
-      const assignedCount=store.students.filter(s=>!s._deleted && acs.includes(s.academy) && (s[itemsKey]||[]).some(x=>x.catalogId===it.id && !x.canceledAt)).length;
-      const isOpen = !!(state.catAssignOpen && state.catAssignOpen[it.id]);
-      h+=`<div style="border:1.5px solid var(--line);border-radius:10px;margin-bottom:10px;overflow:hidden">
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;background:#f6f8fc">
-          <input type="text" class="catItemName" data-cat="${catKey}" data-id="${it.id}" value="${esc(it.name)}" style="flex:1;min-width:140px;padding:6px 8px;border:1px solid var(--line);border-radius:7px;font-family:inherit;font-weight:700">
-          <input type="number" class="catItemPrice" data-cat="${catKey}" data-id="${it.id}" value="${it.price||0}" style="width:110px;padding:6px 8px;border:1px solid var(--line);border-radius:7px;font-family:inherit;text-align:right">
-          <span style="font-size:.76rem;color:var(--sub)">배정 ${assignedCount}명</span>
-          <button class="btn small catAssignToggle" data-cat="${catKey}" data-items="${itemsKey}" data-id="${it.id}">${isOpen?'닫기':'👥 배정하기'}</button>
-          <button class="btn small catItemDel" data-cat="${catKey}" data-id="${it.id}" style="color:#c0392b">삭제</button>
-        </div>
-        ${isOpen?`<div style="padding:10px 12px">
-          <input type="search" class="catAssignSearch" data-id="${it.id}" placeholder="🔍 학생 이름 검색" style="width:100%;max-width:260px;margin-bottom:8px;padding:6px 9px;border:1px solid var(--line);border-radius:7px;font-family:inherit">
-          ${(()=>{
-            const groups=new Map();
-            activeStudents.forEach(s=>{
-              const cn=classNameInMonth(s,state.month)||s.className||'미배정';
-              if(!groups.has(cn)) groups.set(cn,[]);
-              groups.get(cn).push(s);
-            });
-            let gh='';
-            [...groups.keys()].sort((a,b)=>a.localeCompare(b,'ko')).forEach(cn=>{
-              const members=groups.get(cn);
-              const allAssigned=members.every(s=>(s[itemsKey]||[]).some(x=>x.catalogId===it.id && !x.canceledAt));
-              gh+=`<div style="margin-bottom:10px">
-                <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
-                  <b style="font-size:.8rem">${esc(cn)}</b>
-                  <span style="font-size:.72rem;color:var(--sub)">${members.length}명</span>
-                  <button class="btn small catAssignClassToggle" data-cat="${catKey}" data-items="${itemsKey}" data-catid="${it.id}" data-class="${esc(cn)}" data-mode="${allAssigned?'unassign':'assign'}">${allAssigned?'☑ 이 반 전체 해제':'☐ 이 반 전체 배정'}</button>
-                </div>
-                <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px">
-                  ${members.map(s=>{
-                    const assigned=(s[itemsKey]||[]).some(x=>x.catalogId===it.id && !x.canceledAt);
-                    return `<label data-catassignrow="${it.id}" data-name="${esc((s.nameKo||'').toLowerCase())}" style="display:flex;align-items:center;gap:4px;font-size:.8rem;background:${assigned?'#e6f6ef':'#fff'};border:1px solid ${assigned?'var(--ok)':'var(--line)'};border-radius:7px;padding:4px 8px;cursor:pointer">
-                      <input type="checkbox" class="catAssignChk" data-cat="${catKey}" data-items="${itemsKey}" data-catid="${it.id}" data-sid="${s.id}" ${assigned?'checked':''}>${esc(s.nameKo)}</label>`;
-                  }).join('')}
-                </div>
-              </div>`;
-            });
-            return gh;
-          })()}
-        </div>`:''}
-      </div>`;
-    });
-  }
-  h+='</div></div>';
-  return h;
-}
-function bindCatalogSection(catKey, itemsKey){
-  const v=document.getElementById('view');
-  const nameEl=v.querySelector('#'+catKey+'NewName'), priceEl=v.querySelector('#'+catKey+'NewPrice');
-  const addBtn=v.querySelector('#'+catKey+'AddBtn');
-  if(addBtn) addBtn.onclick=()=>{
-    const name=(nameEl.value||'').trim(); if(!name) return;
-    const price=Number(priceEl.value)||0;
-    store[catKey]=store[catKey]||[];
-    store[catKey].push({id:catNewId(catKey==='bookCatalog'?'bk':'tu'), name, price, createdAt:Date.now(), updatedAt:Date.now()});
-    save(); render(true);
-  };
-  v.querySelectorAll('.catItemName[data-cat="'+catKey+'"]').forEach(inp=>inp.onchange=()=>{
-    const it=(store[catKey]||[]).find(x=>x.id===inp.dataset.id); if(!it) return;
-    it.name=inp.value.trim(); it.updatedAt=Date.now(); save(); render(true);
-  });
-  v.querySelectorAll('.catItemPrice[data-cat="'+catKey+'"]').forEach(inp=>inp.onchange=()=>{
-    const it=(store[catKey]||[]).find(x=>x.id===inp.dataset.id); if(!it) return;
-    it.price=Number(inp.value)||0; it.updatedAt=Date.now();
-    // 이미 배정됐지만 아직 결제 전인 학생 건은 최신 단가로 맞춰준다(이미 결제 완료된 기록은 그대로 둠)
-    store.students.forEach(s=>{ (s[itemsKey]||[]).forEach(a=>{ if(a.catalogId===it.id && !a.paid && !a.canceledAt) a.price=it.price; }); });
-    save(); render(true);
-  });
-  v.querySelectorAll('.catItemDel[data-cat="'+catKey+'"]').forEach(btn=>btn.onclick=()=>{
-    if(!confirm('이 항목을 목록에서 삭제할까요? (이미 배정된 학생의 기록은 그대로 남아있어요)')) return;
-    const it=(store[catKey]||[]).find(x=>x.id===btn.dataset.id);
-    if(it){ it._deleted=true; it.updatedAt=Date.now(); }
-    save(); render(true);
-  });
-  v.querySelectorAll('.catAssignToggle[data-cat="'+catKey+'"]').forEach(btn=>btn.onclick=()=>{
-    state.catAssignOpen=state.catAssignOpen||{};
-    state.catAssignOpen[btn.dataset.id]=!state.catAssignOpen[btn.dataset.id];
-    render(true);
-  });
-  v.querySelectorAll('.catAssignSearch').forEach(inp=>inp.addEventListener('input',()=>{
-    const id=inp.dataset.id, q=inp.value.trim().toLowerCase();
-    v.querySelectorAll(`[data-catassignrow="${id}"]`).forEach(row=>{
-      row.style.display=(!q||row.dataset.name.includes(q))?'':'none';
-    });
-  }));
-  v.querySelectorAll('.catAssignChk[data-cat="'+catKey+'"]').forEach(cb=>cb.onchange=()=>{
-    const s=store.students.find(x=>x.id===cb.dataset.sid); if(!s) return;
-    const it=(store[catKey]||[]).find(x=>x.id===cb.dataset.catid); if(!it) return;
-    s[itemsKey]=s[itemsKey]||[];
-    const existing=s[itemsKey].find(x=>x.catalogId===it.id);
-    if(cb.checked){
-      // 배정: 취소된 기록이 있으면 재배정으로 되살리고(이력 유지), 없으면 새로 만든다 — 절대 지우지 않는다
-      if(existing){ existing.canceledAt=null; catPushHist(existing,'reassigned'); }
-      else s[itemsKey].push({id:catNewId('asg'), catalogId:it.id, name:it.name, price:it.price, paid:false, assignedAt:Date.now(), canceledAt:null, history:[{action:'assigned', at:Date.now()}]});
-    } else {
-      // 배정취소: 배열에서 삭제하지 않고 취소 표시만 남겨서 이력이 보존되게 한다
-      if(existing && !existing.canceledAt){ existing.canceledAt=Date.now(); catPushHist(existing,'canceled'); }
-    }
-    s.updatedAt=Date.now();
-    save(); render(true);
-  });
-  v.querySelectorAll('.catAssignClassToggle[data-cat="'+catKey+'"]').forEach(btn=>btn.onclick=()=>{
-    const it=(store[catKey]||[]).find(x=>x.id===btn.dataset.catid); if(!it) return;
-    const className=btn.dataset.class;
-    const doAssign=btn.dataset.mode==='assign';
-    const acs=academies();
-    store.students.filter(s=>!s._deleted && s.status==='재원' && acs.includes(s.academy) && (classNameInMonth(s,state.month)||s.className||'미배정')===className).forEach(s=>{
-      s[itemsKey]=s[itemsKey]||[];
-      const existing=s[itemsKey].find(x=>x.catalogId===it.id);
-      if(doAssign){
-        if(existing){ if(existing.canceledAt){ existing.canceledAt=null; catPushHist(existing,'reassigned'); } }
-        else s[itemsKey].push({id:catNewId('asg'), catalogId:it.id, name:it.name, price:it.price, paid:false, assignedAt:Date.now(), canceledAt:null, history:[{action:'assigned', at:Date.now()}]});
-      } else {
-        if(existing && !existing.canceledAt){ existing.canceledAt=Date.now(); catPushHist(existing,'canceled'); }
-      }
-      s.updatedAt=Date.now();
-    });
-    save(); render(true);
-  });
-}
 function renderBookGive(list){
   const lt=loginTeacher();
   let cls=list.filter(c=>effStudentsForGive(c).length); // 단어장·시험지 배부는 과목 교재 등록 여부와 상관없이 학생이 있는 반이면 대상 (합반 파트너는 상대 반 학생 기준)
@@ -6887,12 +6595,6 @@ function bindHwRange(){
 const PAPERCHECK_DEFAULT_OPTIONS=['채점완료','풀이완료','풀이미완료','오답완료'];
 function paperCheckCols(k){ return store.papercheckCols[k]=store.papercheckCols[k]||[]; }
 function paperCheckDataFor(k){ return store.papercheckData[k]=store.papercheckData[k]||{}; }
-// 재시험 등으로 여러 번 본 점수는 배열로 저장해두고, 화면엔 "32 / 41 (재시)"처럼 이어 붙여 보여준다
-function paperCheckScoreDisplay(arr){
-  const vals=(arr||[]).filter(x=>x!=null && x!=='');
-  if(!vals.length) return '';
-  return vals.join(' / ')+(vals.length>1?' (재시)':'');
-}
 // 반에 과목이 여러 개면(담당 선생님이 다를 수 있으니) 과목별로 표를 따로 관리한다
 function paperCheckSubjectsOf(c){
   return [...new Set((c.subjects||[]).filter(s=>s.subject && !isWordTestSubject(s)).map(s=>s.subject))];
@@ -7101,15 +6803,6 @@ function bindPaperCheck(){
     data[s][colId]=arr;
     save(); render(true);
   });
-}
-function renderStudent(list){
-  const rows=[]; list.forEach(c=>(c.students||[]).forEach(s=>rows.push({s,c})));
-  let f=state.q?rows.filter(r=>matches(r.s)||matches(r.c.name)):rows;
-  f.sort((a,b)=>a.s.localeCompare(b.s,'ko'));
-  if(!f.length) return '<div class="empty">조건에 맞는 학생이 없습니다.</div>';
-  return '<div class="rowlist">'+f.map(r=>`<div class="rowitem"><span class="key">${hl(r.s)}</span>
-    <span class="val"><span class="pill ${AC[r.c.academy].cls}" data-go="${esc(r.c.name)}">${esc(r.c.name)}</span>
-    ${AC[r.c.academy].label} · ${r.c.dept}${r.c.days?' · '+r.c.days:''}</span></div>`).join('')+'</div>';
 }
 
 /* ---------- 상담 ---------- */
@@ -7725,7 +7418,6 @@ function csResize(d, rows, cols){
   d.rows=rows; d.cols=cols; d.cells=cells; d.assign=na; d.nums=nn; d.labels=nl;
 }
 function csSeatNumbers(d){ const m={}; let n=0; const cu=d.nums||{}; d.cells.forEach((v,i)=>{ if(v){ n++; m[i]=(cu[i]!=null&&cu[i]!=='')?cu[i]:n; } }); return m; }
-function csLabel(st){ return esc(st.nameKo)+(st.nameEn?`<br><span style="font-size:.7rem;font-weight:400">${esc(st.nameEn)}</span>`:''); }
 const CS_PAL=['#e11d48','#d97706','#16a34a','#0891b2','#2563eb','#7c3aed','#c026d3','#65a30d','#0f766e','#b45309','#db2777','#4f46e5','#475569','#ea580c'];
 function csClassColors(a){ // 반별 글자색 — 기본은 반 순서대로 자동, 바꾼 색(d.clsColors)이 있으면 그걸 우선
   const d=csGet(a); const present=new Set(); csCandidates(a).forEach(st=>{ const c=csClassOf(st); if(c) present.add(c); });
@@ -10790,48 +10482,6 @@ function repWeekPlan(who, days){
 
 /* ---------- 인수인계표 (월 1회 작성 + 주간 진도계획표 자동 반영) ---------- */
 if(!store.handover) store.handover={};
-function handoverGet(who, month){
-  store.handover[who]=store.handover[who]||{};
-  if(!store.handover[who][month]) store.handover[who][month]={notes:'', updatedAt:0};
-  return store.handover[who][month];
-}
-function handoverForm(who, month, readOnly){
-  const w=whoTeacher(who); const hd=handoverGet(who,month);
-  const days=weekOf(todayISO());
-  const wp=wpGet(who,days[0],days); // 이번 주 진도계획표 (선생님이 직접 쓴 내용까지 반영된, 살아있는 자료)
-  const rows=[...(wp.rows||[])].filter(r=>r.cls||r.book).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
-  const savedLabel = hd.updatedAt ? '마지막 작성 · '+new Date(hd.updatedAt).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Seoul'}) : '이번 달 아직 작성 안 됨';
-  let h=`<div class="mypanel" style="border-top-color:${w.t.color}">
-    <h2><span class="tdot" style="background:${w.t.color}"></span>인수인계표 — ${esc(w.t.name)} 선생님
-      <span style="font-weight:400;font-size:.78rem;color:var(--sub)">${month} · ${savedLabel}</span>
-      <span style="margin-left:auto">${readOnly?'':'<button class="btn small" id="hoSave">💾 저장</button>'}</span></h2>
-    <div style="font-size:.78rem;font-weight:700;color:var(--sub);margin:10px 0 4px">📝 인수인계 메모 (이 달에 한 번 작성 — 다음 담당 선생님이 알아야 할 내용)</div>
-    <textarea id="hoNotes" ${readOnly?'readonly':''} placeholder="예: OO반 진도 2타임 밀림, XX반 숙제 습관 지도 필요, 학부모 특이사항 등" style="width:100%;min-height:140px;border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;font-family:inherit;font-size:.86rem;line-height:1.5;resize:vertical">${esc(hd.notes||'')}</textarea>
-    <div style="font-size:.78rem;font-weight:700;color:var(--sub);margin:16px 0 4px">📚 현재 진도 현황 <span style="font-weight:400;color:#8b93a7">(주간 진도계획표에서 자동으로 가져옴 · 이번 주 기준으로 항상 최신 상태)</span></div>
-    <div style="overflow-x:auto"><table style="min-width:700px;border-collapse:collapse;width:100%">
-    <thead><tr>${['날짜','반명','교재','진도','과제'].map(x=>`<th style="background:var(--ink);color:#fff;padding:6px 8px;font-size:.72rem;text-align:center">${x}</th>`).join('')}</tr></thead><tbody>
-    ${rows.length?rows.map(r=>`<tr>
-      <td style="padding:5px 8px;text-align:center;font-size:.8rem;border-bottom:1px solid #f1f3f8">${esc(r.date||'')}</td>
-      <td style="padding:5px 8px;text-align:center;font-size:.8rem;font-weight:700;border-bottom:1px solid #f1f3f8">${esc(r.cls)}</td>
-      <td style="padding:5px 8px;font-size:.8rem;border-bottom:1px solid #f1f3f8">${esc(r.book)}</td>
-      <td style="padding:5px 8px;text-align:center;font-size:.8rem;border-bottom:1px solid #f1f3f8">${esc(r.prog)}</td>
-      <td style="padding:5px 8px;font-size:.8rem;border-bottom:1px solid #f1f3f8">${esc(r.hw)}</td></tr>`).join(''):'<tr><td colspan="5" style="padding:10px;text-align:center;color:#8b93a7;font-size:.82rem">이번 주 진도계획표에 입력된 내용이 없습니다.</td></tr>'}
-    </tbody></table></div>
-  </div>`;
-  return h;
-}
-function bindHandover(who, month, readOnly){
-  if(readOnly) return;
-  const v=document.getElementById('view');
-  const btn=v.querySelector('#hoSave'); if(!btn) return;
-  btn.onclick=()=>{
-    const hd=handoverGet(who,month);
-    hd.notes=v.querySelector('#hoNotes').value; hd.updatedAt=Date.now();
-    save();
-    toast('📋 인수인계표 저장됨');
-    render(true);
-  };
-}
 /* ---------- 반별 인수인계표(자동 생성 + 전체 편집, 선생님 구분 없이 다 같이 봄) ---------- */
 if(!store.handoverGrid) store.handoverGrid={};
 function handoverGridFor(academy, targetMonth){
@@ -11059,20 +10709,6 @@ function hgMoveGroupTo(a, targetMonth, key, targetKey){
   const from=keys.indexOf(key), to=keys.indexOf(targetKey); if(from<0||to<0) return false;
   keys.splice(from,1); keys.splice(to,0,key);
   g.groupOrder=keys; g.updatedAt=Date.now(); save(); return true;
-}
-// 반(그룹) 하나를 위/아래로 옮긴다 — dir: -1 위로, 1 아래로
-function hgMoveGroup(a, targetMonth, key, dir){
-  const prevMonth=shiftMonth(targetMonth,-1);
-  const g=handoverGridFor(a, targetMonth); if(!g) return;
-  const rows=g.rows||[];
-  const defaultGroups=hgDefaultGroups(a, prevMonth, targetMonth, rows, g);
-  const ordered=hgApplyGroupOrder(g, defaultGroups);
-  const keys=ordered.map(x=>x.key);
-  const idx=keys.indexOf(key); if(idx<0) return;
-  const newIdx=idx+dir; if(newIdx<0||newIdx>=keys.length) return;
-  [keys[idx],keys[newIdx]]=[keys[newIdx],keys[idx]];
-  g.groupOrder=keys; g.updatedAt=Date.now();
-  save();
 }
 function renderHandoverGrid(){
   state.hgMonth=state.hgMonth||shiftMonth(effectiveCurrentMonth(),1); // 기본값: 다음 달 인수인계표(이번 달에 다음 달 걸 작성하는 게 보통이므로) — 강제 지정된 달이 있으면 그 달 기준 다음 달
@@ -13648,19 +13284,6 @@ function eaTrendEntryText(en){
   const qs=(en.categories||[]).filter(c=>(c.questions||[]).length).map(c=>'['+c.name+'] '+c.questions.map(q=>(q.no||'?')+'번 '+(q.points||0)+'점 '+(q.difficulty||'-')+' '+String(q.question||'').replace(/\s+/g,' ').slice(0,80)).join(' / ')).join('\n');
   return '■ '+s.school+' '+s.grade+' '+s.examTitle+' ('+(s.examDate||'날짜 미상')+') — 총 '+s.total+'문항 '+s.points+'점\n'+qs;
 }
-function eaTrendPrompt(d, entries, docCount){
-  const entText=entries.map(eaTrendEntryText).join('\n\n');
-  return `당신은 한국 영어학원의 내신 분석 전문가입니다. 아래 자료(첨부 파일 ${docCount}개 + 학원이 입력해둔 시험 분석 ${entries.length}건)를 읽고, 시험 간 "출제 동향이 어떻게 달라졌는지"를 학원 선생님이 한눈에 볼 수 있게 정리하세요. 아래 JSON 형식으로만 답하세요 (설명·마크다운·코드펜스 금지).
-{
-  "headline": "이번 시험의 핵심 변화를 한 줄로",
-  "strategy": "출제 전략·변화 요약 3~5문장",
-  "metrics": [{"label": "지표명(예: 상·중상 배점, 서술형 배점, 영어 읽기량)", "before": "이전 시험 값(없으면 빈 문자열)", "after": "이번 시험 값", "note": "한 줄 설명"}],
-  "changes": [{"title": "무엇이 달라졌나(한 줄)", "detail": "근거·세부 설명 1~2문장"}],
-  "teaching": ["수업·내신 대비에 활용할 시사점 한 문장씩"]
-}
-규칙: metrics 4~6개, changes 4~6개, teaching 3~6개. 자료에서 확인되는 사실만 쓰고 수치를 지어내지 마세요(확실하지 않으면 '추정'이라고 표시). 비교할 이전 시험 자료가 없으면 before는 빈 문자열로 두고 이번 시험의 특징 중심으로 쓰세요. 한국어로 쓰세요.${d.instr?'\n추가 요청: '+d.instr:''}
-${entText?'\n[학원이 입력한 시험 분석]\n'+entText.slice(0,40000):''}`;
-}
 // 공통 AI 호출 — 문서·이미지 블록과 지시문을 보내고 JSON 한 덩어리를 돌려받는다
 // 공통 AI 호출(글자 그대로) — 문서·이미지 블록과 지시문을 보내고 응답 글자를 돌려받는다
 async function eaAiText(content, maxTokens){
@@ -15405,48 +15028,6 @@ function repArchive(){
 }
 
 /* ---------- 설정 · 업로드 ---------- */
-function findDuplicateClasses(){
-  // 현재 반·교재 자료 안에서 (학원|월) 기준으로 이름이 겹치는 반들을 찾아 정리용 목록을 만든다
-  const groups=[];
-  for(const a of academies()){
-    for(const m of monthsOf(a)){
-      const arr=editArr(a,m); // _id가 없으면 삭제할 수 없으므로 여기서 확실히 부여해둔다
-      const byName={};
-      // 이름+내신전용 여부로 묶는다 — 일반 반과 같은 이름의 내신전용반은 일부러 따로 존재하는 것이라 "중복"이 아니다
-      arr.forEach(c=>{ if(c._deleted) return; const k=c.name+(c.examOnly?'␟exam':''); (byName[k]=byName[k]||[]).push(c); }); // 이미 삭제(취소선) 처리된 반은 목록에서 제외
-
-      for(const key in byName){
-        if(byName[key].length>1) groups.push({academy:a, month:m, name:byName[key][0].name, items:byName[key]});
-      }
-    }
-  }
-  return groups;
-}
-function findGhostRosterEntries(){
-  // 반 명단(students 이름 배열)에는 있지만, 학생명단(store.students)에 실제로 존재하지 않는(완전히 삭제됐거나 오타인)
-  // "더미" 이름을 모든 학원·모든 달에서 찾아준다. 휴원·퇴원 학생은 일정 기간 반 명단에 남아있는 게 정상이므로 여기서 제외한다.
-  const out=[];
-  academies().forEach(a=>{
-    monthsOf(a).forEach(month=>{
-      const arr=editArr(a, month);
-      arr.forEach(c=>{
-        if(c._deleted) return;
-        (c.students||[]).forEach(sname=>{
-          const st=matchStudentByRosterName(a, sname, c.name);
-          if(!st){ out.push({academy:a, month, classId:c._id, className:c.name, sname, reason:'학생명단에 없는 이름(완전 삭제됐거나 오타)'}); }
-        });
-      });
-    });
-  });
-  return out;
-}
-function removeGhostRosterEntry(academy, month, classId, sname){
-  const arr=editArr(academy, month);
-  const c=arr.find(x=>x._id===classId); if(!c || !c.students) return;
-  const idx=c.students.indexOf(sname);
-  if(idx>=0){ c.students.splice(idx,1); c.count=c.students.length; c.updatedAt=Date.now(); }
-  save(); render(true);
-}
 /* ---------- 그리드 시간표 엑셀 업로드 (ExcelJS로 셀 배경색까지 읽어 담당 선생님 자동 인식) ---------- */
 const TTG_DAYS=['월','화','수','목','금','토','일'];
 let TTG_LIB_PROMISE=null;
@@ -15795,17 +15376,6 @@ function ttgParseSheet(academy, wb, sheetName, examOnly){
   }
 }
 /* ---------- 시간표 이미지 업로드 (AI가 사진·캡처의 격자 시간표를 읽어, 엑셀 업로드와 같은 미리보기·반 매칭·적용 흐름으로 넘긴다) ---------- */
-// 긴 변 3000px 이하 JPEG로 줄여서 보낸다(용량·속도). 글자가 작은 격자표라 너무 줄이지는 않는다.
-async function ttgImgToB64(file){
-  const url=URL.createObjectURL(file);
-  try{
-    const img=await new Promise((res,rej)=>{ const im=new Image(); im.onload=()=>res(im); im.onerror=()=>rej(new Error('이미지를 열지 못했습니다')); im.src=url; });
-    const sc=Math.min(1, 3000/Math.max(img.naturalWidth,img.naturalHeight));
-    const cv=document.createElement('canvas'); cv.width=Math.round(img.naturalWidth*sc); cv.height=Math.round(img.naturalHeight*sc);
-    const ctx=cv.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,cv.width,cv.height); ctx.drawImage(img,0,0,cv.width,cv.height);
-    return cv.toDataURL('image/jpeg',0.92).split(',')[1];
-  } finally { URL.revokeObjectURL(url); }
-}
 // Claude는 긴 변이 약 1568px을 넘는 이미지를 자동으로 줄여서 본다 — 작은 한글(예: "기산중3")이 뭉개져 오인식(기간중 등)되는 주된 원인.
 // 그래서 (1) 전체 그림(구조 파악용, 1568px 이하)과 (2) 원본 해상도 그대로 자른 확대 조각들(글자 읽기용)을 함께 보낸다.
 // 조각은 약 8% 겹치게 자르고, 왼쪽 요일 글자 띠를 각 조각 왼쪽에 붙여 요일을 알 수 있게 한다.
@@ -16024,6 +15594,18 @@ const TTG_DEFAULT_TT={alice:['AL','#0000FF'], sunny:['SU','#FFFF00'], joy:['JY',
 function ttgDefaultTt(academy, t){
   const d=(academy==='ebest' && t && t.name) ? TTG_DEFAULT_TT[String(t.name).trim().toLowerCase()] : null;
   return d ? {code:d[0], color:d[1]} : {code:'', color:''};
+}
+/* 시간표 한 칸의 글자·색 — 시간표 탭(그리드)과 학생 QR 화면의 시간표가 같이 쓴다.
+   단어시험: 회색 + "강의실(담당약자)" · 일반 수업: 선생님 색 + "(강의실)과목" · IBT·L/C는 배경색 없이.
+   stu=true(학생 화면): 단어시험은 더 연한 회색, 어학실이면 약자 없이 "어학실"만, IBT·EC·어학실 과목은 전부 색 없이 */
+function ttgCellPaint(a,h,stu){
+  if(h.isWordTest){ const code=ttgTeacherCode(a,h.teacher); const room=String(h.room||'').trim();
+    const txt=room?((code&&!(stu&&room.includes('어학실')))?`${room}(${code})`:room):(code?`단어시험(${code})`:'단어시험');
+    return {bg:stu?'#e6e8ec':'#d9d9d9', fg:stu?'#222':'#000', txt}; }
+  const sj=String(h.subject).replace(/\s/g,''); const isLc=stu?(/^(ibt|l\/c|lc|ec)/i.test(sj)||isLabSubject(h.subject)):/^(ibt|l\/c)$/i.test(sj);
+  const hex=isLc?'':ttgTeacherColorHex(a,h.teacher);
+  const rm=String(h.room||'').replace(/강의실|호|\s/g,''); const showRm=rm && !rm.includes('어학실') && !isLabSubject(h.subject);
+  return {bg:hex||'', fg:hex?(ttgIsDarkColor(hex)?'#fff':'#000'):'', txt:(showRm?'('+rm+')':'')+h.subject};
 }
 function ttgTeacherCode(academy, teacherName){
   if(!teacherName) return '';
@@ -17665,14 +17247,8 @@ function wlTimetable(s){
       if(!ts && mp){ const m=(mp.subjects||[]).find(x=>x.subject===sb.subject&&x.time); ts=(m&&m.time)||timeOf(mp)||''; }
       const r=parseRange(ts); if(!r) return;
       let tea=sb.teacher||''; if(!tea && mp){ const m=(mp.subjects||[]).find(x=>x.subject===sb.subject&&x.teacher); tea=(m&&m.teacher)||''; }
-      /* 시간표(그리드) 탭과 같은 표기: 단어시험은 연한 회색 + "강의실(담당약자)", 어학실이면 담당 이름 없이 "어학실"만 */
-      let txt,bg='',fg='',wt=isWordTestSubject(sb);
-      if(wt){ const code=ttgTeacherCode(a,tea); const room=String(sb.room||'').trim();
-        txt=room?(room.includes('어학실')?room:(code?`${room}(${code})`:room)):(code?`단어시험(${code})`:'단어시험'); bg='#e6e8ec'; fg='#222'; }
-      else { const sj=String(sb.subject).replace(/\s/g,''); const isLc=/^(ibt|l\/c|lc|ec)/i.test(sj)||isLabSubject(sb.subject); const hex=isLc?'':ttgTeacherColorHex(a,tea);
-        const rm=String(sb.room||'').replace(/강의실|호|\s/g,''); const showRm=rm && !rm.includes('어학실') && !isLabSubject(sb.subject);
-        txt=(showRm?'('+rm+')':'')+sb.subject; bg=hex||''; fg=hex?(ttgIsDarkColor(hex)?'#fff':'#000'):''; }
-      days.forEach(d=>occ.push({d,r,wt,x:txt,bg,fg}));
+      const wt=isWordTestSubject(sb); const pt=ttgCellPaint(a,{isWordTest:wt,teacher:tea,room:sb.room,subject:sb.subject},true);
+      days.forEach(d=>occ.push({d,r,wt,x:pt.txt,bg:pt.bg,fg:pt.fg}));
     });
     const order=['월','화','수','목','금','토','일']; const days=order.filter(d=>occ.some(o=>o.d===d));
     const starts=[...new Set(occ.map(o=>o.r[0]))].sort((x,y)=>x-y); let n=0;
@@ -17747,28 +17323,23 @@ function wlOverlay(html){
   ov.style.cssText='position:fixed;inset:0;background:rgba(20,24,40,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:14px';
   ov.innerHTML=`<div class="wlbox" style="background:#fff;border-radius:14px;max-width:460px;width:100%;max-height:90vh;overflow:auto;padding:16px;box-shadow:0 10px 40px rgba(0,0,0,.3)">${html}</div>`;
   document.body.appendChild(ov);
-  { const bx=ov.querySelector('.wlbox'); const z=(typeof wlPhone==='function'&&wlPhone())?Math.max(1,Math.min(window.innerWidth/460,2.4)):1; if(z>1.05){ bx.style.zoom=z; bx.style.maxHeight=(90/z)+'vh'; } } /* 폰이 '데스크톱 사이트' 모드처럼 화면 폭이 넓게 잡혀도 창이 작아 보이지 않게 키움 */
+  { const bx=ov.querySelector('.wlbox'); const z=wlFitZoom(460,2.4); if(z>1.05){ bx.style.zoom=z; bx.style.maxHeight=(90/z)+'vh'; } } /* 폰이 '데스크톱 사이트' 모드처럼 화면 폭이 넓게 잡혀도 창이 작아 보이지 않게 키움 */
   ov.querySelectorAll('[data-wlclose]').forEach(b=>b.onclick=()=>ov.remove());
   return ov;
 }
 const WL_INP='width:100%;box-sizing:border-box;padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.9rem';
 function wlOpenLedger(sid, type){
   const s=store.students.find(x=>x.id===sid); if(!s) return;
-  const u=wlUnit(s)||{name:'',sym:''}; type=type||state.wlType||'in'; state.wlType=type;
+  const u=wlUnit(s)||{name:'',sym:''}; 
   if(state.wlEditSid!==sid){ state.wlEditId=null; state.wlEditSid=sid; }
   const ents=wlEntries(sid); const bal=wlBal(sid);
   const ov=wlOverlay(`<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
       <div><b style="font-size:1.05rem">${wlName(s)}</b> <span style="color:var(--sub);font-size:.8rem">${esc(classNameInMonth(s,state.month)||'')}</span></div>
       <button class="btn small" data-wlclose>✕ 닫기</button></div>
-    <div style="margin:10px 0;padding:12px;border-radius:12px;background:${type==='in'?'#ecfdf5':'#fef2f2'};text-align:center">
+    <div style="margin:10px 0;padding:12px;border-radius:12px;background:#f3f5fa;text-align:center">
       <div style="font-size:.78rem;color:var(--sub)">현재 잔액</div>
       <div style="font-size:1.9rem;font-weight:900">${wlSymHtml(u)} ${bal.toLocaleString()} <span style="font-size:.9rem;font-weight:700">${esc(u.name)}</span></div></div>
-    <div style="display:flex;gap:6px;margin-bottom:8px">
-      <button class="chip ${type==='in'?'on':''}" data-wltype="in" style="flex:1">＋ 적립</button>
-      <button class="chip ${type==='out'?'on':''}" data-wltype="out" style="flex:1">－ 사용</button></div>
-    <div style="display:flex;gap:6px;margin-bottom:6px"><input type="number" id="wlAmt" min="1" step="1" inputmode="numeric" placeholder="금액" style="${WL_INP};flex:1"><input type="date" id="wlDate" value="${todayISO()}" style="${WL_INP};flex:1"></div>
-    <input type="text" id="wlReason" placeholder="사유 (안 적어도 돼요 — 비우면 담당 과목으로 기록)" style="${WL_INP}">
-    <button class="btn primary" id="wlGo" style="width:100%;margin-top:8px">${type==='in'?'＋ 적립 기록':'－ 사용 기록'}</button>
+    <div style="display:flex;gap:6px"><button class="btn primary" data-wlquick="in" style="flex:1">＋ 적립</button><button class="btn" data-wlquick="out" style="flex:1">－ 사용</button></div>
     <div style="margin-top:14px;font-weight:800;font-size:.86rem">📒 내역 <span style="font-weight:400;color:var(--sub)">(${ents.length}건)</span></div>
     <div style="margin-top:6px">${ents.length?ents.map(x=>state.wlEditId===x.id?`<div style="padding:8px;margin:6px 0;border:1.5px solid #6366f1;border-radius:10px;background:#f5f6ff">
         <div style="display:flex;gap:6px;margin-bottom:6px"><select data-wlet style="${WL_INP};flex:1"><option value="in" ${x.type==='in'?'selected':''}>＋ 적립</option><option value="out" ${x.type==='out'?'selected':''}>－ 사용</option></select><input type="number" data-wlea min="1" step="1" value="${Number(x.amount)||0}" style="${WL_INP};flex:1"></div>
@@ -17778,15 +17349,7 @@ function wlOpenLedger(sid, type){
         <span style="flex:1;font-size:.84rem">${esc(wlLabel(x))}<br><span style="color:#9aa3b5;font-size:.7rem">${esc(x.by||'')}${x.editedBy?' · 수정됨':''}</span></span>
         <b style="color:${x.type==='in'?'#0e9f6e':'#c0392b'}">${x.type==='in'?'+':'−'}${(Number(x.amount)||0).toLocaleString()}</b>
         ${wlCanDel(x)?`<button class="btn small" data-wledit="${x.id}" style="padding:2px 7px;font-size:.7rem">수정</button><button class="btn small" data-wldel="${x.id}" style="padding:2px 7px;font-size:.7rem">삭제</button>`:''}</div>`).join(''):'<div style="color:var(--sub);font-size:.82rem;padding:8px 0">아직 내역이 없어요.</div>'}</div>`);
-  ov.querySelectorAll('[data-wltype]').forEach(b=>b.onclick=()=>wlOpenLedger(sid,b.dataset.wltype));
-  const go=ov.querySelector('#wlGo');
-  const submit=()=>{
-    const err=wlAdd(sid,type,ov.querySelector('#wlAmt').value,ov.querySelector('#wlReason').value,ov.querySelector('#wlDate').value);
-    if(err){ alert(err); return; }
-    wlOpenLedger(sid,type); render(true);
-  };
-  go.onclick=submit;
-  ov.querySelectorAll('#wlAmt,#wlReason').forEach(i=>i.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); submit(); } }));
+  ov.querySelectorAll('[data-wlquick]').forEach(b=>b.onclick=()=>{ ov.remove(); wlQuick(sid,b.dataset.wlquick); });
   ov.querySelectorAll('[data-wledit]').forEach(b=>b.onclick=()=>{ state.wlEditId=b.dataset.wledit; wlOpenLedger(sid,type); });
   ov.querySelectorAll('[data-wlecancel]').forEach(b=>b.onclick=()=>{ state.wlEditId=null; wlOpenLedger(sid,type); });
   ov.querySelectorAll('[data-wlesave]').forEach(b=>b.onclick=()=>{
@@ -17798,7 +17361,6 @@ function wlOpenLedger(sid, type){
     const err=wlDel(b.dataset.wldel); if(err){ alert(err); return; }
     wlOpenLedger(sid,type); render(true);
   });
-  setTimeout(()=>{ const a=ov.querySelector('#wlAmt'); if(a) a.focus(); },50);
 }
 function wlQrSvg(text){ const q=qrcode(0,'M'); q.addData(text); q.make(); return q.createSvgTag({cellSize:4,margin:2,scalable:true}); }
 function wlOpenQr(sid){
@@ -17840,10 +17402,10 @@ function wlDrawName(x, nm){
   x.restore();
 }
 function wlNameLayer(nm){ const B=WL_CARD_BOX; const c=document.createElement('canvas'); c.width=B.W; c.height=B.H; wlDrawName(c.getContext('2d'),nm); return c.toDataURL('image/png'); }
-async function wlCardPng(s, withQr){
+async function wlCardPng(s){
   const B=WL_CARD_BOX; const im=await wlLoadCardImg();
   const c=document.createElement('canvas'); c.width=B.W; c.height=B.H; const x=c.getContext('2d'); x.drawImage(im,0,0,B.W,B.H);
-  if(withQr!==false){
+  {
     const q=qrcode(0,'M'); q.addData(wlUrl(wlToken(s.id,true))); q.make(); const n=q.getModuleCount();
     const cell=Math.floor(B.s/(n+4)), off=Math.round((B.s-cell*(n+4))/2)+cell*2;
     x.fillStyle='#000'; for(let r=0;r<n;r++) for(let k=0;k<n;k++) if(q.isDark(r,k)) x.fillRect(B.x+off+k*cell, B.y+off+r*cell, cell, cell);
@@ -17853,7 +17415,7 @@ async function wlCardPng(s, withQr){
 }
 async function wlSaveCardImg(sid){
   const s=store.students.find(x=>x.id===sid); if(!s) return;
-  try{ const blob=await wlCardPng(s,true); const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  try{ const blob=await wlCardPng(s); const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
     a.download=(wlCardName(s)||s.nameKo||'student').replace(/[\\/:*?"<>|]/g,'')+'_QR카드.png'; document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },1500);
   }catch(err){ alert('이미지를 만들지 못했어요: '+(err&&err.message||err)); }
 }
@@ -17863,7 +17425,7 @@ function wlPrintQrs(ids){
   items.forEach(s=>wlToken(s.id,true));
   const PER=10, pages=[];
   for(let i=0;i<items.length;i+=PER) pages.push(items.slice(i,i+PER));
-  const front=g=>g.map(s=>{ const nm=wlCardName(s); const fs=(2.74*Math.min(1,17/Math.max(1,nm.length))).toFixed(2);
+  const front=g=>g.map(s=>{ const nm=wlCardName(s);
     return `<div class="c"><img data-b alt=""><div class="q">${wlQrSvg(wlUrl(wlToken(s.id,false)))}</div>${nm?`<img class="nl" src="${wlNameLayer(nm)}" alt="">`:''}</div>`; }).join('');
   const back=()=>`<img class="bk" data-k alt="">`;
   const body=pages.map(g=>`<section class="p">${front(g)}</section><section class="p bkp">${back()}</section>`).join('');
@@ -17964,17 +17526,17 @@ function renderWallet(){
     <input type="search" id="wlSearch" value="${esc(state.wlQ||'')}" placeholder="🔍 이름 검색 (Enter)" style="padding:7px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;min-width:150px">
     <span style="font-size:.82rem;color:var(--sub);font-weight:700">${rows.length}명${sum['달러']?` · 💵 ${sum['달러'].toLocaleString()}달러`:''}${sum['코인']?` · ${wlSymHtml({name:'코인'})} ${sum['코인'].toLocaleString()}코인`:''}</span></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"><button class="btn" data-wlprintall>🖨 현재 목록 카드 인쇄 (${rows.length}명)</button><button class="btn" data-wlprintsel>🖨 선택한 학생 카드 인쇄 (<span id="wlSelN">${rows.filter(x=>(state.wlSel||{})[x.s.id]).length}</span>명)</button><button class="btn" data-wlrepub>🔄 QR 전체 다시 올리기</button>${admin?'<button class="btn" data-wlimgs>🖼 저금통 그림</button>':''}
-    <span style="font-size:.76rem;color:var(--sub);align-self:center">초등부는 달러, 중등·고등부는 코인이에요 · 적립·사용은 모든 선생님이 입력할 수 있어요 · 사유는 안 적어도 돼요(비우면 담당 과목으로 기록)</span><span style="font-size:.7rem;color:#9aa3b5;align-self:center">화면 버전 11/11-E</span></div>`;
+    <span style="font-size:.76rem;color:var(--sub);align-self:center">초등부는 달러, 중등·고등부는 코인이에요 · 적립·사용은 모든 선생님이 입력할 수 있어요 · 사유는 안 적어도 돼요(비우면 담당 과목으로 기록)</span></div>`;
   if(!rows.length) return h+'<div class="empty">표시할 학생이 없어요. (반이 정해진 재원생만 나와요)</div>';
-  h+=`<div style="overflow:auto"><table class="wlt" style="border-collapse:collapse;width:100%;font-size:.88rem;background:#fff"><thead><tr>${['<input type="checkbox" data-wlselall title="전체 선택">','학생','반','잔액','최근 내역',''].map(t=>`<th style="background:#e8ecf3;border:1px solid #c5ccd8;padding:6px 8px;text-align:center;white-space:nowrap">${t}</th>`).join('')}</tr></thead><tbody>`;
+  h+=`<div style="overflow:auto"><table style="border-collapse:collapse;width:100%;font-size:.88rem;background:#fff"><thead><tr>${['<input type="checkbox" data-wlselall title="전체 선택">','학생','반','잔액','최근 내역',''].map(t=>`<th style="background:#e8ecf3;border:1px solid #c5ccd8;padding:6px 8px;text-align:center;white-space:nowrap">${t}</th>`).join('')}</tr></thead><tbody>`;
   rows.forEach(({s,u})=>{
     const bal=wlBal(s.id); const last=wlEntries(s.id)[0];
     const TD='border:1px solid #d5dae3;padding:6px 8px;text-align:center';
-    h+=`<tr><td style="${TD};width:28px"><input type="checkbox" data-wlsel="${s.id}" ${(state.wlSel||{})[s.id]?'checked':''}></td><td class="wl-n" style="${TD};text-align:left;font-weight:800;white-space:nowrap">${wlName(s)}${MODE==='all'?' '+bdg(s.academy):''}</td>
-      <td class="wl-c" style="${TD};color:var(--sub);white-space:nowrap">${esc(classNameInMonth(s,state.month)||'미배정')}</td>
-      <td class="wl-b" style="${TD};font-weight:900;white-space:nowrap">${wlSymHtml(u)} ${bal.toLocaleString()} <span style="font-weight:400;color:var(--sub);font-size:.74rem">${u.name}</span></td>
-      <td class="wl-l" style="${TD};font-size:.78rem;color:var(--sub)">${last?`${esc(String(last.date).slice(5).replace('-','/'))} ${last.type==='in'?'+':'−'}${(Number(last.amount)||0).toLocaleString()} · ${esc(wlLabel(last))}`:'-'}</td>
-      <td class="wl-a" style="${TD};white-space:nowrap"><button class="btn small" data-wlopen="${s.id}|in">＋ 적립</button> <button class="btn small" data-wlopen="${s.id}|out">－ 사용</button> <button class="btn small" data-wlopen="${s.id}|led">내역</button> <button class="btn small" data-wlqr="${s.id}">QR</button></td></tr>`;
+    h+=`<tr><td style="${TD};width:28px"><input type="checkbox" data-wlsel="${s.id}" ${(state.wlSel||{})[s.id]?'checked':''}></td><td style="${TD};text-align:left;font-weight:800;white-space:nowrap">${wlName(s)}${MODE==='all'?' '+bdg(s.academy):''}</td>
+      <td style="${TD};color:var(--sub);white-space:nowrap">${esc(classNameInMonth(s,state.month)||'미배정')}</td>
+      <td style="${TD};font-weight:900;white-space:nowrap">${wlSymHtml(u)} ${bal.toLocaleString()} <span style="font-weight:400;color:var(--sub);font-size:.74rem">${u.name}</span></td>
+      <td style="${TD};font-size:.78rem;color:var(--sub)">${last?`${esc(String(last.date).slice(5).replace('-','/'))} ${last.type==='in'?'+':'−'}${(Number(last.amount)||0).toLocaleString()} · ${esc(wlLabel(last))}`:'-'}</td>
+      <td style="${TD};white-space:nowrap"><button class="btn small" data-wlopen="${s.id}|in">＋ 적립</button> <button class="btn small" data-wlopen="${s.id}|out">－ 사용</button> <button class="btn small" data-wlopen="${s.id}|led">내역</button> <button class="btn small" data-wlqr="${s.id}">QR</button></td></tr>`;
   });
   return h+'</tbody></table></div>';
 }
@@ -17995,7 +17557,8 @@ function bindWallet(){
 }
 
 /* 학생 QR을 로그인한 기기로 찍었을 때 뜨는 "빠른 입출금" 전체 화면 — 폰에서 크게 보이도록 화면 폭에 맞춰 키움 */
-function wlPhone(){ try{ return (navigator.maxTouchPoints>0) && Math.min(screen.width,screen.height)<800; }catch(e){ return false; } } /* 진짜 폰일 때만 화면 폭에 맞춰 키움 (컴퓨터는 그대로) */
+/* 진짜 폰(터치 + 작은 화면)일 때만 화면 폭에 맞춰 키운다 — '데스크톱 사이트' 모드여도 꽉 차게, 컴퓨터는 원래 크기 그대로 */
+function wlFitZoom(base,max){ let phone=false; try{ phone=(navigator.maxTouchPoints>0) && Math.min(screen.width,screen.height)<800; }catch(e){} return phone?Math.max(1,Math.min(window.innerWidth/base,max)):1; }
 function wlQuick(sid,t0){
   const s=store.students.find(x=>x.id===sid&&!x._deleted); if(!s) return;
   const u=wlUnit(s)||{name:'코인'};
@@ -18003,8 +17566,8 @@ function wlQuick(sid,t0){
   ov=document.createElement('div'); ov.id='wlQ';
   ov.style.cssText='position:fixed;inset:0;z-index:10000;background:#f3f5fa;overflow:auto;-webkit-overflow-scrolling:touch';
   document.body.appendChild(ov);
-  let type=(t0==='out')?'out':'in';
-  const fit=()=>{ const w=ov.querySelector('.wq'); if(w) w.style.zoom=wlPhone()?Math.max(1,Math.min(window.innerWidth/420,2.8)):1; };
+  let type=(t0==='out')?'out':'in', amtV='', whyV='', dateV=todayISO();
+  const fit=()=>{ const w=ov.querySelector('.wq'); if(w) w.style.zoom=wlFitZoom(420,2.8); };
   const draw=()=>{
     const bal=wlBal(sid); const en=String(s.nameEn||'').trim();
     const ents=wlEntries(sid).slice(0,8);
@@ -18018,9 +17581,9 @@ function wlQuick(sid,t0){
         <div style="font-size:2.2rem;font-weight:900;margin-top:2px">${wlSymHtml(u)} ${bal.toLocaleString()} <span style="font-size:1rem;font-weight:700;color:#7b8498">${u.name}</span></div>
       </div>
       <div style="display:flex;gap:10px;margin-top:14px"><button id="wqIn" style="${B(type==='in','#1f9d63')}">＋ 적립</button><button id="wqOut" style="${B(type==='out','#d9534f')}">－ 사용</button></div>
-      <input id="wqAmt" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="금액" style="width:100%;box-sizing:border-box;margin-top:12px;padding:14px;border:2px solid #c5ccd8;border-radius:12px;font-size:1.5rem;font-weight:800;text-align:center;font-family:inherit">
+      <input id="wqAmt" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="금액" value="${esc(amtV)}" style="width:100%;box-sizing:border-box;margin-top:12px;padding:14px;border:2px solid #c5ccd8;border-radius:12px;font-size:1.5rem;font-weight:800;text-align:center;font-family:inherit">
       <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">${[1,5,10,50,100].map(n=>`<button data-wqadd="${n}" style="flex:1;min-width:52px;padding:9px 0;border-radius:10px;border:1.5px solid #d5dae3;background:#fff;font-weight:800;font-family:inherit">+${n}</button>`).join('')}<button id="wqClr" style="padding:9px 12px;border-radius:10px;border:1.5px solid #d5dae3;background:#fff;font-weight:700;font-family:inherit">지움</button></div>
-      <input id="wqWhy" type="text" placeholder="사유 (안 적어도 돼요 — 비우면 담당 과목으로 기록)" style="width:100%;box-sizing:border-box;margin-top:10px;padding:12px;border:1.5px solid #d5dae3;border-radius:12px;font-size:.95rem;font-family:inherit">
+      <div style="display:flex;gap:8px;margin-top:10px"><input id="wqWhy" type="text" value="${esc(whyV)}" placeholder="사유 (비우면 담당 과목으로 기록)" style="flex:1;min-width:0;box-sizing:border-box;padding:12px;border:1.5px solid #d5dae3;border-radius:12px;font-size:.95rem;font-family:inherit"><input id="wqDate" type="date" value="${esc(dateV)}" title="날짜" style="flex:0 0 auto;box-sizing:border-box;padding:12px 8px;border:1.5px solid #d5dae3;border-radius:12px;font-size:.85rem;font-family:inherit"></div>
       <button id="wqGo" style="width:100%;margin-top:12px;padding:16px;border:0;border-radius:14px;background:#1c2333;color:#fff;font-size:1.15rem;font-weight:900;font-family:inherit;cursor:pointer">${type==='in'?'＋ 적립 기록':'－ 사용 기록'}</button>
       <div style="margin-top:18px;font-weight:800;font-size:.95rem">최근 내역</div>
       <div style="margin-top:6px;background:#fff;border-radius:12px;overflow:hidden">${ents.length?ents.map(x=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:10px 12px;border-bottom:1px solid #eef0f5;font-size:.85rem"><span style="color:#7b8498;white-space:nowrap">${esc(String(x.date).slice(5).replace('-','/'))}</span><span style="flex:1;text-align:left">${esc(wlLabel(x))}</span><b style="color:${x.type==='in'?'#1f9d63':'#d9534f'}">${x.type==='in'?'+':'−'}${(Number(x.amount)||0).toLocaleString()}</b></div>`).join(''):'<div style="padding:14px;color:#7b8498;font-size:.85rem">아직 내역이 없어요.</div>'}</div>
@@ -18029,31 +17592,20 @@ function wlQuick(sid,t0){
     fit();
     const amt=ov.querySelector('#wqAmt');
     ov.querySelector('#wqX').onclick=()=>ov.remove();
-    ov.querySelector('#wqIn').onclick=()=>{ type='in'; const v=amt.value,w=ov.querySelector('#wqWhy').value; draw(); ov.querySelector('#wqAmt').value=v; ov.querySelector('#wqWhy').value=w; };
-    ov.querySelector('#wqOut').onclick=()=>{ type='out'; const v=amt.value,w=ov.querySelector('#wqWhy').value; draw(); ov.querySelector('#wqAmt').value=v; ov.querySelector('#wqWhy').value=w; };
+    const keep=()=>{ amtV=amt.value; whyV=ov.querySelector('#wqWhy').value; dateV=ov.querySelector('#wqDate').value||todayISO(); };
+    ov.querySelector('#wqIn').onclick=()=>{ keep(); type='in'; draw(); };
+    ov.querySelector('#wqOut').onclick=()=>{ keep(); type='out'; draw(); };
     ov.querySelectorAll('[data-wqadd]').forEach(b=>b.onclick=()=>{ amt.value=String((parseInt(amt.value,10)||0)+Number(b.dataset.wqadd)); });
     ov.querySelector('#wqClr').onclick=()=>{ amt.value=''; amt.focus(); };
     ov.querySelector('#wqAll').onclick=()=>{ ov.remove(); wlOpenLedger(sid,'in'); };
     ov.querySelector('#wqGo').onclick=()=>{
-      const err=wlAdd(sid,type,amt.value.replace(/[^0-9]/g,''),ov.querySelector('#wqWhy').value,'');
+      keep(); const err=wlAdd(sid,type,amtV.replace(/[^0-9]/g,''),whyV,dateV);
       if(err){ alert(err); return; }
-      toast(type==='in'?'적립했어요':'사용 처리했어요'); try{ render(true); }catch(e){} draw();
+      amtV=''; whyV=''; toast(type==='in'?'적립했어요':'사용 처리했어요'); try{ render(true); }catch(e){} draw();
     };
   };
   draw();
   if(!ov._fit){ ov._fit=1; window.addEventListener('resize',fit); }
-}
-/* 학생 QR(wallet.html)을 대시보드에 로그인한 기기로 찍으면 → 이 주소(?wl=토큰)로 넘어와서 바로 적립/사용 창이 열린다 */
-function wlDeepLink(){
-  let tk=WL_DEEP; if(!tk||window.__wlDeepDone) return;
-  if(!store.login && !(MODE==='all')) return; /* 로그인 전이면 로그인 후 다시 시도 */
-  window.__wlDeepDone=true;
-  const rec=(store.walletTokens||[]).find(x=>x.token===tk);
-  const s=rec&&store.students.find(x=>x.id===rec.id&&!x._deleted);
-  if(!s){
-    if(!window.__wlDeepRetry && syncOn()){ window.__wlDeepRetry=true; window.__wlDeepDone=false; toast('최신 명단을 불러오는 중…'); try{ pullShared(true); }catch(e){} setTimeout(()=>{ try{ wlDeepLink(); }catch(e){} },3500); return; }
-    toast('이 QR의 학생을 찾지 못했어요 (학생 명단/QR이 이 대시보드에 있는지 확인해주세요)'); return; }
-  state.tab='wallet'; render(true); wlQuick(s.id);
 }
 /* 학생 QR 화면(wallet.html)에서 로그인한 선생님이 바로 입출금할 수 있게, 숨은 창(?bridge=1)으로 이 대시보드의 적립/사용 기능을 빌려준다 */
 window.addEventListener('message',async e=>{
@@ -18071,7 +17623,6 @@ function wlBridgeReady(){ try{ if(window.parent!==window) window.parent.postMess
 setTimeout(wlBridgeReady,1200); setTimeout(wlBridgeReady,3500);
 /* 시간표가 바뀌어도 학생 화면이 낡지 않게, 관리자가 하루 한 번 처음 열 때 모든 학생 화면을 조용히 최신으로 올린다 */
 setTimeout(()=>{ try{ if(!syncOn()||!isAdminRole()||window.parent!==window) return; const k='wl_repub_day', t=todayISO(); if(localStorage.getItem(k)===t) return; localStorage.setItem(k,t); wlRepublishAll(null,true); }catch(e){} },9000);
-setTimeout(()=>{ try{ wlDeepLink(); }catch(e){} },700);
 
 render();
 </script>
