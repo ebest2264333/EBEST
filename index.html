@@ -4107,6 +4107,9 @@ function stuStatusHist(s){
 // 퇴원 날짜: 상태 이력의 퇴원 날짜, 없으면 퇴원생 상담 명단에 올린 날
 function stuOutDate(s){ if(s.status!=='퇴원') return ''; const d=stuStatusSince(s); if(d) return d; const dp=(store.dropouts||[]).filter(x=>!x._deleted&&x.studentId===s.id&&x.kind==='out'&&x.createdAt).map(x=>String(x.createdAt).slice(0,10)).sort().pop(); return dp||''; }
 function stuAftercareDue(s){ const d=stuOutDate(s); if(!d) return false; const t=new Date(d+'T00:00:00'); t.setMonth(t.getMonth()+1); const diff=Math.round((new Date(todayISO()+'T00:00:00')-t)/86400000); return Math.abs(diff)<=5; }
+// 휴원생 복귀 예정일(returnDate): 복귀 7일 전부터(복귀일이 지났는데 아직 휴원인 경우 포함) '복귀 확인 연락' 대상으로 잡는다. returnNotified=확인 연락을 한 날짜
+function stuReturnDays(s){ if(s.status!=='휴원'||!s.returnDate) return null; return Math.round((new Date(s.returnDate+'T00:00:00')-new Date(todayISO()+'T00:00:00'))/86400000); }
+function stuReturnDue(s){ const d=stuReturnDays(s); return d!=null && d<=7; }
 function stuStatusSince(s){ const e=(s.sl||[]).slice().reverse().find(x=>x.s===s.status); return e&&e.d?e.d:''; } // 지금 상태가 된 날짜
 const stuMD=d=>d&&d.length>=10?(String(d).slice(2,4)+'.'+Number(d.slice(5,7))+'.'+Number(d.slice(8,10))):String(d||'');
 function updateStudentField(id, field, value){
@@ -4114,6 +4117,8 @@ function updateStudentField(id, field, value){
   if(field==='status') stuLogStatus(s,value);
   const oldClassName=s.className, oldNameKo=s.nameKo;
   s[field]=value; s.updatedAt=Date.now();
+  if(field==='status' && value!=='휴원'){ delete s.returnDate; delete s.returnNotified; }
+  if(field==='returnDate') delete s.returnNotified; // 복귀일이 바뀌면 확인 연락 표시는 다시 처음부터
   if(field==='status' && (value==='퇴원'||value==='휴원')){
     // 반 배정을 취소한다 — 단, 지난 달들의 기록(출결·단어시험 등 히스토리)은 그대로 보이게 최신·현재 보는 달만 정리한다
     // (휴원·퇴원 학생을 반 명단에서 완전히 지워버리면 지난 학습 기록을 볼 방법이 없어지므로, 삭제가 아니라 '현재 활성 배정만 취소'하는 개념)
@@ -4391,15 +4396,16 @@ function studentCard(s, admin){
   const open = admin && state.rosterOpen[s.id];
   if(!open){
     // 평소엔 이름·반·학년·학교·번호만 보이게 접어두고, 카드(이름 줄)를 누르면 특이사항·형제자매 등이 펼쳐진다
-    const exp=!!(state.rosterExpAll || (state.rosterExp&&state.rosterExp[s.id]));
     const hasMore=!!(s.note||s.preCheck||sibs.length||(s.status!=='재원'&&s.statusReason)||(s.sl&&s.sl.length));
+    const exp=!!(state.rosterExpAll || (state.rosterExp&&state.rosterExp[s.id]) || (admin&&stuReturnDue(s)&&!s.returnNotified)); // 복귀 확인 연락이 필요한 학생은 펼쳐서 보여준다
     return `<article class="card ${AC[s.academy].cls}" id="stu_${s.id}">
       <h2 data-rsexp="${s.id}" style="cursor:pointer"><span style="color:var(--sub);font-size:.78rem">${exp?'▾':'▸'}</span> ${esc(s.nameKo)}${s.nameEn?' <span style="font-weight:400;color:var(--sub)">('+esc(s.nameEn)+')</span>':''}
-        <span class="badge" style="background:${statusColor};color:#fff">${esc(s.status)}${(s.status!=='재원'&&(stuStatusSince(s)||stuOutDate(s)))?' '+esc(stuMD(stuStatusSince(s)||stuOutDate(s)))+'~':''}</span>
+        <span class="badge" style="background:${statusColor};color:#fff">${esc(s.status)}${(s.status!=='재원'&&(stuStatusSince(s)||stuOutDate(s)))?' '+esc(stuMD(stuStatusSince(s)||stuOutDate(s)))+'~':''}</span>${(s.status==='휴원'&&s.returnDate)?` <span class="badge" style="background:${stuReturnDue(s)?'#2563eb':'#e8ecf3'};color:${stuReturnDue(s)?'#fff':'#444'}">복귀 ${esc(stuMD(s.returnDate))}${stuReturnDue(s)?(stuReturnDays(s)<0?' · 지남':stuReturnDays(s)===0?' · 오늘':' · D-'+stuReturnDays(s)):''}</span>`:''}
         ${admin?`<button class="btn small" style="float:right;font-size:.72rem;padding:4px 9px" data-rstoggle="${s.id}">✎ 편집</button>`:''}</h2>
       <div class="meta" data-rsexp="${s.id}" style="cursor:pointer">${esc(classNameInMonth(s,state.month)||'미배정')}${s.grade?' · '+esc(s.grade):''}${s.school?' · '+esc(s.school):''}${s.parentPhone?' · 📞 '+esc(s.parentPhone):''}${(!exp&&hasMore)?' · 📝':''}</div>
       ${!exp?'':`${s.preCheck?`<div class="rnote">🔎 상담 전 확인: ${esc(s.preCheck)}</div>`:''}
       ${s.status!=='재원'&&s.statusReason?`<div class="rnote">${esc(s.status)} 사유: ${esc(s.statusReason)}</div>`:''}
+      ${(admin&&stuReturnDue(s))?`<div style="margin-top:6px;font-size:.8rem">📞 복귀 확인 연락: ${s.returnNotified?`<b style="color:var(--ok)">✔ 연락함 ${esc(stuMD(s.returnNotified))}</b> <span data-rsretok="${s.id}|0" style="cursor:pointer;color:var(--sub);text-decoration:underline">취소</span>`:`<button class="btn small" data-rsretok="${s.id}|1" style="font-size:.74rem;padding:3px 9px">연락 완료로 표시</button>`}</div>`:''}
       ${stuStatusHist(s).length?`<div style="font-size:.78rem;color:var(--sub);margin-top:4px">📅 상태 이력: ${stuStatusHist(s).map(e=>`${esc(stuMD(e.d)||e.m)} <b>${esc(e.s)}</b>`).join(' ← ')}</div>`:''}
       ${sibs.length?`<div style="font-size:.78rem;color:var(--sub);margin-top:4px">👨‍👩‍👧‍👦 형제자매: ${sibLinks}</div>`:''}
       ${canNote?`<textarea data-rsnote="${s.id}" placeholder="특이사항 코멘트…" style="width:100%;min-height:44px;margin-top:8px;border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-family:inherit;font-size:.83rem">${esc(s.note||'')}</textarea>`
@@ -4436,6 +4442,7 @@ function studentCard(s, admin){
         ${statusOpts.map(o=>`<option ${dispStatus===o?'selected':''}>${o}</option>`).join('')}
       </select>${('status' in pending)?`<input type="date" value="${esc(pending.statusDate||todayISO())}" data-rsfield-stage="${s.id}|statusDate" title="상태가 바뀌는(바뀐) 날짜" style="padding:6px 8px;border:1.5px solid #f0c987;border-radius:8px;font-family:inherit">`:''}${pendingNote('status')}
       ${dispStatus!=='재원'?`<input type="text" value="${esc(dispStatusReason)}" placeholder="${esc(dispStatus)} 사유" data-rsfield-stage="${s.id}|statusReason" style="flex:1;min-width:140px;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">`:''}
+      ${dispStatus==='휴원'?`<label style="font-size:.78rem;font-weight:700;color:var(--sub);display:flex;align-items:center;gap:5px">복귀 예정일 <input type="date" value="${esc(('returnDate' in pending)?pending.returnDate:(s.returnDate||''))}" data-rsfield-stage="${s.id}|returnDate" title="복귀 날짜가 확정되면 적어두세요 — 일주일 전부터 '복귀 확인 연락' 대상으로 떠요" style="padding:6px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit"></label>`:''}
     </div>
     ${stuStatusHist(s).length?`<div style="margin-bottom:8px;padding:8px 10px;border:1px dashed var(--line);border-radius:8px"><div style="font-size:.78rem;font-weight:700;color:var(--sub);margin-bottom:4px">📅 상태 변경 이력 <span style="font-weight:400">(날짜를 고치면 그 달 통계에 잡혀요)</span></div>
       ${stuStatusHist(s).map(e=>`<div style="display:flex;gap:6px;align-items:center;margin-top:4px">${e.i>=0?`<input type="date" value="${esc(e.d)}" data-sldate="${s.id}|${e.i}" style="padding:4px 7px;border:1.5px solid var(--line);border-radius:7px;font-family:inherit;font-size:.82rem">`:`<span style="font-size:.82rem;min-width:118px">${esc(e.d)}</span>`}<b style="font-size:.84rem;color:${e.s==='퇴원'?'#c0392b':e.s==='휴원'?'#b45309':'#0e9f6e'}">${esc(e.s)}</b>${e.i>=0?`<b data-sldel="${s.id}|${e.i}" title="이 이력 지우기" style="cursor:pointer;color:#c0392b;margin-left:2px">×</b>`:''}</div>`).join('')}</div>`:''}
@@ -4570,6 +4577,8 @@ function renderRoster(list){
     </select>
     <span style="font-size:.84rem;font-weight:800;color:var(--sub)">총 ${rows.length}명</span>
     <button class="btn small" data-rsexpall>${state.rosterExpAll?'▾ 모두 접기':'▸ 모두 펼치기'}</button>
+    ${(()=>{ if(!isAdminRole()) return ''; const inAc=x=>!x._deleted&&(state.ac==='all'||x.academy===state.ac); const n=store.students.filter(x=>inAc(x)&&stuReturnDue(x)&&!x.returnNotified).length; const c=store.students.filter(x=>inAc(x)&&x.status==='퇴원'&&stuAftercareDue(x)).length;
+      return (n&&state.rosterStatus!=='휴원'?`<button class="btn small" style="background:#2563eb;color:#fff;border-color:#2563eb" onclick="state.rosterStatus='휴원';state.rosterView='all';state.rosterClass=null;render(true)">📞 복귀 확인 연락 ${n}명</button>`:'')+(c&&state.rosterStatus!=='퇴원'?`<button class="btn small" style="background:#c0392b;color:#fff;border-color:#c0392b" onclick="state.rosterStatus='퇴원';state.rosterView='all';state.rosterClass=null;render(true)">🤝 퇴원 애프터케어 ${c}명</button>`:''); })()}
   </div>`;
   let toolbar='';
   if(admin){
@@ -4662,6 +4671,12 @@ function renderRoster(list){
   }
   rows.sort((a,b)=>(a.nameKo||'').localeCompare(b.nameKo||'','ko'));
   // 퇴원 학생만 볼 때: 퇴원한 지 한 달(±5일) 된 학생은 '퇴원 애프터케어' 대상으로 맨 위에 따로 묶어 보여준다
+  if(state.rosterStatus==='휴원'){
+    const due=rows.filter(stuReturnDue).sort((x,y)=>String(x.returnDate).localeCompare(String(y.returnDate)));
+    if(due.length){ const rest=rows.filter(x=>!due.includes(x));
+      return statusSel+viewChips+toolbar+`<div class="ysec" style="border:2px solid #2563eb;margin-bottom:14px"><h3>📞 복귀 확인 연락 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">복귀 예정일 일주일 전부터 · ${due.length}명</span></h3><div style="padding:0 16px 14px"><div class="grid rsg">${due.map(x=>studentCard(x,admin)).join('')}</div></div></div>`
+        +'<div class="grid rsg">'+rest.map(x=>studentCard(x,admin)).join('')+'</div>'; }
+  }
   if(state.rosterStatus==='퇴원'){
     const care=rows.filter(stuAftercareDue);
     if(care.length){ const rest=rows.filter(x=>!care.includes(x));
@@ -4711,6 +4726,7 @@ function bindRoster(){
         if('status' in pending){ const st0=store.students.find(x=>x.id===id); const n0=st0&&st0.sl?st0.sl.length:0; updateStudentField(id,'status',pending.status);
           if(st0 && st0.sl && st0.sl.length>n0 && pending.statusDate){ const e=st0.sl[st0.sl.length-1]; e.d=pending.statusDate; e.m=pending.statusDate.slice(0,7); save(); } }
         if('statusReason' in pending) updateStudentField(id,'statusReason',pending.statusReason);
+        if('returnDate' in pending){ const st1=store.students.find(x=>x.id===id); if(st1 && st1.status==='휴원') updateStudentField(id,'returnDate',pending.returnDate); }
         delete state.rsPending[id];
       }
     } else {
@@ -4732,6 +4748,7 @@ function bindRoster(){
     updateStudentField(id,field,el.value);
   });
   // 반 이동·재원/휴원/퇴원 상태는 즉시 적용하지 않고, 편집 종료를 누르기 전까지 화면에만 보류해둔다(위 설명 참고).
+  v.querySelectorAll('[data-rsretok]').forEach(el=>el.onclick=(ev)=>{ ev.stopPropagation(); const [id,on]=el.dataset.rsretok.split('|'); const st=store.students.find(x=>x.id===id); if(!st) return; if(on==='1') st.returnNotified=todayISO(); else delete st.returnNotified; st.updatedAt=Date.now(); save(); rsKeep(id); render(true); });
   v.querySelectorAll('[data-sldate]').forEach(el=>el.onchange=()=>{ const [id,i]=el.dataset.sldate.split('|'); const st=store.students.find(x=>x.id===id); const e=st&&st.sl&&st.sl[+i]; if(!e||!el.value) return; e.d=el.value; e.m=el.value.slice(0,7); st.updatedAt=Date.now(); save(); rsKeep(id); render(true); });
   v.querySelectorAll('[data-sldel]').forEach(el=>el.onclick=()=>{ const [id,i]=el.dataset.sldel.split('|'); const st=store.students.find(x=>x.id===id); if(!st||!st.sl||!st.sl[+i]) return; if(!confirm('이 상태 변경 이력을 지울까요? (학생의 현재 상태는 그대로예요)')) return; st.sl.splice(+i,1); st.updatedAt=Date.now(); save(); rsKeep(id); render(true); });
   v.querySelectorAll('[data-rsfield-stage]').forEach(el=>el.onchange=()=>{
