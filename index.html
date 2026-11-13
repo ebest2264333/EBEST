@@ -17657,8 +17657,9 @@ function wlTimetable(s){
     const cd=String(cdays(c)||'').split(',').map(x=>x.trim()).filter(Boolean); const mp=mergedCounterpart(c);
     const f12=x=>{ let h=Math.floor(x), m=Math.round((x-h)*60); if(m===60){ h++; m=0; } return ((h%12)||12)+':'+String(m).padStart(2,'0'); };
     const occ=[]; const a=c.academy;
-    (c.subjects||[]).forEach(sb=>{
-      if(!sb||!sb.subject) return;
+    let subs=(c.subjects||[]).filter(sb=>sb&&sb.subject);
+    if(!subs.some(sb=>sb.time||c.time) && mp) subs=(mp.subjects||[]).filter(sb=>sb&&sb.subject); /* 합반 상대 반에 과목이 몰려 있으면 그쪽을 따라간다 (시간표 탭과 동일) */
+    subs.forEach(sb=>{
       const days=sb.day?String(sb.day).split(',').map(x=>x.trim()).filter(Boolean).filter(d=>!cd.length||cd.includes(d)):cd;
       let ts=sb.time||c.time||'';
       if(!ts && mp){ const m=(mp.subjects||[]).find(x=>x.subject===sb.subject&&x.time); ts=(m&&m.time)||timeOf(mp)||''; }
@@ -17668,7 +17669,7 @@ function wlTimetable(s){
       let txt,bg='',fg='',wt=isWordTestSubject(sb);
       if(wt){ const code=ttgTeacherCode(a,tea); const room=String(sb.room||'').trim();
         txt=room?(room.includes('어학실')?room:(code?`${room}(${code})`:room)):(code?`단어시험(${code})`:'단어시험'); bg='#e6e8ec'; fg='#222'; }
-      else { const isLc=/^(ibt|l\/c)$/i.test(String(sb.subject).replace(/\s/g,'')); const hex=isLc?'':ttgTeacherColorHex(a,tea);
+      else { const sj=String(sb.subject).replace(/\s/g,''); const isLc=/^(ibt|l\/c|lc|ec)/i.test(sj)||isLabSubject(sb.subject); const hex=isLc?'':ttgTeacherColorHex(a,tea);
         const rm=String(sb.room||'').replace(/강의실|호|\s/g,''); const showRm=rm && !rm.includes('어학실') && !isLabSubject(sb.subject);
         txt=(showRm?'('+rm+')':'')+sb.subject; bg=hex||''; fg=hex?(ttgIsDarkColor(hex)?'#fff':'#000'):''; }
       days.forEach(d=>occ.push({d,r,wt,x:txt,bg,fg}));
@@ -17680,7 +17681,7 @@ function wlTimetable(s){
       return {p:test?'TEST':(++n)+'교시', t:f12(r[0])+'~'+f12(r[1]), test, c:days.map(d=>os.filter(o=>o.d===d).map(o=>({x:o.x,bg:o.bg,fg:o.fg})))};
     });
     return {cn, m:String(month||'').slice(5).replace(/^0/,''), days, rows};
-  }catch(e){ return null; }
+  }catch(e){ console.warn('wlTimetable',e); return {cn:'',days:[],rows:[],err:String(e&&e.message||e)}; }
 }
 function wlPubData(s){
   const u=wlUnit(s)||{name:'',sym:''};
@@ -17808,6 +17809,7 @@ function wlOpenQr(sid){
     <div style="margin-top:10px">${warn}<div style="width:230px;max-width:100%;margin:0 auto">${wlQrSvg(url)}</div>
     <input type="text" readonly value="${esc(url)}" onclick="this.select()" style="${WL_INP};margin-top:10px;font-size:.72rem">
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><button class="btn small" id="wlCopy">📋 주소 복사</button><button class="btn small" id="wlPrintOne">🖨 이 카드 인쇄</button><button class="btn small" id="wlSaveImg">🖼 카드 이미지 저장</button>${isAdminRole()?'<button class="btn small" id="wlRegen" style="margin-left:auto;color:#c0392b">🔁 새 QR로 바꾸기 (분실 시에만)</button>':''}</div>
+    ${(()=>{ const t=wlTimetable(s); let m; if(!t) m='⚠ 시간표: 이 학생의 반을 이번 달 반 자료에서 못 찾았어요 (학생 명단의 반 이름 확인)'; else if(t.err) m='⚠ 시간표 오류: '+esc(t.err); else if(!t.rows.length) m='⚠ 시간표: '+esc(t.cn)+' 반에 시간이 입력된 수업이 없어요 (시간표 탭에서 시간 확인)'; else m='✅ 시간표: '+esc(t.cn)+' · '+t.days.join('')+' · '+t.rows.length+'줄 — 학생 화면에 올라가요'; return '<div style="font-size:.74rem;margin-top:8px;color:'+(m[0]==='✅'?'#0e9f6e':'#c0392b')+'">'+m+'</div>'; })()}
     <div style="font-size:.74rem;color:var(--sub);margin-top:8px;line-height:1.5">학생이 QR을 찍으면 이름(가운데는 *로 가림)·잔액·통장 내역(처음엔 10건, 더보기로 이어서)만 보여요. 한번 만든 QR은 바뀌지 않고, 잔액·내역·시간표 같은 내용만 계속 최신으로 바뀌어요. (분실·유출 때만 [새 QR로 바꾸기] — 누르면 예전 QR은 못 쓰게 돼요.)</div></div>`);
   wlPublish(sid).then(ok=>{ if(!ok && syncOn()) toast('⚠ QR 화면(잔액) 올리기 실패 — 인터넷을 확인해주세요'); });
   wlPublishAvg(s.academy);
