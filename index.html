@@ -5519,7 +5519,7 @@ function renderBookBilling(){
       <td style="${TD}">${r.mo.map(line).join('')||'<span style="color:#8b93a7">-</span>'}</td><td style="${TD};text-align:right">${r.moSum?fmtWon(r.moSum):'-'}</td>
       <td style="${TD}">${r.un.map(line).join('')||'<span style="color:var(--ok);font-size:.8rem">모두 청구됨</span>'}</td>
       <td style="${TD};text-align:right;font-weight:800;color:${r.unSum?'#dc2626':'var(--sub)'}">${r.unSum?fmtWon(r.unSum):'-'}</td>
-      <td style="${TD};white-space:nowrap">${r.un.length?`<button class="btn small primary" data-bbdone="${esc(r.e.sk)}">✔ 청구 완료</button>`:''}${r.e.recs.length?` <button class="btn small" data-bbhist="${esc(r.e.sk)}">청구 내역</button>`:''}</td></tr>`;
+      <td style="${TD};white-space:nowrap">${r.un.length?`<button class="btn small primary" data-bbdone="${esc(r.e.sk)}">✔ 청구 완료</button>`:''}${(r.un.length||r.mo.length)?` <button class="btn small" data-bbmsg="${esc(r.e.sk)}" title="학부모님께 보낼 안내 문구 복사">📋 안내문</button>`:''}${r.e.recs.length?` <button class="btn small" data-bbhist="${esc(r.e.sk)}">청구 내역</button>`:''}</td></tr>`;
   });
   return h+'</tbody></table></div>';
 }
@@ -5539,6 +5539,21 @@ function bindBookBilling(v){
   const selAll=v.querySelector('[data-bbselall]'); if(selAll) selAll.onchange=()=>sels().forEach(c=>c.checked=selAll.checked);
   const sb=v.querySelector('[data-bbselbtn]'); if(sb) sb.onclick=()=>{ const on=sels().some(c=>!c.checked); sels().forEach(c=>c.checked=on); if(selAll) selAll.checked=on; };
   const ds=v.querySelector('[data-bbdonesel]'); if(ds) ds.onclick=()=>{ const ks=sels().filter(c=>c.checked).map(c=>c.dataset.bbsel); if(!ks.length){ toast('먼저 학생을 체크하세요 (☑ 미청구 전체 선택으로 한꺼번에 선택)'); return; } doBill(ks); };
+  v.querySelectorAll('[data-bbmsg]').forEach(b=>b.onclick=()=>{
+    const e=bbData().find(x=>x.sk===b.dataset.bbmsg); if(!e) return;
+    const month=state.bbMonth||state.month; const un=e.items.filter(x=>!x.__billed); const mo=e.items.filter(x=>String(x.date||'').slice(0,7)===month);
+    const useUn=un.length>0; const list=(useUn?un:mo).slice().sort((x,y)=>String(x.date||'').localeCompare(String(y.date||'')));
+    const md=d=>{ const t=String(d||'').slice(5).split('-'); return t.length===2?Number(t[0])+'/'+Number(t[1]):''; };
+    const sum=list.reduce((n,x)=>n+x.__price,0);
+    const txt=`안녕하세요, 이베스트 어학원입니다.\n${e.name} 학생 ${useUn?'교재비':mLabel(month)+' 교재비'} 안내드립니다.\n\n`+list.map(x=>`· ${x.book}${md(x.date)?' ('+md(x.date)+')':''} ${x.__price?fmtWon(x.__price):'금액 확인 필요'}`).join('\n')+`\n\n합계 ${fmtWon(sum)}\n\n확인 부탁드립니다. 감사합니다.`;
+    bkModal(`${esc(e.name)} — 학부모 안내문`,`<div style="font-size:.78rem;color:var(--sub)">${useUn?'아직 청구하지 않은 교재':mLabel(month)+' 배부 교재'} 기준이에요. 내용은 고쳐서 복사해도 돼요.</div><textarea id="bbMsgTx" rows="12" style="width:100%;box-sizing:border-box;padding:8px;border:1px solid #c5ccd8;border-radius:8px;font:inherit;font-size:.88rem">${esc(txt)}</textarea>`,ov=>{
+      const t=ov.querySelector('#bbMsgTx'); const v2=t.value;
+      const done=()=>toast('안내문을 복사했어요. 문자·카톡에 붙여넣기 하세요');
+      if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(v2).then(done,()=>{ t.select(); document.execCommand('copy'); done(); });
+      else { t.select(); document.execCommand('copy'); done(); }
+      return true;
+    },'📋 복사');
+  });
   v.querySelectorAll('[data-bbhist]').forEach(b=>b.onclick=()=>{
     const e=bbData().find(x=>x.sk===b.dataset.bbhist); if(!e) return;
     bkModal(`${e.name} — 청구 내역`,e.recs.map(r=>`<div style="border-bottom:1px dashed var(--line);padding:5px 0;font-size:.84rem"><b>${esc(r.date)}</b> · ${r.count}건 · <b>${fmtWon(r.amount)}</b> <button class="btn small" style="float:right" data-bbundo="${r.id}">청구 취소</button><div style="color:var(--sub);font-size:.76rem">${esc(r.items||'')}${r.by?' · '+esc(r.by):''}</div></div>`).join(''),null);
