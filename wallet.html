@@ -32,6 +32,7 @@ button{margin-top:10px;border:0;background:var(--acc);color:#fff;border-radius:1
 <body><div class="wrap" id="app"><div class="msg">불러오는 중…</div></div>
 <script>
 // 학원 화폐 통장 — 학생이 QR을 찍으면 열리는 화면(읽기 전용). 학원 관리 화면이 서버에 올려둔 wallet/<코드> 한 칸만 읽는다.
+var VER='v1113d'; // 화면 버전 — 맨 아래에 작게 표시 (새 파일이 열렸는지 확인용)
 var DB='https://ebest-b41ce-default-rtdb.asia-southeast1.firebasedatabase.app';
 var T=(new URLSearchParams(location.search).get('t')||'').trim();
 var app=document.getElementById('app');
@@ -91,8 +92,8 @@ function load(){
     if(!d){ show('<div class="msg">이 QR은 더 이상 쓸 수 없어요.<br>선생님께 새 QR을 받아주세요.</div>'); return; }
     ALL=(d.rec||[]); SHOWN=Math.min(SHOWN||10, Math.max(ALL.length,10)); DATA=d;
     return fetch(DB+'/walletMeta/'+encodeURIComponent(d.ac||'')+'.json',{cache:'no-store'}).then(function(r){ return r.ok?r.json():null; }).catch(function(){ return null; }).then(function(m){ AVG=(m&&m[d.u]!=null)?Number(m[d.u]):null; draw(); });
-  }).catch(function(){
-    show('<div class="msg">내용을 불러오지 못했어요.<br>인터넷을 확인하고 다시 시도해주세요.<br><button onclick="load()">🔄 다시 시도</button></div>');
+  }).catch(function(e){
+    show('<div class="msg">내용을 불러오지 못했어요.<br>인터넷을 확인하고 다시 시도해주세요.<br><button onclick="load()">🔄 다시 시도</button><div style="margin-top:10px;font-size:.68rem;color:var(--sub)">'+VER+' · '+esc(e&&e.message||e)+'</div></div>');
   });
 }
 var ALL=[],SHOWN=10,DATA=null,AVG=null;
@@ -127,9 +128,20 @@ function jar(lv,unit){
     '<path d="'+body+'" fill="none" stroke="#fff" stroke-width="3" opacity=".9"/><path d="M50 52 V150" stroke="#fff" stroke-width="5" stroke-linecap="round" opacity=".35"/>'+ticks+dust+stars+'</svg>';
 }
 
+function ttSafe(){ try{ return ttHtml(); }catch(e){ return '<div class="list" style="margin-top:14px"><div class="empty">시간표를 표시하지 못했어요. <span style="font-size:.7rem">('+esc(e&&e.message||e)+')</span></div></div>'; } }
 function ttHtml(){
   var t=DATA&&DATA.tt; if(!t) return '<div class="list" style="margin-top:14px"><h2 style="margin:0 0 6px">📅 시간표</h2><div class="empty">시간표를 아직 받아오지 못했어요.<br>선생님께 다시 올려달라고 해주세요.</div></div>';
   var today=['일','월','화','수','목','금','토'][new Date().getDay()];
+  // 이번 주 / 다음 주 두 벌이 올라와 있으면 오늘 날짜로 고른다 — 일요일부터는 다음 주 시간표
+  var range='', inWeek=true;
+  if(t.weeks){ var now=new Date(), g=now.getDay(), mon=new Date(now.getFullYear(),now.getMonth(),now.getDate()+(g===0?1:1-g));
+    var key=mon.getFullYear()+'-'+('0'+(mon.getMonth()+1)).slice(-2)+'-'+('0'+mon.getDate()).slice(-2);
+    var keys=Object.keys(t.weeks).sort(), pick=t.weeks[key];
+    if(!pick){ var le=keys.filter(function(k){ return k<=key; }); pick=t.weeks[le.length?le[le.length-1]:keys[0]]; }
+    if(pick){ t={cn:pick.cn||t.cn,days:pick.days,rows:pick.rows}; range=pick.range||''; }
+    inWeek=(g!==0);
+  }
+  if(!inWeek) today='';
   var days=t.days||[], rows=t.rows||[]; if(!Array.isArray(rows)) rows=Object.keys(rows).map(function(k){ return rows[k]; }); // 서버는 빈 배열(수업 없는 칸)을 저장하지 않으므로 아래에서 요일 수만큼 다시 채워 읽는다
   var body;
   if(!days.length||!rows.length){ body='<div class="empty">등록된 시간표가 없어요.</div>'; }
@@ -147,7 +159,7 @@ function ttHtml(){
               cell.map(function(x){ return '<div'+(cell.length>1&&x.bg?' style="background:'+x.bg+';color:'+x.fg+';padding:2px"':'')+'>'+esc(x.x)+'</div>'; }).join('')+'</td>'; }).join('')+'</tr>'; }).join('')+
       '</tbody></table></div>';
   }
-  return '<div class="list" style="margin-top:14px"><h2 style="margin:0 0 10px;text-align:center;background:linear-gradient(135deg,#2f6fd6,#4aa3f0);color:#fff;border-radius:12px;padding:10px 8px;font-size:1rem">☆ '+esc(t.cn)+(t.m?' '+esc(t.m)+'월':'')+' 시간표 ☆</h2>'+body+'</div>';
+  return '<div class="list" style="margin-top:14px"><h2 style="margin:0 0 10px;text-align:center;background:linear-gradient(135deg,#2f6fd6,#4aa3f0);color:#fff;border-radius:12px;padding:10px 8px;font-size:1rem">☆ '+esc(t.cn)+(t.m?' '+esc(t.m)+'월':'')+' 시간표 ☆'+(range?'<div style="font-size:.72rem;font-weight:500;opacity:.9;margin-top:2px">'+esc(range)+' 주</div>':'')+'</h2>'+body+'</div>';
 }
 function more(n){ SHOWN=n?Math.min(ALL.length,SHOWN+n):ALL.length; draw(); }
 function draw(){
@@ -155,12 +167,12 @@ function draw(){
     var upd=''; try{ upd=new Date(d.upd).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}); }catch(e){}
     show('<div class="hello">'+(d.e?'<b class="en">'+esc(d.e)+'</b> <span class="ko">'+esc(d.n)+'</span>':'<b class="en">'+esc(d.n)+'</b>')+'</div>'+
       '<div class="bal balwrap"><div><div class="l">현재 잔액</div><div class="n">'+sym(d)+' '+fmt(d.bal)+'<small>'+esc(d.u||'')+'</small></div></div>'+
-      '<div class="jar">'+jarHtml(level(Number(d.bal),AVG),d.u)+'</div></div><div id="stf"></div>'+ttHtml()+
+      '<div class="jar">'+jarHtml(level(Number(d.bal),AVG),d.u)+'</div></div><div id="stf"></div>'+ttSafe()+
       '<div class="list"><h2>통장 내역 <span style="font-weight:400;color:var(--sub);font-size:.8rem">(최신순 · '+ALL.length+'건)</span></h2>'+
       (recs.length?recs.map(function(x){ var inn=x.t==='in';
         return '<div class="row"><span class="d">'+md(x.d)+'</span><span class="r">'+esc(x.r||'')+'</span><span class="a '+(inn?'in':'out')+'">'+(inn?'+':'−')+fmt(x.a)+'</span></div>'; }).join(''):'<div class="empty">아직 내역이 없어요.</div>')+
       (left>0?'<div style="display:flex;gap:8px;justify-content:center;padding:6px 0 12px"><button onclick="more(10)">더보기 ('+Math.min(10,left)+'건)</button>'+(left>10?'<button onclick="more(0)" style="background:transparent;color:var(--acc);border:1.5px solid var(--acc)">전체 보기 ('+left+'건 더)</button>':'')+'</div>':'')+
-      '</div><div class="foot">'+(upd?upd+' 기준 · ':'')+'<button onclick="load()">🔄 새로고침</button></div>');
+      '</div><div class="foot">'+(upd?upd+' 기준 · ':'')+'<button onclick="load()">🔄 새로고침</button><div style="margin-top:6px;font-size:.62rem;opacity:.5">'+VER+'</div></div>');
     stfDraw();
   }
 }

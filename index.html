@@ -17231,33 +17231,62 @@ function wlToken(sid, create){
 }
 function wlUrl(tk){ return location.origin+routeBase()+'wallet.html?t='+tk; }
 function wlDbBase(){ let u=String((store.sync&&store.sync.url)||'').trim().replace(/\/+$/,''); if(u && !/^https:\/\//.test(u)) u='https://'+u; return u; }
-/* 학생 화면에 보여줄 "우리 반 시간표" — 시간표 탭과 같은 방식(시간 줄 × 요일 칸)으로 이번 달 반 자료에서 뽑는다 */
-function wlTimetable(s){
-  try{
-    const month=state.month; const cn=classNameInMonth(s,month); if(!cn) return null;
-    const c=classesFor(month).find(x=>x.academy===s.academy && x.name===cn && !x.examOnly); if(!c) return null;
-    const cd=String(cdays(c)||'').split(',').map(x=>x.trim()).filter(Boolean); const mp=mergedCounterpart(c);
-    const f12=x=>{ let h=Math.floor(x), m=Math.round((x-h)*60); if(m===60){ h++; m=0; } return ((h%12)||12)+':'+String(m).padStart(2,'0'); };
-    const occ=[]; const a=c.academy;
+/* 학생 화면에 보여줄 "우리 반 시간표" — 기간별 시간표(버전)까지 날짜로 따져서 "그 주(월~토)" 시간표를 만든다.
+   · 날짜마다 그날 적용되는 기간 시간표를 기본 시간표 위에 덮어서(자동 전환과 같은 방식) 그 요일 수업만 뽑는다 → 토요일 보강처럼 하루짜리 기간도 그날 칸에 나온다
+   · 이번 주와 다음 주 두 벌을 같이 올리고, 학생 화면이 오늘 날짜를 보고 고른다(일요일부터는 다음 주) */
+function wlEffClass(s, D, month, cur, rk){
+  const a=s.academy; const au=store.ttVerAuto||{};
+  const act=(store.ttVersions||[]).filter(v=>ttVerActive(v,D)).sort((x,y)=>String(x.start).localeCompare(String(y.start))||(x.updatedAt||0)-(y.updatedAt||0));
+  // 그날 이 학생이 속한 반: 기간 시간표에 정해 둔 반 이동(roster)이 있으면 그 반
+  let target=(rk && au.rosterMap && au.rosterMap[rk])?au.rosterMap[rk].from:(cur?cur.name:'');
+  if(rk) act.forEach(v=>{ if(v.roster && v.roster[rk]!=null) target=(v.roster[rk]==='__none')?'':v.roster[rk]; });
+  if(!target) return null;
+  let oc=(cur&&cur.name===target)?cur:classesFor(month).find(x=>x.academy===a && x.name===target && !x.examOnly && !x._deleted);
+  let id=oc?oc._id:''; if(!id) act.forEach(v=>{ const sn=v.classes.find(c=>c.a===a&&c.name===target); if(sn) id=sn._id; });
+  if(!id) return null;
+  const base=au.baseId?(store.ttVersions||[]).find(x=>x.id===au.baseId):null; const bs=base?base.classes.find(c=>c.a===a&&c._id===id):null;
+  let res=bs?{days:bs.days,subjects:bs.subjects||[]}:(oc?{days:cdays(oc),subjects:oc.subjects||[]}:{days:'',subjects:[]});
+  act.forEach(v=>{ const sn=v.classes.find(c=>c.a===a&&c._id===id); if(sn) res=ttOverlay(res,sn,(v.days&&v.days.length)?new Set(v.days):null); });
+  return {academy:a,name:target,days:res.days,subjects:res.subjects,time:oc?oc.time:'',oc};
+}
+function wlWeekTT(s, mon, month, cur, rk){
+  const f12=x=>{ let h=Math.floor(x), m=Math.round((x-h)*60); if(m===60){ h++; m=0; } return ((h%12)||12)+':'+String(m).padStart(2,'0'); };
+  const occ=[]; let cn='';
+  for(let i=0;i<6;i++){ // 월~토
+    const D=ysAdd(mon,i), wd=wdOf(D); const c=wlEffClass(s,D,month,cur,rk); if(!c) continue;
+    if(!cn || D<=todayISO()) cn=c.name;
+    const a=c.academy; const cd=String(c.days||'').split(',').map(x=>x.trim()).filter(Boolean); const mp=c.oc?mergedCounterpart(c.oc):null;
     let subs=(c.subjects||[]).filter(sb=>sb&&sb.subject);
-    if(!subs.some(sb=>sb.time||c.time) && mp) subs=(mp.subjects||[]).filter(sb=>sb&&sb.subject); /* 합반 상대 반에 과목이 몰려 있으면 그쪽을 따라간다 (시간표 탭과 동일) */
+    if(!subs.some(sb=>sb.time||c.time) && mp) subs=(mp.subjects||[]).filter(sb=>sb&&sb.subject); // 합반 상대 반에 과목이 몰려 있으면 그쪽을 따라간다
     subs.forEach(sb=>{
-      const days=sb.day?String(sb.day).split(',').map(x=>x.trim()).filter(Boolean).filter(d=>!cd.length||cd.includes(d)):cd;
+      const days=sb.day?String(sb.day).split(',').map(x=>x.trim()).filter(Boolean):cd; if(!days.includes(wd)) return;
       let ts=sb.time||c.time||'';
       if(!ts && mp){ const m=(mp.subjects||[]).find(x=>x.subject===sb.subject&&x.time); ts=(m&&m.time)||timeOf(mp)||''; }
       const r=parseRange(ts); if(!r) return;
       let tea=sb.teacher||''; if(!tea && mp){ const m=(mp.subjects||[]).find(x=>x.subject===sb.subject&&x.teacher); tea=(m&&m.teacher)||''; }
       const wt=isWordTestSubject(sb); const pt=ttgCellPaint(a,{isWordTest:wt,teacher:tea,room:sb.room,subject:sb.subject},true);
-      days.forEach(d=>occ.push({d,r,wt,x:pt.txt,bg:pt.bg,fg:pt.fg}));
+      occ.push({d:wd,r,wt,x:pt.txt,bg:pt.bg,fg:pt.fg});
     });
-    const order=['월','화','수','목','금','토','일']; const days=order.filter(d=>occ.some(o=>o.d===d));
-    const starts=[...new Set(occ.map(o=>o.r[0]))].sort((x,y)=>x-y); let n=0;
-    const rows=starts.map(st=>{
-      const os=occ.filter(o=>o.r[0]===st); const r=os[0].r; const test=os.some(o=>o.wt);
-      return {p:test?'TEST':(++n)+'교시', t:f12(r[0])+'~'+f12(r[1]), test, c:days.map(d=>os.filter(o=>o.d===d).map(o=>({x:o.x,bg:o.bg,fg:o.fg})))};
-    });
-    return {cn, m:String(month||'').slice(5).replace(/^0/,''), days, rows};
-  }catch(e){ console.warn('wlTimetable',e); return {cn:'',days:[],rows:[],err:String(e&&e.message||e)}; }
+  }
+  const days=['월','화','수','목','금','토'].filter(d=>occ.some(o=>o.d===d));
+  const starts=[...new Set(occ.map(o=>o.r[0]))].sort((x,y)=>x-y); let n=0;
+  const rows=starts.map(st=>{
+    const os=occ.filter(o=>o.r[0]===st); const r=os[0].r; const test=os.some(o=>o.wt);
+    return {p:test?'TEST':(++n)+'교시', t:f12(r[0])+'~'+f12(r[1]), test, c:days.map(d=>os.filter(o=>o.d===d).map(o=>({x:o.x,bg:o.bg,fg:o.fg})))};
+  });
+  const md=x=>Number(x.slice(5,7))+'/'+Number(x.slice(8,10));
+  return {cn, range:md(mon)+'~'+md(ysAdd(mon,5)), days, rows};
+}
+function wlWeekMonday(iso){ const d=new Date(iso+'T00:00:00'); const g=d.getDay(); return ysAdd(iso, g===0?1:1-g); } // 일요일이면 내일(다음 주 월요일), 아니면 이번 주 월요일
+function wlTimetable(s){
+  try{
+    const td=todayISO(), month=td.slice(0,7); const cn=classNameInMonth(s,month);
+    const cur=cn?classesFor(month).find(x=>x.academy===s.academy && x.name===cn && !x.examOnly):null;
+    const rk=s.academy+'|'+((cur&&matchedRosterName(cur,s))||s.nameKo||'');
+    const m0=wlWeekMonday(td), m1=ysAdd(m0,7); const weeks={}; weeks[m0]=wlWeekTT(s,m0,month,cur,rk); weeks[m1]=wlWeekTT(s,m1,month,cur,rk);
+    if(!cur && !weeks[m0].rows.length && !weeks[m1].rows.length) return null;
+    return {cn:weeks[m0].cn||weeks[m1].cn||cn, weeks, days:weeks[m0].days, rows:weeks[m0].rows};
+  }catch(e){ console.warn('wlTimetable',e); return {cn:'',days:[],rows:[],weeks:{},err:String(e&&e.message||e)}; }
 }
 function wlPubData(s){
   const u=wlUnit(s)||{name:'',sym:''};
@@ -17371,7 +17400,7 @@ function wlOpenQr(sid){
     <div style="margin-top:10px">${warn}<div style="width:230px;max-width:100%;margin:0 auto">${wlQrSvg(url)}</div>
     <input type="text" readonly value="${esc(url)}" onclick="this.select()" style="${WL_INP};margin-top:10px;font-size:.72rem">
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><button class="btn small" id="wlCopy">📋 주소 복사</button><button class="btn small" id="wlPrintOne">🖨 이 카드 인쇄</button><button class="btn small" id="wlSaveImg">🖼 카드 이미지 저장</button>${isAdminRole()?'<button class="btn small" id="wlRegen" style="margin-left:auto;color:#c0392b">🔁 새 QR로 바꾸기 (분실 시에만)</button>':''}</div>
-    ${(()=>{ const t=wlTimetable(s); let m; if(!t) m='⚠ 시간표: 이 학생의 반을 이번 달 반 자료에서 못 찾았어요 (학생 명단의 반 이름 확인)'; else if(t.err) m='⚠ 시간표 오류: '+esc(t.err); else if(!t.rows.length) m='⚠ 시간표: '+esc(t.cn)+' 반에 시간이 입력된 수업이 없어요 (시간표 탭에서 시간 확인)'; else m='✅ 시간표: '+esc(t.cn)+' · '+t.days.join('')+' · '+t.rows.length+'줄 — 학생 화면에 올라가요'; return '<div style="font-size:.74rem;margin-top:8px;color:'+(m[0]==='✅'?'#0e9f6e':'#c0392b')+'">'+m+'</div>'; })()}
+    ${(()=>{ const t=wlTimetable(s); let m; if(!t) m='⚠ 시간표: 이 학생의 반을 이번 달 반 자료에서 못 찾았어요 (학생 명단의 반 이름 확인)'; else if(t.err) m='⚠ 시간표 오류: '+esc(t.err); else if(!t.rows.length && !Object.values(t.weeks||{}).some(w=>w.rows.length)) m='⚠ 시간표: '+esc(t.cn)+' 반에 시간이 입력된 수업이 없어요 (시간표 탭에서 시간 확인)'; else { const wk=Object.keys(t.weeks||{}).sort(); m='✅ 시간표: '+esc(t.cn)+' · 이번 주('+esc(t.weeks[wk[0]].range)+') '+t.days.join('')+' '+t.rows.length+'줄'+(wk[1]?' · 다음 주 '+t.weeks[wk[1]].days.join('')+' '+t.weeks[wk[1]].rows.length+'줄':'')+' — 학생 화면에 올라가요'; } return '<div style="font-size:.74rem;margin-top:8px;color:'+(m[0]==='✅'?'#0e9f6e':'#c0392b')+'">'+m+'</div>'; })()}
     <div style="font-size:.74rem;color:var(--sub);margin-top:8px;line-height:1.5">학생이 QR을 찍으면 이름(가운데는 *로 가림)·잔액·통장 내역(처음엔 10건, 더보기로 이어서)만 보여요. 한번 만든 QR은 바뀌지 않고, 잔액·내역·시간표 같은 내용만 계속 최신으로 바뀌어요. (분실·유출 때만 [새 QR로 바꾸기] — 누르면 예전 QR은 못 쓰게 돼요.)</div></div>`);
   wlPublish(sid).then(ok=>{ if(!ok && syncOn()) toast('⚠ QR 화면(잔액) 올리기 실패 — 인터넷을 확인해주세요'); });
   wlPublishAvg(s.academy);
