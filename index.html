@@ -2741,7 +2741,7 @@ function renderOverview(){
   const dayCls=d=>{ const w=wdOf(d); return classesFor(monthForDate(d)).filter(c=>{ if(c.examOnly || !acs.includes(c.academy) || isClosedDay(c.academy,d)) return false; if(classMeets(c,w)) return true; const hst=mergeHostOf(c); return !!(hst && classMeets(hst,w)); }); }; // 합반 짝 반은 주 반이 수업하는 날 같이 센다
   const dayAtt=d=>{ const w=wdOf(d), at=store.attend[d]||{}; let tot=0,chk=0,abs=0,late=0; const rows=[];
     dayCls(d).forEach(c=>activeStudentsForDate(c,d).forEach(s=>{ tot++; const a=attStatusAgg(c,w,s,at); if(!a) return; chk++;
-      if(a==='결'){ abs++; rows.push({c,s,a}); } else if(a==='지'){ late++; rows.push({c,s,a}); } }));
+      if(a==='결'){ abs++; rows.push({c,s,a}); } else if(a==='지'){ late++; rows.push({c,s,a}); } else if(a==='조퇴') rows.push({c,s,a}); }));
     return {tot,chk,abs,late,rows,rate:chk?Math.round((chk-abs)/chk*100):null}; };
   const tc=dayCls(today); const at=store.attend[today]||{}, hw=store.homework[today]||{};
   const tAtt=dayAtt(today);
@@ -2791,27 +2791,30 @@ function renderOverview(){
   const teaOf=c=>[...new Set((c.subjects||[]).filter(x=>subjOnDay(x,wd)&&x.teacher).map(x=>x.teacher))].join(', ');
   // 오늘 결석·지각 — 요약 표 + (그 아래 접힌) 사유 입력·결석생 과제 안내를 한 카드로 합쳐 맨 위에 보여준다
   // ✏ 실장님이 이름 검색으로 바로 결석·지각을 넣는 칸 — 오늘 수업 있는 반의 학생이 후보
-  _ovAbsCands=[]; tc.forEach(c=>{ const host=mergeHostOf(c); const keys=(host && !daySubjectNames(c,wd).length)?attKeysWithOwner(host,ckey(c),wd):attKeysFor(c,wd);
+  _ovAbsCands=[]; tc.forEach(c=>{ const host=mergeHostOf(c); const borrow=host && !daySubjectNames(c,wd).length; const src=borrow?host:c;
+    // 수업(과목)마다 시간도 같이 — 조퇴할 수업을 고를 때 보여준다
+    const keys=(borrow?attKeysWithOwner(host,ckey(c),wd):attKeysFor(c,wd)).map(x=>{ const sj=(src.subjects||[]).find(s=>subjOnDay(s,wd)&&(s.subject||'-')===x.subject&&s.time); return {...x, time:sj?sj.time:''}; });
     activeStudentsForDate(c,today).forEach(s=>_ovAbsCands.push({c, s, k:ckey(c), keys, label:studentDisplayName(c.academy,s,c.name)})); });
   const IN='padding:6px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.84rem';
   const absAddBox=`<div style="margin:4px 0 10px;padding:8px 10px;background:#fafbfd;border:1px solid var(--line);border-radius:8px">
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
       <input type="search" id="ovAbsQ" placeholder="🔍 학생 이름 검색해서 결석·지각 추가" autocomplete="off" style="${IN};flex:1;min-width:170px">
-      <select id="ovAbsT" style="${IN}"><option value="결">결석</option><option value="지">지각</option><option value="예정">✈ 결석 예정</option></select>
+      <select id="ovAbsT" style="${IN}"><option value="결">결석</option><option value="지">지각</option><option value="조퇴">조퇴</option><option value="예정">✈ 결석 예정</option></select>
       <span id="ovAbsDates" style="display:none;gap:4px;align-items:center"><input type="date" id="ovAbsF" value="${today}" style="${IN}"> ~ <input type="date" id="ovAbsTo" value="${today}" style="${IN}"></span>
       <input type="text" id="ovAbsR" placeholder="사유" style="${IN};flex:1;min-width:120px">
       <button type="button" class="btn small primary" id="ovAbsGo">추가</button></div>
     <div id="ovAbsRes" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
-    <div id="ovAbsHelp" style="font-size:.72rem;color:var(--sub);margin-top:4px">결석은 오늘 모든 수업이 결석, 지각은 첫 수업만 지각으로 기록돼요 · 결석 예정은 학생 명단의 결석 예정에 저장돼서 그 기간 수업이 자동으로 결석 처리돼요</div>
+    <div id="ovAbsSubj" style="display:none;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px"></div>
+    <div id="ovAbsHelp" style="font-size:.72rem;color:var(--sub);margin-top:4px">결석은 오늘 모든 수업이 결석, 지각은 첫 수업만 지각으로 기록돼요 · 조퇴는 고른 수업부터 조퇴(그 뒤 수업은 결석)예요 ·결석 예정은 학생 명단의 결석 예정에 저장돼서 그 기간 수업이 자동으로 결석 처리돼요</div>
     ${(()=>{ // 등록된 결석 예정(오늘 이후 끝나는 것) — 여기서 바로 취소 가능
       const pre=(store.students||[]).filter(st=>!st._deleted && st.absFrom && st.status!=='퇴원' && acs.includes(st.academy) && (st.absTo||st.absFrom)>=today).sort((x,y)=>x.absFrom.localeCompare(y.absFrom));
       if(!pre.length) return '';
       const fm=d=>{ const q=String(d).split('-'); return +q[1]+'/'+(+q[2]); };
       return `<div style="margin-top:8px;display:flex;flex-direction:column;gap:3px"><div style="font-size:.74rem;font-weight:800;color:var(--sub)">✈ 등록된 결석 예정 ${pre.length}명</div>${pre.map(st=>`<div style="font-size:.78rem;display:flex;gap:6px;align-items:center;flex-wrap:wrap"><b>${esc(studentDisplayName(st.academy,st.nameKo,st.className))}</b><span style="color:var(--sub)">${esc(st.className||'')}</span><span>${fm(st.absFrom)}${(st.absTo&&st.absTo!==st.absFrom)?'~'+fm(st.absTo):''}${st.absReason?' · '+esc(st.absReason):''}</span><button class="btn small" data-rsabsdone="${st.id}">취소</button></div>`).join('')}</div>`; })()}</div>`;
-  const absCard=(extra)=>`<div class="hcard absunified"><div class="hh"><h2>🚨 오늘 결석 · 지각 학생</h2><span class="hsub2">${tAtt.rows.length?`결석 ${tAtt.rows.filter(r=>r.a==='결').length} · 지각 ${tAtt.rows.filter(r=>r.a!=='결').length}`:''}</span><span class="sp"></span><button class="hlink todogo" data-tab="attend">출결 (월별) 보기</button></div>
+  const absCard=(extra)=>`<div class="hcard absunified"><div class="hh"><h2>🚨 오늘 결석 · 지각 학생</h2><span class="hsub2">${tAtt.rows.length?`결석 ${tAtt.rows.filter(r=>r.a==='결').length} · 지각 ${tAtt.rows.filter(r=>r.a==='지').length}${tAtt.rows.some(r=>r.a==='조퇴')?` · 조퇴 ${tAtt.rows.filter(r=>r.a==='조퇴').length}`:''}`:''}</span><span class="sp"></span><button class="hlink todogo" data-tab="attend">출결 (월별) 보기</button></div>
     ${absAddBox}
     ${tAtt.rows.length?`<div style="overflow:auto"><table class="otbl"><thead><tr><th>학생</th><th>반</th><th>담당</th><th>구분</th><th>사유</th></tr></thead><tbody>
-    ${tAtt.rows.map(r=>{ const k=ckey(r.c); const reason=(((hw[k]||{})[r.s])||{}).absReasonToday||''; return `<tr><td><b>${esc(studentDisplayName(r.c.academy,r.s,r.c.name))}</b></td><td>${esc(r.c.name)}</td><td>${esc(teaOf(r.c))}</td><td>${r.a==='결'?'결석':'지각'}</td><td>${reason?`<span class="opill na">${esc(reason)}</span>`:(r.a==='결'?'<span class="opill no">사유 미입력</span>':'<span class="opill na">-</span>')}</td></tr>`; }).join('')}
+    ${tAtt.rows.map(r=>{ const k=ckey(r.c); const reason=(((hw[k]||{})[r.s])||{}).absReasonToday||''; return `<tr><td><b>${esc(studentDisplayName(r.c.academy,r.s,r.c.name))}</b></td><td>${esc(r.c.name)}</td><td>${esc(teaOf(r.c))}</td><td>${r.a==='결'?'결석':r.a==='조퇴'?'조퇴':'지각'}</td><td>${reason?`<span class="opill na">${esc(reason)}</span>`:(r.a==='결'?'<span class="opill no">사유 미입력</span>':'<span class="opill na">-</span>')}</td></tr>`; }).join('')}
     </tbody></table></div>`:'<div class="hempty">오늘 결석·지각으로 체크된 학생이 없어요.</div>'}${extra||''}</div>`;
   // 처리할 일
   const todo=[];
@@ -2842,7 +2845,8 @@ function bindOverview(){
   // ✏ 이름 검색 → 결석/지각 + 사유 → 추가
   const q=v.querySelector('#ovAbsQ'), res=v.querySelector('#ovAbsRes'), go=v.querySelector('#ovAbsGo');
   if(q && res && go){
-    let pick=null, hits=[];
+    let pick=null, hits=[], eIdx=null; // eIdx: 조퇴 시작 수업 순번
+    const sBox=v.querySelector('#ovAbsSubj');
     const tSel=v.querySelector('#ovAbsT'), dWrap=v.querySelector('#ovAbsDates'), dF=v.querySelector('#ovAbsF'), dT=v.querySelector('#ovAbsTo');
     const isPre=()=>tSel.value==='예정';
     // 결석 예정은 오늘 수업이 없어도 되니 재원생 전체에서 찾는다
@@ -2856,9 +2860,16 @@ function bindOverview(){
       if(!pick && hits.length===1) pick=hits[0];
       res.innerHTML=t&&!hits.length?`<span style="font-size:.78rem;color:var(--sub)">${isPre()?'재원생 중에':'오늘 수업 있는 반에'} 그 이름의 학생이 없어요</span>`
         :hits.map((x,i)=>`<button type="button" class="chip ${x===pick?'on':''}" data-ovabsi="${i}">${esc(x.label)} <span style="opacity:.7;font-size:.74rem">[${esc(x.cn||'반 없음')}]</span></button>`).join('');
-      res.querySelectorAll('[data-ovabsi]').forEach(b=>b.onclick=()=>{ pick=hits[+b.dataset.ovabsi]; draw(); });
+      res.querySelectorAll('[data-ovabsi]').forEach(b=>b.onclick=()=>{ pick=hits[+b.dataset.ovabsi]; eIdx=null; draw(); });
+      // 조퇴: 고른 학생의 오늘 수업 목록 — 어느 수업부터 조퇴인지 누른다
+      const keys=(tSel.value==='조퇴' && pick && pick._o)?pick._o.keys:[];
+      if(eIdx!=null && eIdx>=keys.length) eIdx=null;
+      if(eIdx==null && keys.length===1) eIdx=0;
+      sBox.style.display=keys.length?'flex':'none';
+      sBox.innerHTML=keys.length?'<span style="font-size:.76rem;font-weight:800;color:var(--sub)">어느 수업부터 조퇴?</span>'+keys.map((x,i)=>`<button type="button" class="chip ${i===eIdx?'on':''}" data-ovabse="${i}">${esc(x.subject&&x.subject!=='-'?x.subject:'수업')}${x.time?` <span style="opacity:.7;font-size:.74rem">${esc(x.time)}</span>`:''}</button>`).join(''):'';
+      sBox.querySelectorAll('[data-ovabse]').forEach(b=>b.onclick=()=>{ eIdx=+b.dataset.ovabse; draw(); });
     };
-    q.oninput=draw;
+    q.oninput=()=>{ eIdx=null; draw(); };
     tSel.onchange=()=>{ dWrap.style.display=isPre()?'inline-flex':'none'; pick=null; draw(); };
     dF.onchange=()=>{ if(!dT.value || dT.value<dF.value) dT.value=dF.value; };
     q.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); go.click(); } };
@@ -2874,16 +2885,21 @@ function bindOverview(){
         toast(`${pick.label} — ${f}${to!==f?' ~ '+to:''} 결석 예정 등록했어요`);
         save(); render(true); return;
       }
+      if(type==='조퇴' && eIdx==null){ toast('어느 수업부터 조퇴인지 눌러주세요'); return; }
       pick=pick._o;
       const at=atFor(todayISO());
       pick.keys.forEach(({key},i)=>{
         at[key]=at[key]||{};
+        const cur=at[key][pick.s];
         if(type==='결') at[key][pick.s]='결'; // 결석: 오늘 모든 수업 결석
+        else if(type==='조퇴'){ // 조퇴: 고른 수업은 조퇴, 그 뒤 수업은 결석, 앞 수업에 남아 있던 결석·조퇴 표시는 지운다
+          if(i===eIdx) at[key][pick.s]='조퇴'; else if(i>eIdx) at[key][pick.s]='결'; else if(cur==='결'||cur==='조퇴') delete at[key][pick.s];
+        }
         else if(i===0) at[key][pick.s]='지'; // 지각: 첫 수업만 지각
-        else if(at[key][pick.s]==='결') delete at[key][pick.s]; // 결석이었다가 지각으로 바꾸면 뒤 수업 결석은 지운다
+        else if(cur==='결') delete at[key][pick.s]; // 결석이었다가 지각으로 바꾸면 뒤 수업 결석은 지운다
       });
       if(reason){ const hw2=hwFor(todayISO()); hw2[pick.k]=hw2[pick.k]||{}; hw2[pick.k][pick.s]=hw2[pick.k][pick.s]||{}; hw2[pick.k][pick.s].absReasonToday=reason; }
-      toast(`${pick.label} — ${type==='결'?'결석':'지각'} 처리했어요`);
+      toast(`${pick.label} — ${type==='결'?'결석':type==='조퇴'?'조퇴':'지각'} 처리했어요`);
       save(); render(true);
     };
   }
