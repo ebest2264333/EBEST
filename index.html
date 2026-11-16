@@ -10342,7 +10342,8 @@ function renderToday(list, partsOnly){
   const stayCard=isAdminRole()?'':`<div class="hcard"><h2>오늘 남는 학생</h2><div class="hdesc">출석 체크에서 '오늘 남기'를 체크한 학생이 이유와 함께 여기에 모여요.</div>${myStay.length?myStay.map(x=>`<div class="hstayi"><b>${esc(x.student)}</b> <span>${esc(x.className)}</span><div>${x.subjects.filter(z=>!z.done).map(z=>esc([z.subj,z.memo].filter(Boolean).join(' · '))).filter(Boolean).join(' / ')}</div></div>`).join(''):'<div class="hempty">아직 남는 학생이 없어요</div>'}</div>`;
   // 🚨 결석·지각 카드 — 전체 현황과 같은 구성(특이사항 · 결석·지각 목록+사유 · 접히는 결석생 과제), 내 반 학생만
   const myAbsRows=[...absentHwList.map(x=>({...x,a:'결'})), ...lateHwList.map(x=>({...x,a:'지'})), ...earlyHwList.map(x=>({...x,a:'조퇴'}))].filter(isMyAbs);
-  const myAbsCard=!myAbsRows.length?'':`<div class="hcard absunified" id="ovAbsCard"><div class="hh"><h2>🚨 오늘 결석 · 지각 학생</h2><span class="hsub2">결석 ${myAbsRows.filter(r=>r.a==='결').length} · 지각 ${myAbsRows.filter(r=>r.a==='지').length}${myAbsRows.some(r=>r.a==='조퇴')?` · 조퇴 ${myAbsRows.filter(r=>r.a==='조퇴').length}`:''}${lt?' · 내 반 기준':''}</span></div>
+  // 실장 이상(관리자·실장·원장)은 「전체 현황」에 같은 카드가 있으니 선생님 화면에서는 안 보여준다
+  const myAbsCard=(!myAbsRows.length || isAdminRole())?'':`<div class="hcard absunified" id="ovAbsCard"><div class="hh"><h2>🚨 오늘 결석 · 지각 학생</h2><span class="hsub2">결석 ${myAbsRows.filter(r=>r.a==='결').length} · 지각 ${myAbsRows.filter(r=>r.a==='지').length}${myAbsRows.some(r=>r.a==='조퇴')?` · 조퇴 ${myAbsRows.filter(r=>r.a==='조퇴').length}`:''}${lt?' · 내 반 기준':''}</span></div>
     <div style="margin:4px 0 6px">${absentNoteBox}</div>
     <div class="ovabslist">${myAbsRows.map(r=>{
       const lab=r.a==='결'?'결석':r.a==='조퇴'?'조퇴':'지각'; const miss=r.a==='결'&&!r.absReasonToday;
