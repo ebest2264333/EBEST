@@ -6100,11 +6100,11 @@ function renderWordTestPending(){
   const rowW=r=>{ const {s,disp}=nameOf(r);
     const meta=[s?s.className:'', r.date, r.wordbook||'', r.lang||'', r.range||''].filter(Boolean).join(' · ');
     return `<div class="rowitem" style="align-items:center"><span class="key">${esc(disp)} ${MODE==='all'?bdg(r.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(meta)}</span></span>
-      <span class="val">${wmBookForWordbook(r.wordbook)?`<button class="btn small" onclick="wtMakeRetestSheet('${esc(r.id)}')" style="border-color:#c2410c;color:#c2410c;margin-right:4px">📝 시험지</button>`:''}<button class="btn small" data-wtdone="${r.id}">✔ 재시험 완료 처리</button></span></div>`; };
+      <span class="val">${wtRetestSheetBtn(r.id, r.wordbook)} <button class="btn small" data-wtdone="${r.id}">✔ 재시험 완료 처리</button></span></div>`; };
   const rowN=r=>{ const {s,disp}=nameOf(r);
     const meta=[s?s.className:'', r.date, r.nsWordbook||'', r.nsRange||''].filter(Boolean).join(' · ');
     return `<div class="rowitem" style="align-items:center"><span class="key">${esc(disp)} ${MODE==='all'?bdg(r.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(meta)}</span></span>
-      <span class="val">${wmBookForWordbook(r.nsWordbook)?`<button class="btn small" onclick="wtMakeRetestSheet('${esc(r.id)}#ns')" style="border-color:#c2410c;color:#c2410c;margin-right:4px">📝 시험지</button>`:''}<button class="btn small" data-wtdone="${r.id}#ns">✔ 재시험 완료 처리</button></span></div>`; };
+      <span class="val">${wtRetestSheetBtn(r.id+'#ns', r.nsWordbook)} <button class="btn small" data-wtdone="${r.id}#ns">✔ 재시험 완료 처리</button></span></div>`; };
   const rowM=r=>{ const {s,disp}=nameOf(r);
     const meta=[s?s.className:'', r.date, r.round?r.round+'회':''].filter(Boolean).join(' · ');
     return `<div class="rowitem" style="align-items:center;flex-wrap:wrap"><span class="key">${esc(disp)} ${MODE==='all'?bdg(r.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(meta)}</span></span>
@@ -7148,6 +7148,11 @@ function wtRangeDayNums(range){
     else { const n=t.match(/\d+/); if(n) out.push(+n[0]); }
   });
   return [...new Set(out)];
+}
+// 재시험 줄에 붙는 [📝 시험지] 버튼 — 연결된 단어장이 없어도 보여주고, 누르면 어떻게 연결하는지 안내한다
+function wtRetestSheetBtn(wtId, wbName){
+  const ok=!!wmBookForWordbook(wbName);
+  return `<button class="btn small" onclick="event.stopPropagation();wtMakeRetestSheet('${esc(wtId)}')" title="${ok?'연결된 단어장에서 범위의 Day로 재시험지를 바로 만들어요':'아직 이 단어장에 연결된 시험지용 단어장이 없어요 — 누르면 안내가 나와요'}" style="border-color:#c2410c;color:#c2410c;${ok?'':'opacity:.55'}">📝 시험지</button>`;
 }
 function wtMakeRetestSheet(wtId){
   const isNs=String(wtId).endsWith('#ns'); const id=isNs?String(wtId).slice(0,-3):wtId;
@@ -10142,7 +10147,9 @@ function renderToday(list, partsOnly){
     const existing=stayList.find(x=>!x.isRetest && x.academy===st.academy && x.student===studentDisplayName(st.academy,st.nameKo,st.className));
     if(existing){ existing.subjects.push(retestSubj); return; } // 이미 다른 이유로 남는 학생이면 같은 줄에 재시험 칸만 추가
     seenStayName.add(nameKey);
-    stayList.push({className:st.className||'-', academy:st.academy, student:studentDisplayName(st.academy,st.nameKo,st.className), subjects:[retestSubj], k:'', s:''});
+    // 반 키(k)를 같이 넣어야 선생님 홈의 "오늘 남는 학생"(내 반만 보이는 카드)에도 재시험자가 뜬다
+    let rk=''; try{ const sc=classOfStudent(st, state.month); if(sc) rk=ckey(sc); }catch(e){}
+    stayList.push({className:classNameInMonth(st,state.month)||st.className||'-', academy:st.academy, student:studentDisplayName(st.academy,st.nameKo,st.className), subjects:[retestSubj], k:rk, s:'', retestOnly:true});
   }));
   const staySection=isAdminRole()?`<div class="hcard hstaybox"><div class="hh" style="margin-bottom:4px"><h2>오늘 남는 학생</h2><span class="hsub2">전체 반 기준 · ${stayList.length}명 (재시험 대상 포함)</span></div>
     <div>
@@ -10151,7 +10158,7 @@ function renderToday(list, partsOnly){
         const doneSubjects=x.subjects.filter(s=>s.done);
         return `<div class="rowitem" style="align-items:flex-start"><span class="key">${esc(x.student)} ${MODE==='all'?bdg(x.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(x.className)}</span></span>
           <span class="val" style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
-           ${openSubjects.map(s=>`<span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">${s.subj?`<b style="font-size:.76rem;color:${s.isRetest?'#b45309':'var(--sub)'}">${s.isRetest?'':'📚 '}${esc(s.subj)}</b>`:''} ${s.memo?esc(s.memo):'<span style="color:#c3c9d6">메모 없음</span>'} ${s.isRetest?`${wmBookForWordbook(s.wb)?`<button class="btn small" onclick="wtMakeRetestSheet('${esc(s.wtId)}')" title="연결된 단어장에서 범위의 Day로 재시험지를 바로 만들어요" style="border-color:#c2410c;color:#c2410c">📝 시험지</button>`:''}<button class="btn small" data-wtdone="${s.wtId}">✔ 완료</button>`:`<button class="btn small" data-staydonesub="${esc(x.k)}|${esc(x.s)}|${esc(s.subj||'')}">✔ 완료</button>`}</span>`).join('')}            ${doneSubjects.length?`<span style="font-size:.72rem;color:#8b93a7">✔ 완료: ${doneSubjects.map(s=>esc(s.subj||'')).join(', ')}</span>`:''}
+           ${openSubjects.map(s=>`<span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">${s.subj?`<b style="font-size:.76rem;color:${s.isRetest?'#b45309':'var(--sub)'}">${s.isRetest?'':'📚 '}${esc(s.subj)}</b>`:''} ${s.memo?esc(s.memo):'<span style="color:#c3c9d6">메모 없음</span>'} ${s.isRetest?`${wtRetestSheetBtn(s.wtId, s.wb)}<button class="btn small" data-wtdone="${s.wtId}">✔ 완료</button>`:`<button class="btn small" data-staydonesub="${esc(x.k)}|${esc(x.s)}|${esc(s.subj||'')}">✔ 완료</button>`}</span>`).join('')}            ${doneSubjects.length?`<span style="font-size:.72rem;color:#8b93a7">✔ 완료: ${doneSubjects.map(s=>esc(s.subj||'')).join(', ')}</span>`:''}
           </span></div>`;
       }).join(''):'<div style="font-size:.82rem;color:#8b93a7">오늘 남는 학생이 없습니다.</div>'}
     </div></div>`:'';
@@ -10648,7 +10655,7 @@ function renderToday(list, partsOnly){
     ${sel?`<div class="hbox">${boxHead(sel,'출석 '+sel.present+'/'+sel.n+' · 숙제 '+sel.hwdone+'/'+sel.n)}${homePrevHwBox(sel.c, sel.k, sel.allSubjNamesToday)}<div class="hasg">${sel.asgBox}</div>${sel.attBody}</div>`:emptyMsg}</div>`;
   const hwCard='';
   const myStay=stayList.filter(x=>cardKeys.has(x.k));
-  const stayCard=isAdminRole()?'':`<div class="hcard"><h2>오늘 남는 학생</h2><div class="hdesc">출석 체크에서 '오늘 남기'를 체크한 학생이 이유와 함께 여기에 모여요.</div>${myStay.length?myStay.map(x=>`<div class="hstayi"><b>${esc(x.student)}</b> <span>${esc(x.className)}</span><div>${x.subjects.filter(z=>!z.done).map(z=>esc([z.subj,z.memo].filter(Boolean).join(' · '))).filter(Boolean).join(' / ')}</div></div>`).join(''):'<div class="hempty">아직 남는 학생이 없어요</div>'}</div>`;
+  const stayCard=isAdminRole()?'':`<div class="hcard"><h2>오늘 남는 학생</h2><div class="hdesc">출석 체크에서 '오늘 남기'를 체크한 학생이 이유와 함께 여기에 모여요.</div>${myStay.length?myStay.map(x=>`<div class="hstayi"><b>${esc(x.student)}</b> <span>${esc(x.className)}</span><div>${x.subjects.filter(z=>!z.done && !z.isRetest).map(z=>esc([z.subj,z.memo].filter(Boolean).join(' · '))).filter(Boolean).join(' / ')}</div>${x.subjects.filter(z=>!z.done && z.isRetest).map(z=>`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:3px"><span style="font-size:.78rem;color:#b45309;font-weight:800">${esc(z.subj)}</span><span style="font-size:.78rem">${esc(z.memo||'')}</span>${wtRetestSheetBtn(z.wtId, z.wb)}<button class="btn small" data-wtdone="${esc(z.wtId)}">✔ 완료</button></div>`).join('')}</div>`).join(''):'<div class="hempty">아직 남는 학생이 없어요</div>'}</div>`;
   // 🚨 결석·지각 카드 — 전체 현황과 같은 구성(특이사항 · 결석·지각 목록+사유 · 접히는 결석생 과제), 내 반 학생만
   const myAbsRows=[...absentHwList.map(x=>({...x,a:'결'})), ...lateHwList.map(x=>({...x,a:'지'})), ...earlyHwList.map(x=>({...x,a:'조퇴'}))].filter(isMyAbs);
   // 실장 이상(관리자·실장·원장)은 「전체 현황」에 같은 카드가 있으니 선생님 화면에서는 안 보여준다
