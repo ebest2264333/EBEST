@@ -7206,7 +7206,7 @@ function wmSheetWriting(type,words,info,ans){
   } else Object.keys(g).sort(wmDaySort).forEach(d=>{ const arr=g[d]; for(let i=0;i<arr.length;i+=WM_MAXROWS) chunks.push({label:d+(arr.length>WM_MAXROWS?' ('+(i/WM_MAXROWS+1)+')':''),words:arr.slice(i,i+WM_MAXROWS)}); });
   const pages=[]; for(let i=0;i<chunks.length;i+=2) pages.push(chunks.slice(i,i+2));
   return pages.map(pg=>{
-    const rows=Math.max(...pg.map(c=>c.words.length)); const total=pg.reduce((s,c)=>s+c.words.length,0);
+    const rows=Math.max(...pg.map(c=>c.words.length)); const total=words.length; // 점수 칸은 장 수와 상관없이 시험 전체 단어 수 기준
     const pad=pg.length<2?'<td class="x" colspan="2"></td>':'';
     let h='<div class="tbw"><table class="wt"><colgroup>'+pg.map(()=>'<col style="width:25%"><col style="width:25%">').join('')+(pg.length<2?'<col style="width:25%"><col style="width:25%">':'')+'</colgroup>';
     h+='<tr>'+(wmS._merged?'<th colspan="'+(pg.length*2)+'">'+esc(wmDaysLabel([].concat(...pg.map(c=>c.words))))+'</th>':pg.map(c=>'<th colspan="2">'+esc(c.label)+'</th>').join(''))+pad+'</tr><tr>'+pg.map(()=>'<th>English</th><th>Korean</th>').join('')+pad+'</tr>';
