@@ -9866,11 +9866,14 @@ function renderToday(list, partsOnly){
 
   const depts = ['초등', '중등', '고등', '기타'];
   let absentGroupsHTML = '';
-  // 숙제 내용(직접 적은 메모 또는 오늘의 과제 자동 내용)이 있는 과목만
+  // 그 학생에게 오늘 따로 적어준 개별 숙제 (출석·숙제 체크의 '개별 숙제' 칸)
+  const indivHwFor = (x, sj) => { const r=(hw[x.k]||{})[x.s]||{};
+    return String((sj.subj ? ((r.indivHwBySubject||{})[sj.subj] || (x.subjects.length===1 ? r.indivHw : '')) : r.indivHw) || '').trim(); };
+  // 숙제 내용(직접 적은 메모 · 오늘의 과제 자동 내용 · 개별 숙제)이 있는 과목만
   const hwSubjsOf = x => { const hrecTop=(hw[x.k]||{})[x.s]||{}; const bySubj=hrecTop.bySubject||{};
     return x.subjects.filter(sj=>{
       const saved=(sj.subj?(bySubj[subjKey(sj.subj)]&&bySubj[subjKey(sj.subj)].kakaoMemo):hrecTop.kakaoMemo)||'';
-      return String(saved||assignItemTextForSubject(x.assignK||x.k, sj.subj, x.subjects.length===1)||'').trim();
+      return String(saved||assignItemTextForSubject(x.assignK||x.k, sj.subj, x.subjects.length===1)||'').trim() || indivHwFor(x, sj);
     }); };
   // 결석생 과제 칸에는 숙제가 있는 결석생만 보여준다 (사유는 위 결석·지각 목록에서 입력) — 전체 현황·내 수업 같음
   const absentHwShown = absentHwList.filter(x=>isMyAbs(x) && hwSubjsOf(x).length);
@@ -9905,14 +9908,16 @@ function renderToday(list, partsOnly){
                 ${hwSubjs.map(sj=>{
                   const savedMemo = (sj.subj ? (bySubj[subjKey(sj.subj)] && bySubj[subjKey(sj.subj)].kakaoMemo) : hrecTop.kakaoMemo) || '';
                   // 이 학생만 따로 적어둔 메모가 없으면, 위(오늘의 과제)에 그 과목으로 적어둔 내용을 기본값으로 보여준다 — 직접 고치면 그 학생만 따로 저장됨
-                  const autoMemo = savedMemo ? '' : assignItemTextForSubject(x.assignK||x.k, sj.subj, x.subjects.length===1);
-                  const subjMemo = savedMemo || autoMemo;
+                  // 개별 숙제가 있으면 그걸 칸에 넣어둔다 — 복사할 때 기본 숙제(오늘의 과제) 뒤에 "(개인) …"으로 자동으로 이어 붙는다
+                  const indivMemo = savedMemo ? '' : indivHwFor(x, sj);
+                  const autoMemo = (savedMemo || indivMemo) ? '' : assignItemTextForSubject(x.assignK||x.k, sj.subj, x.subjects.length===1);
+                  const subjMemo = savedMemo || indivMemo || autoMemo;
                   return `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
                     <label class="hwlab" style="color:${sj.kakaoSent?'#27ae60':'#b45309'};font-weight:800;background:#fff;padding:3px 8px;border:1px solid ${sj.kakaoSent?'#27ae60':'#f5c6cb'};border-radius:6px;min-width:140px;text-align:center">
                       <input type="checkbox" class="hwkakaochk" data-k="${esc(x.k)}" data-s="${esc(x.s)}" data-subj="${esc(sj.subj||'')}" ${sj.kakaoSent?'checked':''}> 💬 ${sj.subj?esc(sj.subj)+' - ':''}카톡 전송
                     </label>
                     <input type="text" class="hwkakaomemo" data-k="${esc(x.k)}" data-s="${esc(x.s)}" data-subj="${esc(sj.subj||'')}" data-assignk="${esc(x.assignK||x.k)}" data-only="${x.subjects.length===1?'1':'0'}" placeholder="전송할 숙제/진도 내용 입력" value="${esc(subjMemo)}" title="${autoMemo?'오늘의 과제에 적어둔 내용이 자동으로 채워졌어요 — 이 학생만 다르게 보내려면 직접 수정하세요':'복사할 때는 오늘의 과제 기본 숙제에 이 개인 숙제가 자동으로 더해져요'}" style="flex:1;min-width:180px;border:1px solid ${autoMemo?'#cfe3ff':'#dcdde1'};border-radius:6px;padding:4px 8px;font-family:inherit;font-size:.8rem;background:${autoMemo?'#f7fbff':'#fff'}">
-                    ${autoMemo?'<span style="font-size:.68rem;color:#5a8fd6;font-weight:700;white-space:nowrap">↳ 오늘의 과제에서 자동 입력</span>':'<span style="font-size:.68rem;color:#8b5a00;font-weight:700;white-space:nowrap">↳ 복사 시 기본 숙제 + 이 내용이 합쳐져요</span>'}
+                    ${autoMemo?'<span style="font-size:.68rem;color:#5a8fd6;font-weight:700;white-space:nowrap">↳ 오늘의 과제에서 자동 입력</span>':indivMemo?'<span style="font-size:.68rem;color:#8b5a00;font-weight:700;white-space:nowrap">↳ 개별 숙제 — 복사 시 기본 숙제 + 이 내용</span>':'<span style="font-size:.68rem;color:#8b5a00;font-weight:700;white-space:nowrap">↳ 복사 시 기본 숙제 + 이 내용이 합쳐져요</span>'}
                   </div>`;
                 }).join('')}
               </div>
