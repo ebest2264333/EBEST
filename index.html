@@ -6362,7 +6362,7 @@ function renderBookLists(){
     [['wb','📖 단어장 목록',wbOptionsFor(a),'새 단어장 이름 (예: 중등 심화)'],['tp','📝 단어 시험지 목록',tpOptionsFor(a),'새 시험지 이름 (예: 단원평가 3회)']].forEach(([t,title,list,ph])=>{
       h+=`<div style="font-weight:800;font-size:.86rem;margin:8px 0 6px">${title}</div>
       ${t==='wb'?'<div style="font-size:.74rem;color:var(--sub);margin:-2px 0 6px">단어장마다 <b>데이당 단어 수</b>를 적어두면, 단어시험에서 범위(예: 3,4)만 쓰면 전체 개수가 자동으로 나오고 <b>맞은 개수</b>만 입력하면 돼요. 10%까지 틀리면 통과, 더 틀리면 재시험이 자동 체크돼요.</div>':''}
-      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">${list.map((o,i)=>`<span class="stu">${esc(o)}${t==='wb'?` <input type="number" min="0" step="1" data-blwbper="${a}|${i}" value="${wbPerDay(a,o)||''}" placeholder="데이당" title="데이당 단어 수" style="width:62px;padding:2px 5px;border:1px solid var(--line);border-radius:6px;font-family:inherit;font-size:.78rem">개`:''} <b data-bl${t}del="${a}|${i}" style="cursor:pointer;color:#c0392b;margin-left:3px">×</b></span>`).join('')||'<span style="font-size:.82rem;color:#8b93a7">등록된 항목이 없습니다.</span>'}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">${list.map((o,i)=>`<span class="stu"><span data-bl${t}ren="${a}|${i}" title="눌러서 이름 고치기" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px">${esc(o)}</span>${t==='wb'?` <input type="number" min="0" step="1" data-blwbper="${a}|${i}" value="${wbPerDay(a,o)||''}" placeholder="데이당" title="데이당 단어 수" style="width:62px;padding:2px 5px;border:1px solid var(--line);border-radius:6px;font-family:inherit;font-size:.78rem">개`:''} <b data-bl${t}del="${a}|${i}" style="cursor:pointer;color:#c0392b;margin-left:3px">×</b></span>`).join('')||'<span style="font-size:.82rem;color:#8b93a7">등록된 항목이 없습니다.</span>'}</div>
       <div style="display:flex;gap:6px;margin-bottom:6px"><input type="text" data-bl${t}in="${a}" placeholder="${ph}" style="flex:1;min-width:140px;padding:6px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.86rem"><button class="btn small" data-bl${t}add="${a}">+ 추가</button></div>`;
     });
     h+=`</div>`;
@@ -6375,6 +6375,21 @@ function bindBookLists(v){
     v.querySelectorAll(`[data-bl${t}del]`).forEach(b=>b.onclick=()=>{ const [a,i]=b.dataset[`bl${t}del`].split('|'); const l=getL(t,a); l.splice(Number(i),1); setL(t,a,l); });
     const add=a=>{ const inp=v.querySelector(`[data-bl${t}in="${a}"]`); const val=(inp&&inp.value||'').trim(); if(!val) return; const l=getL(t,a); if(!l.includes(val)) l.push(val); setL(t,a,l); };
     v.querySelectorAll(`[data-bl${t}add]`).forEach(b=>b.onclick=()=>add(b.dataset[`bl${t}add`]));
+    // ✏ 이름 고치기 — 목록 이름만 바꾸면 예전 기록과 짝이 끊기므로, 같은 이름으로 적힌 기록(단어시험 · 데이당 개수 · 시험지용 단어장 연결 · 재고 품목 · 배부 기록)도 같이 바꾼다
+    v.querySelectorAll(`[data-bl${t}ren]`).forEach(el=>el.onclick=()=>{
+      const [a,i]=el.dataset[`bl${t}ren`].split('|'); const l=getL(t,a); const old=l[Number(i)]; if(old==null) return;
+      const nv0=prompt(`「${old}」의 새 이름을 적어주세요.\n(이 이름으로 적힌 단어시험·배부·재고 기록도 같이 바뀌어요)`, old); if(nv0==null) return;
+      const nv=nv0.trim(); if(!nv || nv===old) return;
+      if(l.includes(nv)){ alert('이미 같은 이름이 목록에 있어요.'); return; }
+      l[Number(i)]=nv;
+      let n=0; const same=x=>String(x||'').trim()===old;
+      (store.wordTests||[]).forEach(r=>{ if(r.academy && r.academy!==a) return; let hit=false; if(t==='wb'){ if(same(r.wordbook)){ r.wordbook=nv; hit=true; } if(same(r.nsWordbook)){ r.nsWordbook=nv; hit=true; } } else { ['testPaper','paper','tp'].forEach(f=>{ if(same(r[f])){ r[f]=nv; hit=true; } }); } if(hit){ n++; r.updatedAt=Date.now(); } });
+      if(t==='wb'){ const pd=(store.wordbookPerDay||{})[a]; if(pd && pd[old]!=null){ store.wordbookPerDay[a]=Object.assign({}, pd); store.wordbookPerDay[a][nv]=pd[old]; delete store.wordbookPerDay[a][old]; }
+        (store.wordBooks||[]).forEach(b=>{ if(same(b.link)){ b.link=nv; n++; } }); }
+      (store.bookStock||[]).forEach(it=>{ if(!it._deleted && it.academy===a && bkNorm(it.name)===bkNorm(old)){ it.name=nv; it.updatedAt=Date.now(); n++; } });
+      (store.bookGiveLog||[]).forEach(x=>{ if(!x._deleted && x.academy===a && bkNorm(x.book)===bkNorm(old)){ x.book=nv; x.updatedAt=Date.now(); n++; } });
+      setL(t,a,l); toast(`「${old}」→「${nv}」 이름을 바꿨어요${n?` (기록 ${n}건 같이 변경)`:''}`);
+    });
     v.querySelectorAll(`[data-bl${t}in]`).forEach(i=>i.onkeydown=e=>{ if(e.key==='Enter') add(i.dataset[`bl${t}in`]); });
   });
   v.querySelectorAll('[data-blwbper]').forEach(inp=>inp.onchange=()=>{
@@ -12134,11 +12149,36 @@ function regenHandoverGrid(academy, targetMonth, onlyTeacherName){
   store.handoverGrid[academy][targetMonth]={rows, classOverrides:overrides, splitTargetGroups:splitGroups, groupOrder, classMergeGroups, updatedAt:Date.now()};
   save();
 }
+// 🔄 인수인계표를 "처음 만든 때" 자료가 아니라 지금 자료에 맞춰 둔다 — 화면을 열 때마다 지난달 반·과목(현재 등록 상태)과
+// 다음 달 시간표(반·과목·담당)를 다시 읽어서,
+//  · 직접 고친 적 없는 칸(반명·과목명·담당)은 최신 값으로 바꾸고 (직접 고친 칸은 r.manual에 표시돼 있어 건드리지 않는다)
+//  · 교재 칸은 비어 있을 때만 채우고
+//  · 중간에 새로 생긴 반·과목은 줄을 추가한다 (없어진 반·과목 줄은 적어둔 내용이 있을 수 있어 지우지 않는다)
+function hgSyncLive(academy, targetMonth){
+  const g=handoverGridFor(academy, targetMonth); if(!g || !g.rows) return false;
+  let fresh=[]; try{ fresh=genHandoverRows(academy, targetMonth); }catch(e){ return false; }
+  const ov=g.classOverrides||{}, split=g.splitTargetGroups||{};
+  let changed=false;
+  const key=r=>norm(r.prevClass)+'␟'+norm(r.matchKey||r.subject);
+  const byKey={}; g.rows.forEach(r=>{ byKey[key(r)]=byKey[key(r)]||r; });
+  fresh.forEach(fr=>{
+    const r=byKey[key(fr)];
+    if(!r){ g.rows.push(fr); byKey[key(fr)]=fr; changed=true; return; }
+    const man=r.manual||{}; const merged=r.mergeGroup?(r.mergeFields||[]):[];
+    const setF=(f,v)=>{ if(man[f] || merged.includes(f)) return; if(v!=null && v!=='' && r[f]!==v){ r[f]=v; changed=true; } };
+    if(!split[norm(r.prevClass)] && !(ov[norm(r.prevClass)])) setF('targetClass', fr.targetClass);
+    setF('targetSubject', fr.targetSubject); setF('targetTeacher', fr.targetTeacher); setF('prevTeacher', fr.prevTeacher);
+    if(!r.book && fr.book && !man.book && !merged.includes('book')){ r.book=fr.book; changed=true; }
+    if(!r.prevBook && fr.prevBook && !man.prevBook){ r.prevBook=fr.prevBook; changed=true; }
+  });
+  if(changed){ g.updatedAt=Date.now(); save(); }
+  return changed;
+}
 // 인수인계표 칸 너비 — 보는 사람 화면(이 브라우저)에서만 적용, 저장/동기화 안 됨(다른 선생님에게 영향 없음)
 // 반 칸 하나에 「지난달 반명 / 이번달 반명 입력칸」을 위아래로 같이 넣는다 (시안 디자인)
 const HG_COLS=[
   {key:'sel', w:44}, {key:'cls', w:150}, {key:'subject', w:100}, {key:'targetSubject', w:130},
-  {key:'prevTeacher', w:92}, {key:'targetTeacher', w:100}, {key:'prevBook', w:170}, {key:'book', w:170},
+  {key:'prevTeacher', w:110}, {key:'targetTeacher', w:100}, {key:'prevBook', w:170}, {key:'book', w:170},
   {key:'lastHw', w:150}, {key:'progress', w:90}, {key:'note', w:150}, {key:'targetProgress', w:100}
 ];
 // 합치기 한 행들이 원래 표에서 서로 떨어져 있어도, 화면엔 항상 나란히 모아서 보여준다(저장된 순서 자체는 안 건드림)
@@ -12266,6 +12306,7 @@ function renderHandoverGrid(){
   const a=academies()[0];
   let g=handoverGridFor(a,targetMonth);
   if(!g){ regenHandoverGrid(a,targetMonth); g=handoverGridFor(a,targetMonth); }
+  else { try{ hgSyncLive(a,targetMonth); g=handoverGridFor(a,targetMonth); }catch(e){ console.error('인수인계표 최신화 오류', e); } }
   // IBT·단어시험처럼 나중에 제외 대상으로 지정된 과목이 예전에 만들어진 표에 이미 남아있으면 걸러내고 저장(직접 입력한 다른 값은 유지)
   if(g.rows && g.rows.some(r=>isHandoverExcludedSubj(r.subject))){
     g.rows=g.rows.filter(r=>!isHandoverExcludedSubj(r.subject));
@@ -12339,7 +12380,7 @@ function renderHandoverGrid(){
     return `<input type="text" value="${esc(val||'')}" ${dataAttr}${cls?` class="${cls}"`:''}${ph?` placeholder="${esc(ph)}"`:''}>`;
   };
   const colw=hgColWidths();
-  const sm=(t)=>`<small>${t}</small>`;
+  const sm=(t)=>{ const m=String(t).match(/^(\d{4})년\s*(\d+)월\s*→\s*(\d{4})년\s*(\d+)월$/); return `<small>${m&&m[1]===m[3]?`${m[1]}년 ${m[2]}월 → ${m[4]}월`:t}</small>`; }; // 머리줄은 "2026년 11월 → 12월"처럼 (해가 바뀌면 둘 다 표시)
   // 짝 칸(지난달 → 이번달)은 머리줄 글자를 앞 칸에만 쓰고 뒤 칸까지 이어서 보이게 한다
   const colHeads={
     sel:['선택',''], cls:[`반${sm(prevLabel+' → '+targetLabel)}`,''],
@@ -12350,7 +12391,7 @@ function renderHandoverGrid(){
   };
   const colTitles={sel:'선택',cls:`${prevLabel} 반명 → ${targetLabel} 반명`,subject:`${prevLabel} 과목명`,targetSubject:`${targetLabel} 과목명`,prevTeacher:`${prevLabel} 담당`,targetTeacher:`${targetLabel} 담당`,prevBook:`${prevLabel} 교재`,book:`${targetLabel} 교재`,lastHw:'지난 과제',progress:'진도',note:'특이사항',targetProgress:`${targetLabel} 진도`};
   const hgOpts=hgClassOptions(a,targetMonth);
-  h+=`${teacherDatalist(a)}<datalist id="dl_hgclass_${a}">${hgOpts.map(nm=>`<option value="${esc(nm)}">`).join('')}</datalist><div style="overflow-x:auto"><table class="hgx">
+  h+=`${teacherDatalist(a)}<datalist id="dl_hgclass_${a}">${hgOpts.map(nm=>`<option value="${esc(nm)}">`).join('')}</datalist><div style="overflow-x:auto"><table class="hgx" style="width:${HG_COLS.reduce((n,c)=>n+colw[c.key],0)}px;min-width:0">
   <colgroup>${HG_COLS.map(c=>`<col style="width:${colw[c.key]}px">`).join('')}</colgroup>
   <thead><tr>${HG_COLS.map(c=>`<th class="${colHeads[c.key][1]}" title="${esc(colTitles[c.key])}"${c.key==='sel'?' style="text-align:center;padding-right:8px"':''}>${colHeads[c.key][0]}<span class="hg-resizer" data-col="${c.key}" title="드래그해서 칸 너비 조절 (이 화면에서만 적용)" style="position:absolute;right:0;top:0;bottom:0;width:8px;cursor:col-resize;user-select:none"></span></th>`).join('')}</tr></thead><tbody>
   ${groups.map((g2,gi)=>{
@@ -12447,14 +12488,14 @@ function bindHandoverGrid(){
     const [rid,field]=inp.dataset.hgfield.split('|');
     const g=handoverGridFor(a, state.hgMonth); if(!g) return;
     const row=g.rows.find(r=>r.id===rid); if(!row) return;
-    row[field]=inp.value; g.updatedAt=Date.now();
+    row[field]=inp.value; row.manual=row.manual||{}; row.manual[field]=true; g.updatedAt=Date.now(); // 직접 고친 칸은 자동 최신화에서 제외
     save(); render(true);
   });
   // 합쳐진(병합된) 칸 — 값을 고치면 같은 mergeGroup에 속한 행 전체에 똑같이 반영된다
   v.querySelectorAll('[data-hgmergefield]').forEach(inp=>inp.onchange=()=>{
     const [mg,field]=inp.dataset.hgmergefield.split('|');
     const g=handoverGridFor(a, state.hgMonth); if(!g) return;
-    g.rows.forEach(r=>{ if(r.mergeGroup===mg) r[field]=inp.value; });
+    g.rows.forEach(r=>{ if(r.mergeGroup===mg){ r[field]=inp.value; r.manual=r.manual||{}; r.manual[field]=true; } });
     g.updatedAt=Date.now();
     save(); render(true);
   });
