@@ -1679,9 +1679,24 @@ function mergeById(localArr, remoteArr){
     const curTs=cur.updatedAt||cur.createdAt||0, newTs=x.updatedAt||x.createdAt||0;
     /* 학생 QR 주소(token)는 이미 코팅해서 나눠준 것이라, 두 기기가 따로 만들어 서로 다를 때도 '먼저 만들어진 쪽'을 지킨다 (관리자가 [새 QR로 바꾸기]를 눌러 regen 표시가 붙은 경우에만 새 것이 이긴다) */
     if(cur.token && x.token && cur.token!==x.token && !cur.regen && !x.regen){ if(newTs<curTs) map[x.id]=x; return; }
-    if(newTs>=curTs) map[x.id]=x; // 동률이면 원격(더 최근에 성공한 전송)을 채택
+    const win = newTs>=curTs ? x : cur; // 동률이면 원격(더 최근에 성공한 전송)을 채택
+    // 게시판 댓글(replies)은 여러 선생님이 동시에 달 수 있어서, 글 전체를 한쪽으로 덮어쓰면 다른 기기에서 단 댓글이 사라진다 → 댓글은 하나씩 합친다
+    if(Array.isArray(cur.replies) && Array.isArray(x.replies)){ map[x.id]={...win, replies:mergeReplies(cur.replies, x.replies)}; return; }
+    map[x.id]=win;
   });
   return Object.values(map);
+}
+function mergeReplies(a, b){
+  const key=r=>r.id || (String(r.createdAt)+'|'+(r.authorName||''));
+  const m=new Map();
+  [...(a||[]), ...(b||[])].forEach(r=>{
+    if(!r) return; const k=key(r); const cur=m.get(k);
+    if(!cur){ m.set(k,r); return; }
+    // 같은 댓글이면 삭제 표시가 있는 쪽, 그다음 더 최근에 고친 쪽을 남긴다
+    if(r._deleted && !cur._deleted) m.set(k,r);
+    else if(!!r._deleted===!!cur._deleted && (r.updatedAt||r.createdAt||0)>(cur.updatedAt||cur.createdAt||0)) m.set(k,r);
+  });
+  return [...m.values()].sort((x,y)=>(x.createdAt||0)-(y.createdAt||0));
 }
 function pruneCalendarTombstones(){
   // calendar 배열은 id 병합이라 "삭제"를 표현 못 함 — calendarTombstones(삭제된 id→삭제시각 맵)에 있는 id는
@@ -13568,6 +13583,20 @@ function renderBoard(){
   // 공지사항 · 오류 제보 · 1:1 문의를 세 칸으로 나란히 보여준다(화면이 좁으면 아래로 내려감)
   return `<div class="boardcols">${kinds.map(([k])=>`<div class="boardcol">${renderBoardKind(k, admin, myName)}</div>`).join('')}</div>`;
 }
+// 공지사항 댓글 — 로그인한 선생님 누구나 달 수 있고, 본인 댓글(실장·관리자는 모든 댓글)은 삭제 가능
+function noticeCommentsHTML(p, admin, myName){
+  const list=(p.replies||[]).filter(r=>r && !r._deleted);
+  const when=t=>new Date(t).toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Seoul'});
+  return `<div style="margin-top:8px">
+    ${list.length?`<div style="font-size:.74rem;font-weight:800;color:var(--sub);margin-bottom:4px">💬 댓글 ${list.length}</div>`:''}
+    ${list.map(r=>`<div style="font-size:.82rem;background:#f6f7f9;border-radius:8px;padding:6px 10px;margin-bottom:5px">
+      <div style="display:flex;gap:6px;align-items:center"><b>${esc(r.authorName||'')}</b><span style="color:var(--sub);font-size:.72rem">${when(r.createdAt)}</span>
+      ${(admin || (myName && r.authorName===myName))?`<button class="noticeCmtDel" data-id="${p.id}" data-rk="${esc(r.id||String(r.createdAt)+'|'+(r.authorName||''))}" style="margin-left:auto;border:none;background:none;color:var(--sub);cursor:pointer;font-size:.72rem">삭제</button>`:''}</div>
+      <div style="margin-top:2px;white-space:pre-wrap">${hl(r.body||'')}</div></div>`).join('')}
+    ${myName?`<div style="display:flex;gap:6px;margin-top:4px"><input type="text" class="noticeCmtInput" data-id="${p.id}" placeholder="댓글 달기…" style="flex:1;padding:6px 9px;border:1px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem"><button class="btn small noticeCmtBtn" data-id="${p.id}">등록</button></div>`
+      :'<div style="font-size:.74rem;color:var(--sub)">로그인하면 댓글을 달 수 있어요.</div>'}
+  </div>`;
+}
 function renderBoardKind(kind, admin, myName){
   let h='';
   if(kind==='notice'){
@@ -13585,7 +13614,8 @@ function renderBoardKind(kind, admin, myName){
       h+=`<div class="mypanel" style="border-top-color:#e0a020;margin-bottom:12px">
         <h2 style="font-size:.95rem">📌 ${esc(p.title||'공지')} <span style="font-weight:400;font-size:.78rem;color:var(--sub)">· ${esc(p.authorName||'')} · ${new Date(p.createdAt).toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Seoul'})}</span>
         ${admin?`<button class="del boardDel" data-id="${p.id}" style="margin-left:auto">삭제</button>`:''}</h2>
-        <div style="font-size:.86rem;white-space:pre-wrap;background:#fbfcfe;border:1px solid #eef0f6;border-radius:10px;padding:10px 13px">${hl(p.body||'')}</div></div>`;
+        <div style="font-size:.86rem;white-space:pre-wrap;background:#fbfcfe;border:1px solid #eef0f6;border-radius:10px;padding:10px 13px">${hl(p.body||'')}</div>
+        ${noticeCommentsHTML(p, admin, myName)}</div>`;
     });
     h+='</div></div>';
   } else {
@@ -13648,6 +13678,25 @@ function bindBoard(){
   });
   v.querySelectorAll('.boardResolve').forEach(b=>b.onclick=()=>{
     const p=store.boardPosts.find(x=>x.id===b.dataset.id); if(p){ p.resolved=true; p.updatedAt=Date.now(); }
+    save(); render(true);
+  });
+  // 공지사항 댓글 등록·삭제
+  const addNoticeCmt=id=>{
+    const inp=v.querySelector('.noticeCmtInput[data-id="'+id+'"]');
+    const body=inp?inp.value.trim():''; if(!body) return;
+    if(!myName){ alert('로그인 후 이용해주세요.'); return; }
+    const p=store.boardPosts.find(x=>x.id===id); if(!p) return;
+    const now=Date.now();
+    p.replies=p.replies||[]; p.replies.push({id:'rc'+now.toString(36)+Math.random().toString(36).slice(2,6), body, authorName:myName, authorAcademy:myAcademy, createdAt:now, updatedAt:now});
+    p.updatedAt=now; save(); render(true);
+  };
+  v.querySelectorAll('.noticeCmtBtn').forEach(b=>b.onclick=()=>addNoticeCmt(b.dataset.id));
+  v.querySelectorAll('.noticeCmtInput').forEach(i=>i.onkeydown=e=>{ if(e.key==='Enter' && !e.isComposing){ e.preventDefault(); addNoticeCmt(i.dataset.id); } });
+  v.querySelectorAll('.noticeCmtDel').forEach(b=>b.onclick=()=>{
+    if(!confirm('이 댓글을 삭제할까요?')) return;
+    const p=store.boardPosts.find(x=>x.id===b.dataset.id); if(!p) return;
+    const r=(p.replies||[]).find(x=>(x.id||String(x.createdAt)+'|'+(x.authorName||''))===b.dataset.rk); if(!r) return;
+    r._deleted=true; r.updatedAt=Date.now(); p.updatedAt=Date.now(); // 동기화 때 되살아나지 않게 지우지 않고 삭제 표시만
     save(); render(true);
   });
   v.querySelectorAll('.boardReplyBtn').forEach(b=>b.onclick=()=>{
@@ -18829,10 +18878,12 @@ function wlPublishSoon(sid){
   const st0=store.students.find(x=>x.id===sid); if(st0) wlAvgSoon(st0.academy);
   _wlTimers[sid]=setTimeout(async()=>{ if(!wlTokRec(sid)) return; const ok=await wlPublish(sid); if(!ok) toast('⚠ QR 화면(잔액) 갱신 실패 — 인터넷·서버 규칙(wallet 칸 열기)을 확인해주세요'); },400);
 }
+// 코인(중등·고등)은 잔액이 마이너스가 돼도 사용·수정·삭제할 수 있다 (달러(초등)는 기존처럼 0 아래로 못 내려감)
+function wlAllowNeg(sid){ const s=store.students.find(x=>x.id===sid); const u=s&&wlUnit(s); return !!(u && u.name==='코인'); }
 function wlAdd(sid,type,amount,reason,date){
   const s=store.students.find(x=>x.id===sid); if(!s) return '학생을 찾을 수 없어요';
   amount=Math.floor(Number(amount)); if(!(amount>0)) return '금액을 1 이상의 숫자로 입력하세요';
-  if(type==='out' && amount>wlBal(sid)) return '잔액이 부족해요 (현재 '+wlBal(sid).toLocaleString()+')';
+  if(type==='out' && amount>wlBal(sid) && !wlAllowNeg(sid)) return '잔액이 부족해요 (현재 '+wlBal(sid).toLocaleString()+')';
   const lt=loginTeacher();
   store.walletLog=store.walletLog||[];
   store.walletLog.push({id:genStudentId(), studentId:sid, academy:s.academy, date:date||todayISO(), type, amount, reason:String(reason||'').trim(), by:lt?lt.t.name:'관리자', subj:lt?wlSubjFor(s,lt):'', createdAt:Date.now(), updatedAt:Date.now()});
@@ -18841,7 +18892,7 @@ function wlAdd(sid,type,amount,reason,date){
 function wlCanDel(x){ if(isAdminRole()) return true; const lt=loginTeacher(); return !!(lt && x.by===lt.t.name); }
 function wlDel(id){
   const x=(store.walletLog||[]).find(y=>y.id===id); if(!x) return '';
-  if(x.type==='in'){ const after=wlBal(x.studentId)-(Number(x.amount)||0); if(after<0) return '이 적립을 지우면 잔액이 음수가 돼요. 먼저 뒤의 사용 내역을 지워주세요.'; }
+  if(x.type==='in' && !wlAllowNeg(x.studentId)){ const after=wlBal(x.studentId)-(Number(x.amount)||0); if(after<0) return '이 적립을 지우면 잔액이 음수가 돼요. 먼저 뒤의 사용 내역을 지워주세요.'; }
   x._deleted=true; x.updatedAt=Date.now(); save(); wlPublishSoon(x.studentId); return '';
 }
 // 서버가 거절했는지(규칙) 인터넷 문제인지 알 수 있게 안내한다
@@ -18855,7 +18906,7 @@ function wlUpdate(id,v){
   const amount=Math.floor(Number(v.amount)); if(!(amount>0)) return '금액을 1 이상의 숫자로 입력하세요';
   const type=v.type==='out'?'out':'in'; const date=String(v.date||'').trim()||x.date;
   const cur=(Number(x.amount)||0)*(x.type==='in'?1:-1), nxt=amount*(type==='in'?1:-1);
-  if(wlBal(x.studentId)-cur+nxt<0) return '이렇게 고치면 잔액이 음수가 돼요. (현재 '+wlBal(x.studentId).toLocaleString()+')';
+  if(wlBal(x.studentId)-cur+nxt<0 && !wlAllowNeg(x.studentId)) return '이렇게 고치면 잔액이 음수가 돼요. (현재 '+wlBal(x.studentId).toLocaleString()+')';
   x.amount=amount; x.type=type; x.date=date; x.reason=String(v.reason||'').trim(); x.updatedAt=Date.now(); x.editedBy=(loginTeacher()?loginTeacher().t.name:'관리자');
   save(); wlPublishSoon(x.studentId); return '';
 }
@@ -19095,7 +19146,7 @@ function renderWallet(){
     const TD='border:1px solid #d5dae3;padding:6px 8px;text-align:center';
     h+=`<tr><td style="${TD};width:28px"><input type="checkbox" data-wlsel="${s.id}" ${(state.wlSel||{})[s.id]?'checked':''}></td><td style="${TD};text-align:left;font-weight:800;white-space:nowrap">${wlName(s)}${MODE==='all'?' '+bdg(s.academy):''}</td>
       <td style="${TD};color:var(--sub);white-space:nowrap">${esc(classNameInMonth(s,state.month)||'미배정')}</td>
-      <td style="${TD};font-weight:900;white-space:nowrap">${wlSymHtml(u)} ${bal.toLocaleString()} <span style="font-weight:400;color:var(--sub);font-size:.74rem">${u.name}</span></td>
+      <td style="${TD};font-weight:900;white-space:nowrap;${bal<0?'color:#c0392b':''}">${wlSymHtml(u)} ${bal.toLocaleString()} <span style="font-weight:400;color:var(--sub);font-size:.74rem">${u.name}</span></td>
       <td style="${TD};font-size:.78rem;color:var(--sub)">${last?`${esc(String(last.date).slice(5).replace('-','/'))} ${last.type==='in'?'+':'−'}${(Number(last.amount)||0).toLocaleString()} · ${esc(wlLabel(last))}`:'-'}</td>
       <td class="wlact" style="${TD};white-space:nowrap"><button class="btn small" data-wlopen="${s.id}|in" title="적립">＋</button> <button class="btn small" data-wlopen="${s.id}|out" title="사용">－</button><br><button class="btn small" data-wlopen="${s.id}|led">내역</button> <button class="btn small" data-wlqr="${s.id}">QR</button></td></tr>`;
     });
