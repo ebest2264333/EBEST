@@ -711,6 +711,7 @@ body[data-tab="consult"] .badge.eb,body[data-tab="consult"] .badge.ic{background
 .hcal .d.ev::after{display:none}.hcal .d .evd{position:absolute;left:0;right:0;bottom:1px;display:flex;justify-content:center;gap:2px}.hcal .d .evd i{width:4px;height:4px;border-radius:50%;display:block}.hcal .d.today .evd i{box-shadow:0 0 0 1px #fff}
 /* 업무일지·진도계획표·상담 패널 위쪽 선생님 색 줄은 없앤다 — 선생님 색은 제목 앞 네모 칸에만 */
 .mypanel{border-top:1px solid var(--line)!important}
+.ovnote>div{margin:0!important}
 </style>
 </head>
 <body>
@@ -2868,8 +2869,8 @@ function renderOverview(){
       const fm=d=>{ const q=String(d).split('-'); return +q[1]+'/'+(+q[2]); };
       return `<div style="margin-top:8px;display:flex;flex-direction:column;gap:3px"><div style="font-size:.74rem;font-weight:800;color:var(--sub)">✈ 등록된 결석 예정 ${pre.length}명</div>${pre.map(st=>`<div style="font-size:.78rem;display:flex;gap:6px;align-items:center;flex-wrap:wrap"><b>${esc(studentDisplayName(st.academy,st.nameKo,st.className))}</b><span style="color:var(--sub)">${esc(st.className||'')}</span><span>${fm(st.absFrom)}${(st.absTo&&st.absTo!==st.absFrom)?'~'+fm(st.absTo):''}${st.absReason?' · '+esc(st.absReason):''}</span><button class="btn small" data-rsabsdone="${st.id}">취소</button></div>`).join('')}</div>`; })()}</div>`;
   const absRowsF=tAtt.rows.filter(r=>absDeptOk(r.c.dept));
-  const absCard=(ex)=>`<div class="hcard absunified" id="ovAbsCard"><div class="hh"><h2>🚨 오늘 결석 · 지각 학생</h2>${absDeptSelHTML()}<span class="hsub2">${tAtt.rows.length?`결석 ${absRowsF.filter(r=>r.a==='결').length} · 지각 ${absRowsF.filter(r=>r.a==='지').length}${absRowsF.some(r=>r.a==='조퇴')?` · 조퇴 ${absRowsF.filter(r=>r.a==='조퇴').length}`:''}`:''}</span><span class="sp"></span>${ex&&ex.absCopy?ex.absCopy:''}<button class="hlink todogo" data-tab="attend">출결 (월별) 보기</button></div>
-    ${ex&&ex.absExtras?`<div style="margin:4px 0 6px">${ex.absExtras}</div>`:''}
+  const absCard=(ex)=>`<div class="hcard absunified" id="ovAbsCard"><div class="hh"><h2>🚨 오늘 결석 · 지각 학생</h2>${absDeptSelHTML()}<span class="hsub2">${tAtt.rows.length?`결석 ${absRowsF.filter(r=>r.a==='결').length} · 지각 ${absRowsF.filter(r=>r.a==='지').length}${absRowsF.some(r=>r.a==='조퇴')?` · 조퇴 ${absRowsF.filter(r=>r.a==='조퇴').length}`:''}`:''}</span></div>
+    <div style="display:flex;gap:10px;align-items:flex-start;margin:4px 0 6px"><div class="ovnote" style="flex:1;min-width:0">${ex&&ex.absExtras?ex.absExtras:''}</div><div style="flex:none;display:flex;flex-direction:column;gap:6px;align-items:flex-end;padding-top:20px">${ex&&ex.absCopy?ex.absCopy:''}<button class="hlink todogo" data-tab="attend">출결 (월별) 보기</button></div></div>
     ${absAddBox}
     ${absRowsF.length?`<div class="ovabslist">${absRowsF.slice().sort((x,y)=>({'결':0,'지':1,'조퇴':2}[x.a]-{'결':0,'지':1,'조퇴':2}[y.a])).map(r=>{
       // 결석·지각·조퇴 학생 한 줄 + 사유 입력 + (결석이면) 과제 안내(카톡 전송 체크·메모·복사)
@@ -2910,7 +2911,56 @@ function renderOverview(){
   // 결석생 과제 안내는 따로 접힌 칸 대신 결석·지각 목록 안에 학생별로 합쳐 보여준다
   // 관리자가 가장 많이 보는 「오늘 결석·지각」과 「오늘 남는 학생」을 맨 위 한 줄에 나란히
   return tiles+`<div class="ovtop">${absCard(parts)}<div class="ovstay">${parts.stay}</div><div class="ovtodo">${todoCard2}</div></div>`
-    +`<div class="hgrid ov ov2"><div class="hcol">${tTable}<div class="o2">${bars}${hwCard}</div></div><div class="hcol">${homeCalCard('일정 추가')}${homeMeetCard(true)}</div></div>`;
+    +`<div class="hgrid ov ov2"><div class="hcol">${tTable}<div class="o2">${bars}${hwCard}</div><div class="o2">${enrTrendCard()}${enrChangeCard()}</div></div><div class="hcol">${homeCalCard('일정 추가')}${homeMeetCard(true)}</div></div>`;
+}
+// 👥 재원생 추이 (전체 현황) — 최근 5개월, 달마다 막대 하나: 재원(복귀 제외) · 복귀 · 휴원 · 퇴원을 색으로 나눠 쌓는다
+// 재원 수는 [학생 통계]와 같은 값(직접 고친 값이 있으면 그 값), 휴원은 그달 말 기준 휴원 상태인 학생 수(상태 변경 기록으로 계산),
+// 복귀·퇴원은 그달에 바뀐 학생 수. 막대 위에는 지난달 대비 재원 증감(▲ 증가 · ▼ 감소 · 유지)을 표시한다
+const ENR_COL={jae:'#2453e3', back:'#0e9f6e', hold:'#e0a020', out:'#dc6b6b'};
+function enrHoldAt(a,m){ // m월 말 기준 휴원 학생 수
+  const cur=effectiveCurrentMonth();
+  return (store.students||[]).filter(st=>{
+    if(st._deleted || st.academy!==a) return false;
+    const sl=(st.sl||[]).filter(e=>e && (e.m||String(e.d||'').slice(0,7))<=m);
+    if(sl.length) return sl[sl.length-1].s==='휴원';
+    // 상태 기록이 없는 예전 학생은 지금 상태를 이번 달에만 반영한다
+    return m===cur && st.status==='휴원';
+  }).length;
+}
+function enrTrendData(){
+  const acs=academies(); const map={};
+  acs.forEach(a=>{ let rows=[]; try{ rows=enrRows(a); }catch(e){} rows.forEach(r=>{ const o=map[r.m]=map[r.m]||{m:r.m,jae:0,back:0,hold:0,out:0,nw:0,ok:false};
+    if(r.jae!=null){ o.jae+=Number(r.jae)||0; o.ok=true; } o.back+=(r.ch&&r.ch.back||[]).length; o.out+=Number(r.out)||0; o.nw+=Number(r.nw)||0; o.hold+=enrHoldAt(a,r.m); }); });
+  const cur=effectiveCurrentMonth(); const list=[]; // 이번 달까지 최근 5개월(달력 기준) — 자료가 없는 달은 빈 막대
+  for(let i=4;i>=0;i--){ const m=shiftMonth(cur,-i); const o=map[m]&&map[m].ok?map[m]:{m,jae:0,back:0,hold:0,out:0,nw:0,ok:false,empty:true}; list.push(o); }
+  list.forEach(o=>{ const p=map[shiftMonth(o.m,-1)]; o.diff=(!o.empty && p && p.ok)?o.jae-p.jae:null; });
+  return list.some(o=>!o.empty)?list:[];
+}
+function enrTrendCard(){
+  const list=enrTrendData();
+  const head=`<div class="hh" style="margin-bottom:2px"><h2>재원생 추이</h2><span class="sp"></span><button class="hlink todogo" data-tab="roster">학생 명단 보기</button></div>`;
+  if(!list.length) return `<div class="hcard">${head}<div class="hempty">아직 집계된 달이 없어요</div></div>`;
+  const last=list.filter(o=>!o.empty).pop()||list[list.length-1];
+  const sum=last.diff==null?'':(last.diff>0?`지난달보다 <b style="color:${ENR_COL.back}">${last.diff}명 늘었어요</b>`:last.diff<0?`지난달보다 <b style="color:#c0392b">${-last.diff}명 줄었어요</b>`:'지난달과 같아요 (유지)');
+  const max=Math.max(1,...list.map(o=>o.jae+o.hold+o.out));
+  const seg=(n,col,lab)=>n>0?`<i title="${lab} ${n}명" style="display:block;width:100%;height:${Math.max(3,Math.round(n/max*118))}px;background:${col}"></i>`:'';
+  const bars=list.map((o,i)=>{ const base=Math.max(0,o.jae-o.back); const isLast=i===list.length-1;
+    const dl=o.diff==null?'':o.diff>0?`<span style="color:${ENR_COL.back}">▲${o.diff}</span>`:o.diff<0?`<span style="color:#c0392b">▼${-o.diff}</span>`:'<span style="color:var(--sub)">유지</span>';
+    if(o.empty) return `<div class="obar"><span style="font-size:.7rem">&nbsp;</span><span>-</span><div style="width:100%;max-width:46px;height:3px;border-radius:3px;background:#e6e9f0"></div><span>${+o.m.slice(5,7)}월</span></div>`;
+    return `<div class="obar ${isLast?'on':''}" title="${esc(mLabel(o.m))} · 재원 ${o.jae}명 (복귀 ${o.back}) · 휴원 ${o.hold} · 퇴원 ${o.out} · 신입 ${o.nw}"><span style="font-size:.7rem;font-weight:800">${dl}</span><span style="color:var(--ink);font-weight:800">${o.jae}</span>
+      <div style="width:100%;max-width:46px;display:flex;flex-direction:column-reverse;border-radius:6px;overflow:hidden">${seg(base,ENR_COL.jae,'재원')}${seg(o.back,ENR_COL.back,'복귀')}${seg(o.hold,ENR_COL.hold,'휴원')}${seg(o.out,ENR_COL.out,'퇴원')}</div><span>${+o.m.slice(5,7)}월</span></div>`; }).join('');
+  const leg=[['재원',ENR_COL.jae],['복귀',ENR_COL.back],['휴원',ENR_COL.hold],['퇴원',ENR_COL.out]].map(([l,c])=>`<span style="display:inline-flex;align-items:center;gap:4px"><i style="width:9px;height:9px;border-radius:2px;background:${c};display:inline-block"></i>${l}</span>`).join('');
+  return `<div class="hcard">${head}<div class="hdesc">최근 5개월${sum?' · '+sum:''}</div>
+    <div class="obars" style="height:190px">${bars}</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;font-size:.72rem;color:var(--sub);margin-top:8px">${leg}</div>
+    <div style="font-size:.74rem;color:var(--sub);text-align:center;margin-top:4px">${esc(mLabel(last.m))} — 재원 ${last.jae} · 신입 ${last.nw} · 복귀 ${last.back} · 휴원 ${last.hold} · 퇴원 ${last.out}</div></div>`;
+}
+// 이번 달 변동 명단 — 재원생 추이 옆 칸 (신입 · 복귀 · 휴원 · 퇴원 이름)
+function enrChangeCard(){
+  const m=effectiveCurrentMonth(); const g={nw:[],back:[],hold:[],out:[]};
+  academies().forEach(a=>{ try{ const ch=statChanges(a,m); Object.keys(g).forEach(k=>g[k]=g[k].concat(ch[k]||[])); }catch(e){} });
+  const row=(k,l,c)=>`<div style="display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-top:1px solid #f1f3f8"><span style="flex:none;min-width:52px;font-size:.78rem;font-weight:800;color:${c}">${l} ${g[k].length}</span><span style="font-size:.8rem;color:var(--ink);line-height:1.5">${g[k].length?g[k].map(esc).join(', '):'<span style="color:#b6bccb">없음</span>'}</span></div>`;
+  return `<div class="hcard"><h2>${esc(mLabel(m))} 변동</h2><div class="hdesc">이번 달 상태가 바뀐 학생</div>${row('nw','신입','#7c3aed')}${row('back','복귀',ENR_COL.back)}${row('hold','휴원','#b45309')}${row('out','퇴원','#c0392b')}</div>`;
 }
 // 결석·지각 목록 · 결석생 과제를 초등/중등/고등으로 나눠 보는 드롭다운 (전체 현황 · 내 수업 공통, 이 브라우저에서만 기억)
 function absDeptVal(){ return state.absDept||''; }
@@ -5872,13 +5922,14 @@ function wtDelayAction(wtId){
   const r=store.wordTests.find(x=>x.id===id); if(!r) return;
   const st=store.students.find(x=>x.id===r.studentId);
   const cur=(isNs?r.nsRetestDate:r.retestDate)||r.date; const d0=new Date(state.date+'T00:00:00'); d0.setDate(d0.getDate()+1);
-  bkModal('재시험 지연', `<div style="font-size:.84rem"><b>${esc(st?studentDisplayName(st.academy,st.nameKo,st.className):'')}</b> · ${isNs?'내신단어 재시험':'단어 재시험'} ${esc((isNs?r.nsWordbook:r.wordbook)||'')}</div><div style="font-size:.78rem;color:var(--sub)">재시험 볼 날짜를 고르면 그날 「오늘 남는 학생」으로 옮겨져요. (시험 본 날 ${esc(r.date)})</div><input type="date" id="wtDlDate" value="${ymd(d0)}" min="${todayISO()}" style="padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.9rem">`, ov=>{
+  bkModal('재시험 지연', `<div style="font-size:.84rem"><b>${esc(st?studentDisplayName(st.academy,st.nameKo,st.className):'')}</b> · ${isNs?'내신단어 재시험':'단어 재시험'} ${esc((isNs?r.nsWordbook:r.wordbook)||'')}</div><div style="font-size:.78rem;color:var(--sub)">재시험 볼 날짜를 고르면 그날 「오늘 남는 학생」으로 옮겨져요. (시험 본 날 ${esc(r.date)})</div><input type="date" id="wtDlDate" value="${ymd(d0)}" min="${todayISO()}" style="padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.9rem">${miniCalHTML(ymd(d0), todayISO())}<div style="font-size:.72rem;color:var(--sub)">달력에서 날짜를 누르면 바로 지연돼요</div>`, ov=>{
     const to=(ov.querySelector('#wtDlDate').value||'').trim();
     if(!to){ toast('날짜를 고르세요'); return false; }
     if(to===cur){ toast('지금과 같은 날짜예요'); return false; }
     if(isNs) r.nsRetestDate=to; else r.retestDate=to;
     r.updatedAt=Date.now(); save(); const q=to.split('-'); toast(`재시험을 ${+q[1]}/${+q[2]}로 지연했어요`); render(true);
   }, '지연');
+  { const ov=document.getElementById('bkOv'); if(ov) bindMiniCal(ov, '#wtDlDate', todayISO(), ()=>ov.querySelector('[data-bkok]').click()); }
 }
 function markRetestDone(id){
   const isNs=String(id).endsWith('#ns'); if(isNs) id=String(id).slice(0,-3);
@@ -9529,10 +9580,31 @@ function stayFor(d){ return store.stayback[d]=store.stayback[d]||{}; }
 // 남는 학생 줄의 상태 드롭다운: 완료(관리자·실장) · 지연(고르면 날짜를 골라 그날로 옮김)
 function stayStateSel(x, subj, canDone){ if(!x||!x.s||x.retestOnly) return ''; return `<select class="stayStateSel" data-k="${esc(x.k)}" data-s="${esc(x.s)}" data-subj="${esc(subj||'')}" title="완료 또는 지연(다른 날로 옮기기)" style="padding:3px 6px;border:1.5px solid var(--line);border-radius:7px;font-family:inherit;font-size:.76rem;font-weight:700;background:#fff;cursor:pointer"><option value="">상태</option>${canDone?'<option value="done">✔ 완료</option>':''}<option value="delay">📅 지연</option></select>`; }
 function stayMovedTag(x){ if(!x||!x.movedFrom) return ''; const q=String(x.movedFrom).split('-'); return ` <span style="font-size:.7rem;font-weight:700;color:var(--pri);background:var(--pri-bg,#eaf0ff);border-radius:5px;padding:1px 6px;white-space:nowrap">${+q[1]}/${+q[2]}에서 옮김</span>`; }
+// 지연(날짜 옮기기) 창 안에 바로 펼쳐 두는 작은 달력 — 날짜를 한 번 누르면 바로 그날로 옮긴다. 위 날짜 칸에 숫자로 적어도 된다
+function miniCalHTML(sel, minD, ymShow){
+  const base=(ymShow||sel||todayISO()).slice(0,7); const y=+base.slice(0,4), m=+base.slice(5,7);
+  const first=new Date(y,m-1,1).getDay(), last=new Date(y,m,0).getDate(); const td=todayISO();
+  let h=`<div class="mcal" data-ym="${base}" style="border:1px solid var(--line);border-radius:8px;padding:8px;user-select:none">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><button type="button" class="btn small" data-mcnav="-1" style="padding:2px 9px">◀</button><b style="font-size:.9rem">${y}년 ${m}월</b><button type="button" class="btn small" data-mcnav="1" style="padding:2px 9px">▶</button></div>
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center;font-size:.8rem">${['일','월','화','수','목','금','토'].map((w,i)=>`<div style="font-size:.7rem;color:${i===0?'#c0392b':i===6?'#2e5fb7':'var(--sub)'};padding:2px 0">${w}</div>`).join('')}`;
+  for(let i=0;i<first;i++) h+='<div></div>';
+  for(let d=1;d<=last;d++){ const iso=`${base}-${String(d).padStart(2,'0')}`; const dis=!!(minD&&iso<minD); const on=iso===sel; const wd=(first+d-1)%7;
+    let evs=[]; try{ evs=eventsOn(iso); }catch(e){} const col=evs.length?catColor(evs[0].cat):'';
+    h+=`<button type="button" ${dis?'disabled':''} data-mcday="${iso}" title="${esc(evs.map(e=>e.title).join(' · '))}" style="position:relative;border:1px solid ${on?'var(--pri)':'transparent'};background:${on?'var(--pri)':iso===td?'#eef1f7':'#fff'};color:${on?'#fff':dis?'#c9cfdd':wd===0?'#c0392b':wd===6?'#2e5fb7':'var(--ink)'};border-radius:6px;padding:6px 0;font-family:inherit;font-size:.82rem;font-weight:${on||iso===td?800:500};cursor:${dis?'default':'pointer'}">${d}${col?`<i style="position:absolute;left:50%;bottom:2px;width:4px;height:4px;margin-left:-2px;border-radius:50%;background:${on?'#fff':col}"></i>`:''}</button>`; }
+  return h+'</div></div>';
+}
+function bindMiniCal(ov, inpSel, minD, onPick){
+  const wrap=ov.querySelector('.mcal'); if(!wrap) return;
+  const inp=ov.querySelector(inpSel);
+  const redraw=ym=>{ const tmp=document.createElement('div'); tmp.innerHTML=miniCalHTML(inp?inp.value:'', minD, ym); wrap.replaceWith(tmp.firstElementChild); bindMiniCal(ov, inpSel, minD, onPick); };
+  wrap.querySelectorAll('[data-mcnav]').forEach(b=>b.onclick=()=>{ const ym=wrap.dataset.ym; const d=new Date(+ym.slice(0,4), +ym.slice(5,7)-1+Number(b.dataset.mcnav), 1); redraw(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')); });
+  wrap.querySelectorAll('[data-mcday]').forEach(b=>b.onclick=()=>{ if(b.disabled) return; if(inp) inp.value=b.dataset.mcday; onPick(b.dataset.mcday); });
+  if(inp) inp.onchange=()=>{ const v=inp.value; if(v) redraw(v.slice(0,7)); };
+}
 function stayMoveAction(k, sname){
   const from=state.date; const src=(stayFor(from)[k]||{})[sname]; if(!src){ toast('남기 기록을 찾을 수 없어요'); return; }
   const d0=new Date(from+'T00:00:00'); d0.setDate(d0.getDate()+1); const def=ymd(d0);
-  bkModal('남는 날짜 옮기기', `<div style="font-size:.84rem"><b>${esc(studentDisplayName((k.split('|')[0]),sname,k.slice(k.indexOf('|')+1)))}</b> · ${esc(k.slice(k.indexOf('|')+1))}</div><div style="font-size:.78rem;color:var(--sub)">${esc(from)}에 남기로 한 걸 다른 날로 옮겨요. 남는 이유·과목은 그대로 따라가요.</div><input type="date" id="stayMvDate" value="${def}" min="${todayISO()}" style="padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.9rem">`, ov=>{
+  bkModal('남는 날짜 옮기기', `<div style="font-size:.84rem"><b>${esc(studentDisplayName((k.split('|')[0]),sname,k.slice(k.indexOf('|')+1)))}</b> · ${esc(k.slice(k.indexOf('|')+1))}</div><div style="font-size:.78rem;color:var(--sub)">${esc(from)}에 남기로 한 걸 다른 날로 옮겨요. 남는 이유·과목은 그대로 따라가요.</div><input type="date" id="stayMvDate" value="${def}" min="${todayISO()}" style="padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.9rem">${miniCalHTML(def, todayISO())}<div style="font-size:.72rem;color:var(--sub)">달력에서 날짜를 누르면 바로 옮겨져요</div>`, ov=>{
     const to=(ov.querySelector('#stayMvDate').value||'').trim();
     if(!to){ toast('옮길 날짜를 고르세요'); return false; }
     if(to===from){ toast('같은 날짜예요'); return false; }
@@ -9548,6 +9620,7 @@ function stayMoveAction(k, sname){
     src.movedTo=to; src.updatedAt=Date.now();
     save(); const q=to.split('-'); toast(`${+q[1]}/${+q[2]}로 옮겼어요`); render(true);
   }, '옮기기');
+  { const ov=document.getElementById('bkOv'); if(ov) bindMiniCal(ov, '#stayMvDate', todayISO(), ()=>ov.querySelector('[data-bkok]').click()); }
 }
 function cdays(c){ if(c._vdays!=null) return c._vdays; return store.daysedit[ckey(c)] || c.days || ''; }
 function subjOnDay(s,d){ return !s.day || String(s.day).includes(d); } // s.day는 "화,목"처럼 여러 요일 가능
@@ -10420,7 +10493,7 @@ function renderToday(list, partsOnly){
   if(_preList.length) _parts.push(_fmtGroup(_preList));
   if(_noteText) _parts.push(_noteText);
   const absentSummaryText=`<${+_dm[1]}월 ${+_dm[2]}일 결석생>\n\n`+_parts.join('\n\n');
-  const absentNoteBox=`<div style="margin:0 0 10px"><div style="font-size:.76rem;font-weight:800;color:var(--sub);margin-bottom:4px">📝 특이사항 (요약 복사 맨 아래에 들어가요 · 한 줄에 하나)</div><textarea class="absentNoteInput" data-date="${esc(state.date)}" rows="2" placeholder="예: RG1 남예령 Amy - 11월복귀예정 / 과제문자발송" style="width:100%;border:1.5px solid #f1f3f8;border-radius:8px;padding:6px 10px;font-family:inherit;box-sizing:border-box">${esc(_noteFor(state.date))}</textarea>${_preWarn.length?`<div style="margin-top:4px;font-size:.74rem;color:#c0392b;background:#fff1f0;border:1px solid #f3c6c1;border-radius:8px;padding:5px 9px">⚠ 오늘 결석 예정인데 자동 결석이 안 걸린 학생<br>${_preWarn.map(esc).join('<br>')}</div>`:''}${_autoPre.length?`<div style="margin-top:4px;font-size:.74rem;color:#7c3aed;background:#f6f0ff;border:1px solid #e3d6fb;border-radius:8px;padding:5px 9px">✈ 결석 예정 자동 포함 (학생 명단에서 등록, 복사 시 같이 들어가요)<br>${_autoPre.map(esc).join('<br>')}</div>`:''}</div>`;
+  const absentNoteBox=`<div style="margin:0 0 10px"><div style="font-size:.76rem;font-weight:800;color:var(--sub);margin-bottom:4px">📝 특이사항 <span style="font-weight:400" title="요약 복사 맨 아래에 들어가요 · 한 줄에 하나">(요약 복사 맨 아래)</span></div><textarea class="absentNoteInput" data-date="${esc(state.date)}" rows="2" placeholder="예: RG1 남예령 Amy - 11월복귀예정 / 과제문자발송" style="width:100%;border:1.5px solid #f1f3f8;border-radius:8px;padding:6px 10px;font-family:inherit;box-sizing:border-box">${esc(_noteFor(state.date))}</textarea>${_preWarn.length?`<div style="margin-top:4px;font-size:.74rem;color:#c0392b;background:#fff1f0;border:1px solid #f3c6c1;border-radius:8px;padding:5px 9px">⚠ 오늘 결석 예정인데 자동 결석이 안 걸린 학생<br>${_preWarn.map(esc).join('<br>')}</div>`:''}${_autoPre.length?`<div style="margin-top:4px;font-size:.74rem;color:#7c3aed;background:#f6f0ff;border:1px solid #e3d6fb;border-radius:8px;padding:5px 9px">✈ 결석 예정 자동 포함 (학생 명단에서 등록, 복사 시 같이 들어가요)<br>${_autoPre.map(esc).join('<br>')}</div>`:''}</div>`;
   const absentSummaryBtn=absentNoteBox+((_sumEntries.length||_noteText)?`<div style="margin:0 0 10px"><button type="button" class="absentSummaryCopy" data-text="${esc(absentSummaryText)}" style="border:1.5px solid #c0392b;background:#fff;color:#c0392b;font-weight:800;border-radius:8px;padding:6px 12px;cursor:pointer;font-family:inherit">📋 결석·지각 요약 복사 (${_sumEntries.length}명)</button></div>`:'');
   // 관리자 「전체 현황」 카드 머리(출결 월별 보기 옆)에 넣는 작은 복사 버튼
   const absentCopyHead=(_sumEntries.length||_noteText)?`<button type="button" class="absentSummaryCopy" data-text="${esc(absentSummaryText)}" title="결석·지각 요약(특이사항 포함)을 복사해요" style="border:1.5px solid #c0392b;background:#fff;color:#c0392b;font-weight:800;border-radius:7px;padding:3px 10px;font-size:.76rem;cursor:pointer;font-family:inherit;white-space:nowrap">📋 결석생 복사 (${_sumEntries.length}명)</button>`:'';
