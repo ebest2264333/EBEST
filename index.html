@@ -566,6 +566,11 @@ body[data-tab="today"] .absunified [style*="background:#c0392b"]{background:var(
 body[data-tab="today"] .absunified [style*="background:#fff8f8"],body[data-tab="today"] .absunified [style*="background:#fff5f5"]{background:#fff!important}
 body[data-tab="today"] .ohw .b i{background:var(--pri)}
 
+/* ===== 상담: 개별 상담 요청 · 신입생 · 퇴원생 한 줄 병렬 ===== */
+.csrow{display:grid;grid-template-columns:repeat(var(--cscols,3),minmax(0,1fr));gap:14px;align-items:start;margin-bottom:14px}
+.csrow>*{margin:0!important;min-width:0}
+@media(max-width:1100px){.csrow{grid-template-columns:1fr}}
+
 /* ===== 전체 현황: 오늘 결석·지각 통합 카드 ===== */
 .absunified #absentTodayDetails{margin:12px 0 0!important;border:1px solid var(--line)!important;border-top:1px solid var(--line)!important;background:#fff!important;box-shadow:none;padding-top:10px}
 .absunified #absentTodayDetails h3{font-size:.9rem}
@@ -8584,6 +8589,11 @@ function renderNewStudentMine(a,i){
   return `<details class="mypanel" data-fold="nsMine" ${state.fold.nsMine===true?'open':''} style="border-top-color:var(--pri)"><summary style="cursor:pointer;font-weight:800;font-size:1.05rem;margin-bottom:8px">🆕 신입생 상담 (${mine.length}명)</summary>${rows}</details>`;
 }
 
+// 상담 탭: 개별 상담 요청 · 신입생 · 퇴원생 칸을 한 줄에 나란히(병렬) — 내용 있는 칸만, 화면이 좁으면 아래로 내려감
+function csRow(parts){
+  parts=parts.filter(x=>x&&String(x).trim()); if(!parts.length) return '';
+  return `<div class="csrow" style="--cscols:${parts.length}">${parts.join('')}</div>`;
+}
 function renderMyConsult(list){
   const {a,i}=state.tf; const t=store.teachers[a][i];
   if(!t){ state.tf=null; return renderConsult(list); }
@@ -8604,7 +8614,7 @@ function renderMyConsult(list){
   });
   const myReqsHtml=renderConsultRequestsMine(a,i,true);
   const myReqsPanel=(myReqsHtml&&!viewingOthers)?`<div class="mypanel" style="border-top-color:var(--pri)"><h2>💬 개별 상담 요청</h2>${myReqsHtml}</div>`:'';
-  return teacherCards(list)+(isMe&&isAdminRole()?renderConsultRequestAdmin()+renderNewStudentAdmin()+renderDropoutAdmin():'')+myReqsPanel+(viewingOthers?'':renderNewStudentMine(a,i)+renderDropoutMine(a,i))+`<div class="mypanel" style="border-top-color:${t.color}">
+  return teacherCards(list)+(isMe&&isAdminRole()?csRow([renderConsultRequestAdmin(),renderNewStudentAdmin(),renderDropoutAdmin()]):'')+csRow([myReqsPanel].concat(viewingOthers?[]:[renderNewStudentMine(a,i),renderDropoutMine(a,i)]))+`<div class="mypanel" style="border-top-color:${t.color}">
     <h2><span class="tdot" style="background:${t.color}"></span>${esc(t.name)} 선생님 — ${mLabel(state.month)} 상담
       ${viewingOthers?'<span style="font-size:.76rem;color:var(--sub);font-weight:700">(다른 선생님 상담 기록 · 조회 전용)</span>':''}
       <span style="margin-left:auto;display:flex;gap:8px;align-items:center">${viewingOthers?'':submitBtn('consult', a+'|'+i, state.month, t.color)}${(isMe&&!isAdminRole())?'':`<button class="btn small" id="backAll">${isMe?'← 전체 반 배정 보기':'← 뒤로'}</button>`}</span></h2>
@@ -8639,7 +8649,7 @@ function renderConsult(list){
           <option value="">담당 선택</option>${opts}</select></div>
       <div class="cbody">${students}</div></div>`;
   }).join('');
-  return renderConsultRequestAdmin()+renderNewStudentAdmin()+renderDropoutAdmin()+teacherCards(list)+bar+(cards||'<div class="empty">조건에 맞는 반이 없습니다.</div>');
+  return csRow([renderConsultRequestAdmin(),renderNewStudentAdmin(),renderDropoutAdmin()])+teacherCards(list)+bar+(cards||'<div class="empty">조건에 맞는 반이 없습니다.</div>');
 }
 
 function bindConsult(){
