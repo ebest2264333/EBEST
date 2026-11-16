@@ -6100,11 +6100,11 @@ function renderWordTestPending(){
   const rowW=r=>{ const {s,disp}=nameOf(r);
     const meta=[s?s.className:'', r.date, r.wordbook||'', r.lang||'', r.range||''].filter(Boolean).join(' · ');
     return `<div class="rowitem" style="align-items:center"><span class="key">${esc(disp)} ${MODE==='all'?bdg(r.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(meta)}</span></span>
-      <span class="val"><button class="btn small" data-wtdone="${r.id}">✔ 재시험 완료 처리</button></span></div>`; };
+      <span class="val">${wmBookForWordbook(r.wordbook)?`<button class="btn small" onclick="wtMakeRetestSheet('${esc(r.id)}')" style="border-color:#c2410c;color:#c2410c;margin-right:4px">📝 시험지</button>`:''}<button class="btn small" data-wtdone="${r.id}">✔ 재시험 완료 처리</button></span></div>`; };
   const rowN=r=>{ const {s,disp}=nameOf(r);
     const meta=[s?s.className:'', r.date, r.nsWordbook||'', r.nsRange||''].filter(Boolean).join(' · ');
     return `<div class="rowitem" style="align-items:center"><span class="key">${esc(disp)} ${MODE==='all'?bdg(r.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(meta)}</span></span>
-      <span class="val"><button class="btn small" data-wtdone="${r.id}#ns">✔ 재시험 완료 처리</button></span></div>`; };
+      <span class="val">${wmBookForWordbook(r.nsWordbook)?`<button class="btn small" onclick="wtMakeRetestSheet('${esc(r.id)}#ns')" style="border-color:#c2410c;color:#c2410c;margin-right:4px">📝 시험지</button>`:''}<button class="btn small" data-wtdone="${r.id}#ns">✔ 재시험 완료 처리</button></span></div>`; };
   const rowM=r=>{ const {s,disp}=nameOf(r);
     const meta=[s?s.className:'', r.date, r.round?r.round+'회':''].filter(Boolean).join(' · ');
     return `<div class="rowitem" style="align-items:center;flex-wrap:wrap"><span class="key">${esc(disp)} ${MODE==='all'?bdg(r.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(meta)}</span></span>
@@ -7127,6 +7127,50 @@ function wmAddBook(name,days){
   wmBooks().push({id,name,days:sorted}); wmS.cur=id; wmS.days=new Set(); wmS.checked.clear(); wmS.editDay=null; wmSave();
   return keys.reduce((s,k)=>s+days[k].length,0);
 }
+/* 🔗 재시험 → 시험지 자동 만들기
+   단어시험 기록의 단어장 이름(예: "중등 실력")에 연결된 시험지용 단어장(store.wordBooks)을 찾아,
+   범위(예: "3,4")의 Day만 골라서 [단어 범위 → 시험지 만들기] 화면에 바로 만들어 둔다 */
+function wmNormName(s){ return String(s||'').replace(/\s+/g,'').toLowerCase(); }
+function wmAutoLinkName(b){ // 따로 연결 안 했어도 단어장 이름이 단어시험 단어장 이름과 같으면 자동으로 연결된 걸로 본다
+  const names=[...new Set([].concat(...academies().map(a=>wbOptionsFor(a))))];
+  return names.find(n=>wmNormName(n)===wmNormName(b.name))||'';
+}
+function wmBookForWordbook(name){
+  if(!name) return null;
+  const k=wmNormName(name);
+  return wmBooks().find(b=>b.link && wmNormName(b.link)===k) || wmBooks().find(b=>!b.link && wmNormName(b.name)===k) || null;
+}
+function wtRangeDayNums(range){
+  const out=[];
+  String(range||'').split(/[,.+·，]/).map(t=>t.trim()).filter(Boolean).forEach(t=>{
+    const m=t.match(/(\d+)\s*[-~]\s*(\d+)/);
+    if(m){ const a=+m[1], b=+m[2]; if(b>=a && b-a<100){ for(let i=a;i<=b;i++) out.push(i); } else out.push(a); }
+    else { const n=t.match(/\d+/); if(n) out.push(+n[0]); }
+  });
+  return [...new Set(out)];
+}
+function wtMakeRetestSheet(wtId){
+  const isNs=String(wtId).endsWith('#ns'); const id=isNs?String(wtId).slice(0,-3):wtId;
+  const r=store.wordTests.find(x=>x.id===id); if(!r){ toast('단어시험 기록을 찾을 수 없어요'); return; }
+  const st=store.students.find(x=>x.id===r.studentId);
+  const wbName=isNs?r.nsWordbook:r.wordbook, range=isNs?r.nsRange:r.range;
+  const book=wmBookForWordbook(wbName);
+  if(!book){ toast(wbName?`「${wbName}」에 연결된 시험지용 단어장이 없어요 — [단어 범위 → 📚 단어장 관리]에서 연결해주세요`:'이 기록에 단어장이 적혀 있지 않아요'); return; }
+  const nums=wtRangeDayNums(range);
+  const keys=Object.keys(book.days).filter(k=>nums.includes(parseInt(String(k).replace(/\D/g,''))||-1));
+  wmMigrate();
+  wmS.cur=book.id; wmS.days=new Set(keys); wmS.checked=new Set(); wmS.scope='all'; wmS.count=''; wmS.editDay=null;
+  const lang=isNs?'':String(r.lang||'');
+  if(lang==='한글') wmS.types=new Set(['korean']); else if(lang==='영어') wmS.types=new Set(['english']); else if(lang==='믹스') wmS.types=new Set(['mixed']);
+  wmS.title=(isNs?'내신단어 재시험':'단어 재시험');
+  wmS.klass=st?(classNameInMonth(st,state.month)||st.className||''):'';
+  wmS.student=st?(st.nameKo||''):'';
+  wmS.html='';
+  state.wrMode='make';
+  if(keys.length) wmGenerate();
+  goTab('wordrange');
+  if(!keys.length) toast(range?`범위 「${range}」에 맞는 Day를 「${book.name}」에서 못 찾았어요 — Day를 직접 골라주세요`:'범위가 비어 있어요 — Day를 직접 골라주세요');
+}
 function wmCount(total){ const n=parseInt(wmS.count); return (n>0&&n<total)?n:total; }
 function wmSelWords(){
   const b=wmBook(); const pool=[]; if(!b) return pool;
@@ -7224,6 +7268,10 @@ function wmEditorHTML(b){
       ${ed?`<button class="wmbtn p" data-wm="mgdone" style="width:auto;margin:0;padding:6px 14px">✔ 수정 완료</button>`:`<button class="wmbtn" data-wm="mgedit" style="border-color:#c2410c;color:#c2410c;font-weight:800">✎ 수정</button>`}
       <button class="wmbtn" data-wm="export">⬇ 텍스트로 내보내기</button>${ed?`<button class="wmbtn d" data-wm="delbook">단어장 삭제</button>`:''}</div>
     ${ed?'':'<div style="font-size:.74rem;color:var(--sub);margin-top:4px">보기 전용이에요. 고치려면 [✎ 수정]을 누르세요.</div>'}
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px;padding:6px 9px;background:#f0f5ff;border-radius:8px">
+      <span style="font-size:.78rem;font-weight:800;color:#1d4ed8">🔗 단어시험 단어장 연결</span>
+      <select data-wm="link" style="width:auto;min-width:140px">${(()=>{ const names=[...new Set([].concat(...academies().map(a=>wbOptionsFor(a))))]; const cur=b.link||''; return `<option value="">연결 안 함${wmAutoLinkName(b)?` (이름이 같아 자동: ${esc(wmAutoLinkName(b))})`:''}</option>`+names.map(n=>`<option value="${esc(n)}" ${cur===n?'selected':''}>${esc(n)}</option>`).join('')+(cur&&!names.includes(cur)?`<option value="${esc(cur)}" selected>${esc(cur)}</option>`:''); })()}</select>
+      <span style="font-size:.72rem;color:var(--sub)">연결하면 [오늘 남는 학생]·[재시험 명단]에서 재시험자를 누를 때 이 단어장의 해당 Day로 시험지가 자동으로 만들어져요</span></div>
     <div class="wmchips" style="margin-top:8px">${keys.map(k=>`<div class="wmchip ${k===wmS.editDay?'on':''}" data-wm="editday" data-v="${esc(k)}">${esc(k)} (${b.days[k].length})</div>`).join('')}${ed?'<div class="wmchip" data-wm="addday">+ Day</div>':''}</div>`;
   if(wmS.editDay){
     const ws=b.days[wmS.editDay];
@@ -7305,7 +7353,7 @@ function wmBind(){
   wmMigrate(); wmRefresh();
   root.addEventListener('click',e=>{
     const el=e.target.closest('[data-wm]'); if(!el) return; const a=el.dataset.wm, b=wmBook();
-    if(['book','count','order','content','title','klass','student','paste','bulk','bname','dayname','en','ko','scope','type','wchk'].includes(a)) return; // change/input에서 처리
+    if(['book','count','order','content','title','klass','student','paste','bulk','bname','dayname','en','ko','scope','type','wchk','link'].includes(a)) return; // change/input에서 처리
     if(a==='upload'){ document.getElementById('wmFile').click(); return; }
     if(a==='newbook'){ const id=Date.now(); wmBooks().push({id,name:'새 단어장',days:{'Day 01':[{en:'',ko:''}]}}); wmS.cur=id; wmS.days=new Set(); wmS.checked.clear(); wmS.editDay='Day 01'; wmS.mgEdit=true; if(state.wrMode!=='manage'){ state.wrMode='manage'; wmSave(); render(true); return; } wmSave(); }
     else if(a==='togglewords'){ wmS.showWords=!wmS.showWords; if(!wmS.showWords){ wmS.scope='all'; } }
@@ -7351,6 +7399,7 @@ function wmBind(){
     else if(a==='count'){ wmS.count=el.value.replace(/\D/g,''); }
     else if(['title','klass','student'].includes(a)){ wmS[a]=el.value; return; }
     else if(a==='bname'&&b){ b.name=el.value; wmSave(); const o=root.querySelector('[data-wm=book] option:checked'); if(o) o.textContent=b.name; return; }
+    else if(a==='link'&&b){ b.link=el.value; wmSave(); toast(el.value?`단어시험의 「${el.value}」와 연결했어요 — 재시험자를 누르면 이 단어장으로 시험지가 만들어져요`:'연결을 해제했어요'); return; }
     else if((a==='en'||a==='ko')&&b){ b.days[wmS.editDay][+el.dataset.i][a]=el.value; wmSave(); return; }
     else return;
     wmRefresh();
@@ -10089,7 +10138,7 @@ function renderToday(list, partsOnly){
   store.wordTests.filter(r=>r.date===state.date && fil(r)).forEach(r=>{
     const st=store.students.find(x=>x.id===r.studentId); if(!st) return;
     const nameKey=st.academy+'|'+st.nameKo;
-    const retestSubj=kind==='n'?{subj:'📖 내신단어 재시험', memo:(r.nsWordbook?r.nsWordbook:'')+(r.nsRange?' · '+r.nsRange:''), done:false, isRetest:true, wtId:r.id+'#ns'}:{subj:'📖 재시험', memo:(r.wordbook?r.wordbook:'')+(r.range?' · '+r.range:''), done:false, isRetest:true, wtId:r.id};
+    const retestSubj=kind==='n'?{subj:'📖 내신단어 재시험', memo:(r.nsWordbook?r.nsWordbook:'')+(r.nsRange?' · '+r.nsRange:''), done:false, isRetest:true, wtId:r.id+'#ns', wb:r.nsWordbook}:{subj:'📖 재시험', memo:(r.wordbook?r.wordbook:'')+(r.range?' · '+r.range:''), done:false, isRetest:true, wtId:r.id, wb:r.wordbook};
     const existing=stayList.find(x=>!x.isRetest && x.academy===st.academy && x.student===studentDisplayName(st.academy,st.nameKo,st.className));
     if(existing){ existing.subjects.push(retestSubj); return; } // 이미 다른 이유로 남는 학생이면 같은 줄에 재시험 칸만 추가
     seenStayName.add(nameKey);
@@ -10102,7 +10151,7 @@ function renderToday(list, partsOnly){
         const doneSubjects=x.subjects.filter(s=>s.done);
         return `<div class="rowitem" style="align-items:flex-start"><span class="key">${esc(x.student)} ${MODE==='all'?bdg(x.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(x.className)}</span></span>
           <span class="val" style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
-           ${openSubjects.map(s=>`<span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">${s.subj?`<b style="font-size:.76rem;color:${s.isRetest?'#b45309':'var(--sub)'}">${s.isRetest?'':'📚 '}${esc(s.subj)}</b>`:''} ${s.memo?esc(s.memo):'<span style="color:#c3c9d6">메모 없음</span>'} ${s.isRetest?`<button class="btn small" data-wtdone="${s.wtId}">✔ 완료</button>`:`<button class="btn small" data-staydonesub="${esc(x.k)}|${esc(x.s)}|${esc(s.subj||'')}">✔ 완료</button>`}</span>`).join('')}            ${doneSubjects.length?`<span style="font-size:.72rem;color:#8b93a7">✔ 완료: ${doneSubjects.map(s=>esc(s.subj||'')).join(', ')}</span>`:''}
+           ${openSubjects.map(s=>`<span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">${s.subj?`<b style="font-size:.76rem;color:${s.isRetest?'#b45309':'var(--sub)'}">${s.isRetest?'':'📚 '}${esc(s.subj)}</b>`:''} ${s.memo?esc(s.memo):'<span style="color:#c3c9d6">메모 없음</span>'} ${s.isRetest?`${wmBookForWordbook(s.wb)?`<button class="btn small" onclick="wtMakeRetestSheet('${esc(s.wtId)}')" title="연결된 단어장에서 범위의 Day로 재시험지를 바로 만들어요" style="border-color:#c2410c;color:#c2410c">📝 시험지</button>`:''}<button class="btn small" data-wtdone="${s.wtId}">✔ 완료</button>`:`<button class="btn small" data-staydonesub="${esc(x.k)}|${esc(x.s)}|${esc(s.subj||'')}">✔ 완료</button>`}</span>`).join('')}            ${doneSubjects.length?`<span style="font-size:.72rem;color:#8b93a7">✔ 완료: ${doneSubjects.map(s=>esc(s.subj||'')).join(', ')}</span>`:''}
           </span></div>`;
       }).join(''):'<div style="font-size:.82rem;color:#8b93a7">오늘 남는 학생이 없습니다.</div>'}
     </div></div>`:'';
