@@ -9492,6 +9492,31 @@ function buildAssignNote(items, dateISO){
 }
 function atFor(d){ return store.attend[d]=store.attend[d]||{}; }
 function stayFor(d){ return store.stayback[d]=store.stayback[d]||{}; }
+// 남기 날짜 이동 — 그날 못 남은 학생을 다른 날로 옮긴다. 원래 날짜 기록엔 movedTo, 옮긴 날짜엔 movedFrom을 남겨서
+// (기록을 지우지 않으니 다른 기기와 합칠 때 되살아나는 일이 없다) 원래 날짜 목록에서는 빠지고 옮긴 날짜 목록에 나온다
+// 남는 학생 줄의 상태 드롭다운: 완료(관리자·실장) · 지연(고르면 날짜를 골라 그날로 옮김)
+function stayStateSel(x, subj, canDone){ if(!x||!x.s||x.retestOnly) return ''; return `<select class="stayStateSel" data-k="${esc(x.k)}" data-s="${esc(x.s)}" data-subj="${esc(subj||'')}" title="완료 또는 지연(다른 날로 옮기기)" style="padding:3px 6px;border:1.5px solid var(--line);border-radius:7px;font-family:inherit;font-size:.76rem;font-weight:700;background:#fff;cursor:pointer"><option value="">상태</option>${canDone?'<option value="done">✔ 완료</option>':''}<option value="delay">📅 지연</option></select>`; }
+function stayMovedTag(x){ if(!x||!x.movedFrom) return ''; const q=String(x.movedFrom).split('-'); return ` <span style="font-size:.7rem;font-weight:700;color:var(--pri);background:var(--pri-bg,#eaf0ff);border-radius:5px;padding:1px 6px;white-space:nowrap">${+q[1]}/${+q[2]}에서 옮김</span>`; }
+function stayMoveAction(k, sname){
+  const from=state.date; const src=(stayFor(from)[k]||{})[sname]; if(!src){ toast('남기 기록을 찾을 수 없어요'); return; }
+  const d0=new Date(from+'T00:00:00'); d0.setDate(d0.getDate()+1); const def=ymd(d0);
+  bkModal('남는 날짜 옮기기', `<div style="font-size:.84rem"><b>${esc(studentDisplayName((k.split('|')[0]),sname,k.slice(k.indexOf('|')+1)))}</b> · ${esc(k.slice(k.indexOf('|')+1))}</div><div style="font-size:.78rem;color:var(--sub)">${esc(from)}에 남기로 한 걸 다른 날로 옮겨요. 남는 이유·과목은 그대로 따라가요.</div><input type="date" id="stayMvDate" value="${def}" min="${todayISO()}" style="padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.9rem">`, ov=>{
+    const to=(ov.querySelector('#stayMvDate').value||'').trim();
+    if(!to){ toast('옮길 날짜를 고르세요'); return false; }
+    if(to===from){ toast('같은 날짜예요'); return false; }
+    const dst=stayFor(to); dst[k]=dst[k]||{};
+    const prev=dst[k][sname]||{};
+    const copy=JSON.parse(JSON.stringify(src)); delete copy.movedTo; delete copy.doneDate; delete copy.doneSubjects;
+    // 옮긴 날짜에 이미 남기 기록이 있으면 과목·이유를 합친다
+    const merged=Object.assign({}, prev, copy, {stay:true, movedFrom:src.movedFrom||from, updatedAt:Date.now()});
+    if(prev.staySubjects||copy.staySubjects) merged.staySubjects=Object.assign({}, prev.staySubjects||{}, copy.staySubjects||{});
+    if(prev.bySubject||copy.bySubject) merged.bySubject=Object.assign({}, prev.bySubject||{}, copy.bySubject||{});
+    if(prev.memo && copy.memo && prev.memo!==copy.memo) merged.memo=prev.memo+' / '+copy.memo;
+    dst[k][sname]=merged;
+    src.movedTo=to; src.updatedAt=Date.now();
+    save(); const q=to.split('-'); toast(`${+q[1]}/${+q[2]}로 옮겼어요`); render(true);
+  }, '옮기기');
+}
 function cdays(c){ if(c._vdays!=null) return c._vdays; return store.daysedit[ckey(c)] || c.days || ''; }
 function subjOnDay(s,d){ return !s.day || String(s.day).includes(d); } // s.day는 "화,목"처럼 여러 요일 가능
 function isWordTestSubject(s){ return !!(s && s.subject && String(s.subject).replace(/\s/g,'')==='단어시험'); } // 단어시험 일정은 출석·업무일지 집계에서 제외
@@ -10119,6 +10144,7 @@ function renderToday(list, partsOnly){
     Object.keys(recs).forEach(sname=>{
       const rec=recs[sname];
       if(!rec || !rec.stay) return;
+      if(rec.movedTo) return; // 다른 날로 옮긴 남기는 원래 날짜 목록에서 뺀다 (옮긴 날짜에 나온다)
       const dedupKey=k+'|'+sname;
       if(seenStay.has(dedupKey)) return;
       const bySubjEntries = rec.bySubject ? Object.entries(rec.bySubject).filter(([,v])=>v) : [];
@@ -10138,7 +10164,7 @@ function renderToday(list, partsOnly){
       if(!subjects.some(s=>!s.done)) return; // 전부 완료 처리됐으면 목록에서 뺀다 (과목별 완료 반영)
       seenStay.add(dedupKey);
       seenStayName.add(cl.academy+'|'+sname);
-      stayList.push({className:cl.name, academy:cl.academy, student:studentDisplayName(cl.academy,sname,cl.name), subjects, k, s:sname});
+      stayList.push({className:cl.name, academy:cl.academy, student:studentDisplayName(cl.academy,sname,cl.name), subjects, k, s:sname, cl, movedFrom:rec.movedFrom||''});
     });
   };
   clsForAbsent.forEach(c=>{
@@ -10147,6 +10173,8 @@ function renderToday(list, partsOnly){
     const partner=mergedPartnerClass(c);
     if(partner && (classMeets(partner, wd) || !(partner.subjects||[]).some(x=>subjOnDay(x,wd))) && partner.students && partner.students.length) collectStay(partner, c);
   });
+  // 다른 날에서 이 날짜로 옮겨온 남기 — 그 반이 오늘 수업이 없는 요일이어도 목록에 나오게 한다
+  { const clsAll=classesFor(monthForDate(state.date)); Object.keys(stay||{}).forEach(k=>{ const recs=stay[k]||{}; if(!Object.values(recs).some(r=>r&&r.movedFrom)) return; const cl=clsAll.find(c=>ckey(c)===k); if(cl && (state.ac==='all'||cl.academy===state.ac)) collectStay(cl); }); }
  // 재시험 대상 학생도 "오늘 남는 학생"에 자동으로 합쳐서 보여준다 (재시험은 보통 남아서 다시 봐야 하므로)
   [['w',r=>r.retestNeeded && !r.retestCompleted && !r.absent],['n',r=>r.nsRetestNeeded && !r.nsRetestCompleted && !r.absent]].forEach(([kind,fil])=>
   store.wordTests.filter(r=>r.date===state.date && fil(r)).forEach(r=>{
@@ -10165,9 +10193,9 @@ function renderToday(list, partsOnly){
       ${stayList.length?stayList.map(x=>{
         const openSubjects=x.subjects.filter(s=>!s.done);
         const doneSubjects=x.subjects.filter(s=>s.done);
-        return `<div class="rowitem" style="align-items:flex-start"><span class="key">${esc(x.student)} ${MODE==='all'?bdg(x.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(x.className)}</span></span>
+        return `<div class="rowitem" style="align-items:flex-start"><span class="key">${esc(x.student)} ${MODE==='all'?bdg(x.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(x.className)}</span>${stayMovedTag(x)}</span>
           <span class="val" style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
-           ${openSubjects.map(s=>`<span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">${s.subj?`<b style="font-size:.76rem;color:${s.isRetest?'#b45309':'var(--sub)'}">${s.isRetest?'':'📚 '}${esc(s.subj)}</b>`:''} ${s.memo?esc(s.memo):'<span style="color:#c3c9d6">메모 없음</span>'} ${s.isRetest?`${wtRetestSheetBtn(s.wtId, s.wb)}<button class="btn small" data-wtdone="${s.wtId}">✔ 완료</button>`:`<button class="btn small" data-staydonesub="${esc(x.k)}|${esc(x.s)}|${esc(s.subj||'')}">✔ 완료</button>`}</span>`).join('')}            ${doneSubjects.length?`<span style="font-size:.72rem;color:#8b93a7">✔ 완료: ${doneSubjects.map(s=>esc(s.subj||'')).join(', ')}</span>`:''}
+           ${openSubjects.map(s=>`<span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">${s.subj?`<b style="font-size:.76rem;color:${s.isRetest?'#b45309':'var(--sub)'}">${s.isRetest?'':'📚 '}${esc(s.subj)}</b>`:''} ${s.memo?esc(s.memo):'<span style="color:#c3c9d6">메모 없음</span>'} ${s.isRetest?`${wtRetestSheetBtn(s.wtId, s.wb)}<button class="btn small" data-wtdone="${s.wtId}">✔ 완료</button>`:`${stayStateSel(x, s.subj||'', true)}`}</span>`).join('')}            ${doneSubjects.length?`<span style="font-size:.72rem;color:#8b93a7">✔ 완료: ${doneSubjects.map(s=>esc(s.subj||'')).join(', ')}</span>`:''}
           </span></div>`;
       }).join(''):'<div style="font-size:.82rem;color:#8b93a7">오늘 남는 학생이 없습니다.</div>'}
     </div></div>`:'';
@@ -10662,8 +10690,8 @@ function renderToday(list, partsOnly){
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:-4px 0 10px">${lt?`<label class="hwlab" style="display:inline-flex"><input type="checkbox" id="myOnly" ${state.myOnly?'checked':''}> 내 수업만 보기</label>`:''}<span class="sp" style="margin-left:auto"></span><button class="hlink todogo" data-tab="hwrange">숙제·과제검사 전체 보기</button></div>
     ${sel?`<div class="hbox">${boxHead(sel,'출석 '+sel.present+'/'+sel.n+' · 숙제 '+sel.hwdone+'/'+sel.n)}${homePrevHwBox(sel.c, sel.k, sel.allSubjNamesToday)}<div class="hasg">${sel.asgBox}</div>${sel.attBody}</div>`:emptyMsg}</div>`;
   const hwCard='';
-  const myStay=stayList.filter(x=>cardKeys.has(x.k));
-  const stayCard=isAdminRole()?'':`<div class="hcard"><h2>오늘 남는 학생</h2><div class="hdesc">출석 체크에서 '오늘 남기'를 체크한 학생이 이유와 함께 여기에 모여요.</div>${myStay.length?myStay.map(x=>`<div class="hstayi"><b>${esc(x.student)}</b> <span>${esc(x.className)}</span><div>${x.subjects.filter(z=>!z.done && !z.isRetest).map(z=>esc([z.subj,z.memo].filter(Boolean).join(' · '))).filter(Boolean).join(' / ')}</div>${x.subjects.filter(z=>!z.done && z.isRetest).map(z=>`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:3px"><span style="font-size:.78rem;color:#b45309;font-weight:800">${esc(z.subj)}</span><span style="font-size:.78rem">${esc(z.memo||'')}</span>${wtRetestSheetBtn(z.wtId, z.wb)}<button class="btn small" data-wtdone="${esc(z.wtId)}">✔ 완료</button></div>`).join('')}</div>`).join(''):'<div class="hempty">아직 남는 학생이 없어요</div>'}</div>`;
+  const myStay=stayList.filter(x=>cardKeys.has(x.k) || (x.movedFrom && x.cl && lt && teacherTeaches(x.cl, lt)));
+  const stayCard=isAdminRole()?'':`<div class="hcard"><h2>오늘 남는 학생</h2><div class="hdesc">출석 체크에서 '오늘 남기'를 체크한 학생이 이유와 함께 여기에 모여요.</div>${myStay.length?myStay.map(x=>`<div class="hstayi"><b>${esc(x.student)}</b> <span>${esc(x.className)}</span>${stayMovedTag(x)}${(x.s&&!x.retestOnly)?`<span style="float:right">${stayStateSel(x,'',false)}</span>`:''}<div>${x.subjects.filter(z=>!z.done && !z.isRetest).map(z=>esc([z.subj,z.memo].filter(Boolean).join(' · '))).filter(Boolean).join(' / ')}</div>${x.subjects.filter(z=>!z.done && z.isRetest).map(z=>`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:3px"><span style="font-size:.78rem;color:#b45309;font-weight:800">${esc(z.subj)}</span><span style="font-size:.78rem">${esc(z.memo||'')}</span>${wtRetestSheetBtn(z.wtId, z.wb)}<button class="btn small" data-wtdone="${esc(z.wtId)}">✔ 완료</button></div>`).join('')}</div>`).join(''):'<div class="hempty">아직 남는 학생이 없어요</div>'}</div>`;
   // 🚨 결석·지각 카드 — 전체 현황과 같은 구성(특이사항 · 결석·지각 목록+사유 · 접히는 결석생 과제), 내 반 학생만
   const myAbsAll=[...absentHwList.map(x=>({...x,a:'결'})), ...lateHwList.map(x=>({...x,a:'지'})), ...earlyHwList.map(x=>({...x,a:'조퇴'}))].filter(isMyAbs);
   const myAbsRows=myAbsAll.filter(x=>absDeptOk(x.dept));
@@ -10891,6 +10919,14 @@ function bindToday(){
     const k=inp.dataset.k, st=inp.dataset.s, subj=inp.dataset.subj, st2=stayFor(state.date);
     st2[k]=st2[k]||{}; st2[k][st]=st2[k][st]||{}; st2[k][st].bySubject=st2[k][st].bySubject||{};
     st2[k][st].bySubject[subjKey(subj)]=inp.value; save(); render(true);
+  });
+  v.querySelectorAll('.stayStateSel').forEach(sl=>sl.onchange=()=>{
+    const k=sl.dataset.k, sname=sl.dataset.s, subj=sl.dataset.subj, val=sl.value; sl.value='';
+    if(val==='delay'){ stayMoveAction(k, sname); return; }
+    if(val==='done'){ if(!isAdminRole()) return; const st2=stayFor(state.date); st2[k]=st2[k]||{}; st2[k][sname]=st2[k][sname]||{};
+      if(subj && (st2[k][sname].bySubject || st2[k][sname].staySubjects)){ st2[k][sname].doneSubjects=st2[k][sname].doneSubjects||{}; st2[k][sname].doneSubjects[subjKey(subj)]=true; }
+      else st2[k][sname].doneDate=todayISO();
+      save(); render(true); }
   });
   v.querySelectorAll('[data-staydone]').forEach(b=>b.onclick=()=>{
     if(!isAdminRole())return;
