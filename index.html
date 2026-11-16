@@ -2799,7 +2799,9 @@ function renderOverview(){
   // 상담 대기
   let nsOpen=0, dpOpen=0, dpNoRole=0;
   try{ (store.newStudents||[]).forEach(ns=>{ if(ns._deleted||!consultFresh(ns)||!acs.includes(ns.academy)) return; const ts=subjectTeachersForClass(ns.academy, ns.className)||[]; if(!ts.length || ts.some(i=>{ const n=nsNote(ns,ns.academy+'|'+i); return !(n&&n.done); })) nsOpen++; }); }catch(e){}
-  try{ (store.dropouts||[]).forEach(d=>{ if(d._deleted||!consultFresh(d)||!acs.includes(d.academy)) return; const rs=dpRoles(d); if(!rs.length){ dpNoRole++; dpOpen++; return; } if(rs.some(r=>!dpNote(d,d.academy+'|'+r.i).done)) dpOpen++; }); }catch(e){}
+  try{ (store.dropouts||[]).forEach(d=>{ if(d._deleted||d.excluded||!dpVisible(d)||!acs.includes(d.academy)) return; const rs=dpRoles(d); if(!rs.length){ dpNoRole++; dpOpen++; return; }
+    if(d.kind==='out'){ if(dpStageList(d).some(s=>s.open)) dpOpen++; return; } // 퇴원생은 지금 연락할 때가 된 단계가 있을 때만
+    if(rs.some(r=>!dpNote(d,d.academy+'|'+r.i).done)) dpOpen++; }); }catch(e){}
   const tiles=homeTiles([
     {pri:1,t:'오늘 출석률',s:`결석 ${tAtt.abs} · 지각 ${tAtt.late}`,v:tAtt.rate==null?'-':tAtt.rate,u:'%'},
     {t:'출석 미체크 반',s:'수업이 끝난 반 기준',v:unchk.length,u:'개 반'},
@@ -2865,7 +2867,7 @@ function renderOverview(){
   if(absMiss) todo.push([`결석 사유 미입력 ${absMiss}명`,'data-ovgo="absent"']);
   if(nsOpen) todo.push([`신입생 상담 진행 중 ${nsOpen}건`,'class="hlink todogo" data-tab="consult"']);
   if(dpNoRole) todo.push([`퇴원생 상담 담당 배정 ${dpNoRole}건`,'class="hlink todogo" data-tab="consult"']);
-  if(dpOpen-dpNoRole>0) todo.push([`퇴원생 상담 진행 중 ${dpOpen-dpNoRole}건`,'class="hlink todogo" data-tab="consult"']);
+  if(dpOpen-dpNoRole>0) todo.push([`퇴원생 상담·연락 대기 ${dpOpen-dpNoRole}건`,'class="hlink todogo" data-tab="consult"']);
   if(noW) todo.push([`진도계획표 미제출 ${noW}명`,'class="hlink todogo" data-tab="report" data-rk="weekly"']);
   if(noJ) todo.push([`업무일지 미제출 ${noJ}명`,'class="hlink todogo" data-tab="report" data-rk="daily"']);
   try{ const inAc=x=>!x._deleted&&acs.includes(x.academy); const rn=store.students.filter(x=>inAc(x)&&stuReturnDue(x)&&!x.returnNotified).length; const an=store.students.filter(x=>inAc(x)&&x.status==='퇴원'&&stuAftercareDue(x)).length;
@@ -2893,12 +2895,26 @@ function bindOverview(){
     const tSel=v.querySelector('#ovAbsT'), dWrap=v.querySelector('#ovAbsDates'), dF=v.querySelector('#ovAbsF'), dT=v.querySelector('#ovAbsTo');
     const isPre=()=>tSel.value==='예정';
     // 결석 예정은 오늘 수업이 없어도 되니 재원생 전체에서 찾는다
-    const preCands=()=>{ const acs=academies(); return (store.students||[]).filter(st=>!st._deleted && st.status==='재원' && acs.includes(st.academy)).map(st=>({st, label:studentDisplayName(st.academy,st.nameKo,st.className), cn:st.className||'', s:(st.nameKo||'')+(st.nameEn||'')})); };
+    // 상태 칸이 비어있는 학생도 재원으로 본다. 또 반 명단엔 있는데 학생 명단 레코드가 없거나, 동명이인(예: PJ3 Kayla 이유주 / JB2 Jane 유주) 레코드에
+    // 잘못 묶이는 이름도 후보로 보여준다 — 이런 학생을 고르면 그 반으로 학생 명단 레코드를 만들어 결석 예정을 저장한다
+    const preCands=()=>{ const acs=academies();
+      const out=(store.students||[]).filter(st=>!st._deleted && (st.status||'재원')==='재원' && acs.includes(st.academy)).map(st=>({id:'st:'+st.id, st, label:studentDisplayName(st.academy,st.nameKo,st.className), cn:classNameInMonth(st,state.month)||st.className||'', s:(st.nameKo||'')+(st.nameEn||'')}));
+      const seen=new Set();
+      classesFor(state.month).filter(c=>!c.examOnly && acs.includes(c.academy)).forEach(c=>{
+        activeStudents(c).forEach(sname=>{
+          const rec=matchStudentByRosterName(c.academy, sname, c.name);
+          if(rec && rosterNameMatchesStudent(sname, rec.nameKo, rec.nameEn)) return; // 학생 명단 레코드가 제대로 연결돼 있으면 위 목록에 이미 있음
+          const {nameKo,nameEn}=parseRosterName(sname); if(!nameKo) return;
+          const key=c.academy+'|'+nameKo+'|'+nameEn+'|'+c.name; if(seen.has(key)) return; seen.add(key);
+          out.push({id:'ro:'+key, st:null, roster:{academy:c.academy, nameKo, nameEn, className:c.name}, label:nameEn?`${nameKo}(${nameEn})`:nameKo, cn:c.name, s:nameKo+nameEn+sname});
+        });
+      });
+      return out; };
     const draw=()=>{
       const t=q.value.trim().toLowerCase().replace(/\s+/g,'');
       const pool=isPre()?preCands():_ovAbsCands.map(x=>({...x, cn:x.c.name, _o:x}));
       hits=t?pool.filter(x=>(x.label+x.s).toLowerCase().replace(/\s+/g,'').includes(t)).slice(0,12):[];
-      const same=h=>pick && (isPre()?(h.st&&h.st===pick.st):(h._o&&h._o===pick._o));
+      const same=h=>pick && (isPre()?(h.id&&h.id===pick.id):(h._o&&h._o===pick._o));
       if(pick && !hits.some(same)) pick=null; else if(pick) pick=hits.find(same);
       if(!pick && hits.length===1) pick=hits[0];
       res.innerHTML=t&&!hits.length?`<span style="font-size:.78rem;color:var(--sub)">${isPre()?'재원생 중에':'오늘 수업 있는 반에'} 그 이름의 학생이 없어요</span>`
@@ -2922,7 +2938,14 @@ function bindOverview(){
       if(type==='예정'){ // 학생 명단의 결석 예정에 저장 — 그 기간 수업은 자동 결석 처리됨
         const f=dF.value, to=dT.value&&dT.value>=dF.value?dT.value:dF.value;
         if(!f){ toast('시작 날짜를 골라주세요'); return; }
-        const st=pick.st;
+        let st=pick.st;
+        if(!st && pick.roster){ // 반 명단에만 있던 학생 → 학생 명단 레코드를 그 반으로 만들어 준다
+          const r=pick.roster;
+          st={id:genStudentId(), academy:r.academy, nameKo:r.nameKo, nameEn:r.nameEn||'', className:r.className, grade:'', school:'',
+            parentPhone:'', preCheck:'', note:'', status:'재원', statusReason:'', siblings:[], createdAt:todayISO(), updatedAt:Date.now()};
+          store.students.push(st);
+        }
+        if(!st){ toast('학생을 다시 골라주세요'); return; }
         if(st.absFrom && (st.absTo||st.absFrom)>=todayISO() && !confirm(`${pick.label} 학생은 이미 결석 예정(${st.absFrom}${st.absTo&&st.absTo!==st.absFrom?' ~ '+st.absTo:''})이 있어요. 새 기간으로 바꿀까요?`)) return;
         st.absFrom=f; st.absTo=to; st.absReason=reason; st.updatedAt=Date.now();
         toast(`${pick.label} — ${f}${to!==f?' ~ '+to:''} 결석 예정 등록했어요`);
@@ -4921,15 +4944,18 @@ function updateStudentField(id, field, value){
   const s=store.students.find(x=>x.id===id); if(!s) return;
   if(field==='status') stuLogStatus(s,value);
   const oldClassName=s.className, oldNameKo=s.nameKo;
+  const becameOut = field==='status' && value==='퇴원' && s.status!=='퇴원';
+  const outClass = becameOut ? (classNameInMonth(s,state.month)||s.className||'') : '';
   s[field]=value; s.updatedAt=Date.now();
   if(field==='status' && value!=='휴원'){ delete s.returnDate; delete s.returnNotified; }
   if(field==='returnDate') delete s.returnNotified; // 복귀일이 바뀌면 확인 연락 표시는 다시 처음부터
   if(field==='status' && (value==='퇴원'||value==='휴원')){
     // 반 배정을 취소한다 — 단, 지난 달들의 기록(출결·단어시험 등 히스토리)은 그대로 보이게 최신·현재 보는 달만 정리한다
     // (휴원·퇴원 학생을 반 명단에서 완전히 지워버리면 지난 학습 기록을 볼 방법이 없어지므로, 삭제가 아니라 '현재 활성 배정만 취소'하는 개념)
-    removeStudentFromActiveRosters(s.academy, s.nameKo, s.nameEn);
+    removeStudentFromActiveRosters(s.academy, s.nameKo, s.nameEn, s);
     if(value==='퇴원') s.className=''; // 퇴원은 반 배정 자체를 비운다 (휴원은 나중에 같은 반으로 복귀할 수 있어 className은 유지)
   }
+  if(becameOut) ensureDropoutOnWithdraw(s, outClass); // 데스크 선생님께 퇴원생 연락(2주 이내·1개월차·3개월차) 자동 배정
   if(field==='className') syncStudentClassRoster(s, oldClassName, null);
   if(field==='nameKo' && oldNameKo!==value) syncStudentClassRoster(s, s.className, oldNameKo);
   if(field==='alertNote'){
@@ -4973,14 +4999,21 @@ function classNameInMonth(s, month){
   // 그 달 반 자료 어디에도 아직 안 들어있으면(예: 방금 만든 학생이라 반·교재 쪽에 반영 전) 학생 쪽 필드를 그대로 보여준다
   return s.className||'';
 }
-function removeStudentFromActiveRosters(academy, nameKo, nameEn){
-  // 휴원·퇴원 시 "현재 활성" 배정만 취소한다(지금 보고 있는 달 기준) — 지난 달 반 명단·기록은 그대로 남겨 히스토리를 보존한다
-  targetSyncMonths(academy).forEach(month=>{
+function removeStudentFromActiveRosters(academy, nameKo, nameEn, student){
+  // 휴원·퇴원 시 "현재 활성" 배정만 취소한다 — 지난 달 반 명단·기록은 그대로 남겨 히스토리를 보존한다.
+  // 보고 있는 달만 고치면 이미 만들어둔 이번 달·다음 달 명단에 계속 남아 있어서, 보고 있는 달(또는 이번 달 중 이른 쪽)부터 이후 달까지 모두 정리한다.
+  const cur=todayISO().slice(0,7);
+  const from=[state.month||cur, cur].sort()[0];
+  const months=[...new Set([...targetSyncMonths(academy), ...monthsOf(academy).filter(m=>m>=from)])];
+  // 동명이인(예: PJ3 이유주 / JB2 이유주)이 그 반 소속이면 그 반 명단의 이름은 다른 학생 것이므로 건드리지 않는다
+  const ownedByOther=(c,sname)=>!!student && store.students.some(x=>x.id!==student.id && !x._deleted && x.academy===academy && (x.status||'재원')!=='퇴원'
+    && rosterNameMatchesStudent(sname, x.nameKo, x.nameEn) && (x.className===c.name || classNameCompatible(x.className, c.name)));
+  months.forEach(month=>{
     const arr=editArr(academy, month);
     arr.forEach(c=>{
       if(!c.students || !c.students.length) return;
       const before=c.students.length;
-      c.students=c.students.filter(sname=>!rosterNameMatchesStudent(sname, nameKo, nameEn));
+      c.students=c.students.filter(sname=>!(rosterNameMatchesStudent(sname, nameKo, nameEn) && !ownedByOther(c, sname)));
       if(c.students.length!==before){ c.count=c.students.length; c.updatedAt=Date.now(); }
     });
   });
@@ -7757,7 +7790,8 @@ function nsJoinedThisMonth(c, sname){
   });
 }
 // 퇴원한 학생은 상담 명단에서 뺀다 — 단, 이번 달에 이미 상담 기록(완료 체크·내용)이 있으면 기록 보존을 위해 남긴다
-function consultRoster(c){ const rec=mRecords()[ckey(c)]||{}; return (c.students||[]).filter(sname=>!nsJoinedThisMonth(c,sname) && (!isWithdrawnRosterName(c.academy,sname,c.name) || (rec[sname]&&(rec[sname].done||rec[sname].memo)))); }
+// 퇴원생은 반 담당 선생님 상담 대상이 아니다(데스크 선생님이 퇴원생 연락으로 따로 관리) → 반 상담 명단에서 항상 뺀다
+function consultRoster(c){ return (c.students||[]).filter(sname=>!nsJoinedThisMonth(c,sname) && !isWithdrawnRosterName(c.academy,sname,c.name)); }
 function classProgress(c){
   const rec=mRecords()[ckey(c)]||{};
   const ros=consultRoster(c);
@@ -7971,19 +8005,92 @@ function dpRoles(d){
     if(di>=0) out.push({i:di,label:'학생 상담'});
     if(ri>=0){ const ex=out.find(x=>x.i===ri); if(ex) ex.label='학생 + 학부모 상담'; else out.push({i:ri,label:'학부모 상담'}); }
   } else {
-    let ti=-1;
-    if(d.className){
-      const c=(editArr(a,state.month)||[]).find(x=>!x._deleted && x.name===d.className);
-      if(c){ const v=mAssign()[ckey(c)]; if(typeof v==='number' && (store.teachers[a]||[])[v]) ti=v; }
-    }
-    if(ti>=0) out.push({i:ti,label:'퇴원 상담'});
+    // 퇴원생은 반 담당 선생님이 아니라 데스크(인포) 선생님이 연락한다 — 2주 이내 · 1개월차 · 3개월차
+    const di=dpTeacherIdx(a,consultRole(a,'desk'));
+    if(di>=0) out.push({i:di,label:'퇴원생 연락'});
   }
   return out;
 }
 function dpNote(d,who){ return (d.notes&&d.notes[who])||{memo:'',done:false,date:''}; }
+/* 퇴원생 단계별 연락: 퇴원일 기준 2주 이내(2주차부터 오늘 할 일에 뜸) · 1개월차 · 3개월차(각각 ±5일) */
+function addDaysISO(d,n){ const t=new Date(d+'T00:00:00'); t.setDate(t.getDate()+n); return ymd(t); }
+function addMonthsISO(d,n){ const t=new Date(d+'T00:00:00'); t.setMonth(t.getMonth()+n); return ymd(t); }
+const DP_STAGES=[
+  {k:'w2', label:'2주 이내 연락', win:o=>({from:addDaysISO(o,7), due:addDaysISO(o,14)})},
+  {k:'m1', label:'1개월차 연락', win:o=>{ const t=addMonthsISO(o,1); return {from:addDaysISO(t,-5), due:addDaysISO(t,5)}; }},
+  {k:'m3', label:'3개월차 연락', win:o=>{ const t=addMonthsISO(o,3); return {from:addDaysISO(t,-5), due:addDaysISO(t,5)}; }},
+];
+function dpOutDate(d){
+  if(d.outDate) return d.outDate;
+  const st=d.studentId?store.students.find(x=>x.id===d.studentId):null;
+  return (st&&stuOutDate(st)) || String(d.createdAt||'').slice(0,10) || todayISO();
+}
+function dpStage(d,k){ return (d.stages&&d.stages[k])||{done:false,date:'',memo:''}; }
+function dpStageList(d){
+  if(!d || d.kind!=='out') return [];
+  const o=dpOutDate(d), today=todayISO();
+  // 이 기능 이전에 등록된 퇴원 기록(outDate 없음)은 이미 한참 지난 단계까지 한꺼번에 '기한 지남'으로 쏟아지지 않게, 기한이 7일 넘게 지난 단계는 건너뛴다
+  const legacy=!d.outDate;
+  return DP_STAGES.map(s=>{ const w=s.win(o); const n=dpStage(d,s.k); const skipped=legacy && !n.done && today>addDaysISO(w.due,7);
+    return {k:s.k, label:s.label, from:w.from, due:w.due, n, skipped, open:!n.done && !skipped && today>=w.from, late:!n.done && !skipped && today>w.due}; });
+}
+function dpAllDone(d){ const l=dpStageList(d); return !!l.length && l.every(s=>s.n.done||s.skipped); }
+// 퇴원생은 3개월차 연락까지 다 끝날 때까지 계속 보이게 한다(한 달 지나면 숨기는 규칙 대신)
+function dpVisible(d){ return d.kind==='out' ? (!dpAllDone(d) || consultFresh(d)) : consultFresh(d); }
+function dpStageSummary(d){
+  const fm=x=>{ const q=String(x).split('-'); return +q[1]+'/'+(+q[2]); };
+  return dpStageList(d).map(s=>`<span style="white-space:nowrap;color:${s.n.done?'var(--ok)':s.late?'#c0392b':s.open?'#7c3aed':'var(--sub)'}">${s.label.replace(' 연락','')} ${s.n.done?'✔':s.skipped?'–':s.late?'⚠':s.open?'●':'·'+fm(s.from)+'~'}</span>`).join(' · ');
+}
+function updateDropoutStage(id,k,field,value){
+  const d=store.dropouts.find(x=>x.id===id); if(!d) return;
+  d.stages=d.stages||{};
+  const n=Object.assign({}, dpStage(d,k), {[field]:value, ts:Date.now()});
+  if(field==='done' && value && !n.date) n.date=todayISO();
+  d.stages[k]=n; d.updatedAt=Date.now();
+  save();
+  if(field!=='memo') render(true);
+}
+// 지금 연락할 때가 된(아직 안 한) 단계 — 오늘 할 일에 띄운다
+function dpDueItems(a,i){
+  const out=[];
+  (store.dropouts||[]).filter(d=>!d._deleted && !d.excluded && d.kind==='out' && (a==null || d.academy===a) && (i==null || dpRoles(d).some(r=>r.i===i))).forEach(d=>{
+    dpStageList(d).filter(s=>s.open).forEach(s=>out.push({d,s}));
+  });
+  return out;
+}
 function dropCountFor(a,i){
-  const l=(store.dropouts||[]).filter(d=>!d._deleted && consultFresh(d) && d.academy===a && dpRoles(d).some(r=>r.i===i));
-  return {total:l.length, done:l.filter(d=>dpNote(d,a+'|'+i).done).length};
+  let total=0, done=0; const today=todayISO();
+  (store.dropouts||[]).filter(d=>!d._deleted && !d.excluded && dpVisible(d) && d.academy===a && dpRoles(d).some(r=>r.i===i)).forEach(d=>{
+    if(d.kind==='out'){ dpStageList(d).filter(s=>s.n.done || today>=s.from).forEach(s=>{ total++; if(s.n.done) done++; }); }
+    else { total++; if(dpNote(d,a+'|'+i).done) done++; }
+  });
+  return {total, done};
+}
+// 학생을 퇴원 처리하면 퇴원생 연락 기록을 자동으로 만든다(데스크 선생님 담당, 퇴원일=오늘).
+// 퇴원징후로 등록돼 있던 학생이면 징후 단계 상담 메모를 넘겨받는다.
+function ensureDropoutOnWithdraw(st, className){
+  if(!st) return null;
+  store.dropouts=store.dropouts||[];
+  let ex=store.dropouts.find(x=>!x._deleted && x.studentId===st.id && x.kind==='out');
+  const sign=store.dropouts.find(x=>!x._deleted && x.studentId===st.id && x.kind==='sign');
+  if(!ex){
+    ex={id:genClassId(), academy:st.academy, studentId:st.id, name:dpLabel(st), kind:'out', className:className||(sign&&sign.className)||'', outDate:todayISO(), notes:{}, stages:{}, createdAt:todayISO(), updatedAt:Date.now()};
+    store.dropouts.push(ex);
+  } else if(!ex.outDate){ ex.outDate=todayISO(); ex.updatedAt=Date.now(); }
+  if(sign) dpMoveSignHistory(sign, ex);
+  return ex;
+}
+function dpMoveSignHistory(d, target){
+  const t0=store.teachers[d.academy]||[];
+  const hist=Object.keys(d.notes||{}).map(who=>{
+    const n=d.notes[who]||{}; const i=Number(String(who).split('|')[1]);
+    const role=(dpRoles(d).find(r=>r.i===i)||{}).label||'상담';
+    return {teacher:(t0[i]||{}).name||'', role, memo:n.memo||'', done:!!n.done, date:n.date||''};
+  }).filter(x=>x.memo||x.done);
+  target.signHistory={from:d.createdAt||'', to:todayISO(), items:hist};
+  if(!target.aiSummary && d.aiSummary) target.aiSummary=d.aiSummary;
+  target.updatedAt=Date.now();
+  d._deleted=true; d.convertedAt=todayISO(); d.updatedAt=Date.now();
 }
 function dpLabel(st){ return st.nameKo+(st.nameEn?`(${st.nameEn})`:''); }
 function dpOptions(a){
@@ -8005,6 +8112,15 @@ function addDropoutAction(a){
   const kind=(kindSel&&kindSel.value)==='out'?'out':'sign';
   if(store.dropouts.some(x=>!x._deleted && x.studentId===hit.st.id && x.kind===kind)){ alert('이미 같은 종류로 등록된 학생이에요.'); return; }
   const className=(clsInp&&clsInp.value||'').trim()||classNameInMonth(hit.st,state.month)||hit.st.className||'';
+  if(kind==='out' && hit.st.status!=='퇴원'){
+    // 퇴원으로 등록하면 학생 명단에서도 퇴원 처리 → 반에서 빠지고 데스크 선생님께 퇴원생 연락이 자동으로 들어간다
+    if(!confirm(`${dpLabel(hit.st)} 학생을 학생 명단에서도 퇴원 처리할까요? (반에서 빠지고 데스크 선생님께 연락 일정이 들어가요)`)) return;
+    if(nameInp) nameInp.value=''; if(clsInp) clsInp.value='';
+    updateStudentField(hit.st.id,'status','퇴원');
+    const ex=store.dropouts.find(x=>!x._deleted && x.studentId===hit.st.id && x.kind==='out');
+    if(ex && className && ex.className!==className){ ex.className=className; ex.updatedAt=Date.now(); save(); render(true); }
+    return;
+  }
   const newId=genClassId();
   store.dropouts.push({id:newId, academy:a, studentId:hit.st.id, name:dpLabel(hit.st), kind, className, notes:{}, createdAt:todayISO(), updatedAt:Date.now()});
   if(nameInp) nameInp.value=''; if(clsInp) clsInp.value='';
@@ -8023,19 +8139,16 @@ function updateDropoutNote(id,who,field,value){
 // 새 기록의 signHistory에 옮겨 담아 퇴원 상담 화면에서 같이 보이게 한다. 원래 징후 기록은 목록에서 빠진다(_deleted).
 function convertDropoutToOut(id){
   const d=store.dropouts.find(x=>x.id===id && !x._deleted); if(!d || d.kind!=='sign') return;
-  if(!confirm(`${d.name} 학생을 퇴원으로 전환할까요?\n· 그 달 ${d.className||'그 반'} 상담 담당 선생님께 퇴원 상담이 들어가요\n· 퇴원징후 단계에서 적은 상담 메모는 퇴원 상담 화면에 같이 보여요\n· 퇴원징후 기록은 목록에서 빠져요`)) return;
-  const t0=store.teachers[d.academy]||[];
-  const hist=Object.keys(d.notes||{}).map(who=>{
-    const n=d.notes[who]||{}; const i=Number(String(who).split('|')[1]);
-    const role=(dpRoles(d).find(r=>r.i===i)||{}).label||'상담';
-    return {teacher:(t0[i]||{}).name||'', role, memo:n.memo||'', done:!!n.done, date:n.date||''};
-  }).filter(x=>x.memo||x.done);
-  const sh={from:d.createdAt||'', to:todayISO(), items:hist};
-  const exist=store.dropouts.find(x=>!x._deleted && x.studentId && x.studentId===d.studentId && x.kind==='out');
-  if(exist){ exist.signHistory=sh; exist.updatedAt=Date.now(); }
-  else store.dropouts.push({id:genClassId(), academy:d.academy, studentId:d.studentId, name:d.name, kind:'out', className:d.className||'', notes:{}, createdAt:todayISO(), signHistory:sh, aiSummary:d.aiSummary||null, updatedAt:Date.now()});
-  d._deleted=true; d.convertedAt=todayISO(); d.updatedAt=Date.now();
-  save(); render(true);
+  if(!confirm(`${d.name} 학생을 퇴원으로 전환할까요?\n· 학생 명단에서 퇴원 처리되고 반에서 빠져요\n· 데스크 선생님께 퇴원생 연락(2주 이내·1개월차·3개월차)이 들어가요\n· 퇴원징후 단계에서 적은 상담 메모는 퇴원 상담 화면에 같이 보여요`)) return;
+  const st=d.studentId?store.students.find(x=>x.id===d.studentId && !x._deleted):null;
+  if(st && st.status!=='퇴원'){
+    updateStudentField(st.id,'status','퇴원'); // 반에서 빼고 퇴원생 연락 기록을 만들면서 징후 메모도 넘겨받는다
+  } else {
+    let ex=store.dropouts.find(x=>!x._deleted && x.studentId && x.studentId===d.studentId && x.kind==='out');
+    if(!ex){ ex={id:genClassId(), academy:d.academy, studentId:d.studentId, name:d.name, kind:'out', className:d.className||'', outDate:todayISO(), notes:{}, stages:{}, createdAt:todayISO(), updatedAt:Date.now()}; store.dropouts.push(ex); }
+    dpMoveSignHistory(d, ex);
+    save(); render(true);
+  }
   toast(`${d.name} — 퇴원으로 전환했어요`);
 }
 function dpSignHistoryBlock(d){
@@ -8107,30 +8220,33 @@ function dpHistoryBlock(d){
 }
 function dpKindBadge(d){ return d.kind==='sign'?'<span style="background:#f1f2f5;color:var(--sub);border:1px solid var(--line);border-radius:4px;padding:0 6px;font-size:.72rem;font-weight:800">퇴원징후</span>':'<span style="background:#f1f2f5;color:var(--ink);border:1px solid var(--line);border-radius:4px;padding:0 6px;font-size:.72rem;font-weight:800">퇴원</span>'; }
 function renderDropoutAdmin(){
-  const items=store.dropouts.filter(d=>!d._deleted && consultFresh(d));
+  const items=store.dropouts.filter(d=>!d._deleted && dpVisible(d));
   const rows=items.map(d=>{
     const roles=dpRoles(d); const t0=(store.teachers[d.academy]||[]);
     const st=d.studentId?store.students.find(x=>x.id===d.studentId&&!x._deleted):null;
-    const warn=!roles.length?(d.kind==='sign'?'데스크/원장님을 관리자 설정에서 지정해주세요':(d.className?'이 달 '+esc(d.className)+' 반에 상담 담당이 배정돼 있지 않아요':'반 미지정')):'';
+    const warn=!roles.length?'데스크(인포)'+(d.kind==='sign'?'/원장님':'')+' 선생님을 [설정]에서 지정해주세요':'';
+    const exclTag=d.excluded?` <span style="background:#fff1f0;color:#c0392b;border:1px solid #f3c6c1;border-radius:4px;padding:0 6px;font-size:.72rem;font-weight:800" title="${esc(d.excludeReason||'')}">상담 제외${d.excludeReason?' · '+esc(d.excludeReason):''}</span>`:'';
+    const dateTag=d.kind==='out'?`퇴원 ${esc(dpOutDate(d).slice(5))}`:`등록 ${esc(String(d.createdAt||'').slice(5))}`;
     const dOpen=!!(state.dpOpenAll || (state.dpOpen&&state.dpOpen[d.id])); const nDone=roles.filter(r=>dpNote(d,d.academy+'|'+r.i).done).length;
-    if(!dOpen) return `<div class="rowitem" style="align-items:center;flex-wrap:wrap;cursor:pointer" data-dpfold="${d.id}">
-      <span class="key"><span style="color:var(--sub);font-size:.78rem">▸</span> ${esc(d.name)} ${MODE==='all'?bdg(d.academy):''} ${dpKindBadge(d)} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(d.className||'')} · 등록 ${esc(String(d.createdAt||'').slice(5))}</span></span>
-      <span class="val" style="font-size:.78rem;color:${roles.length&&nDone===roles.length?'var(--ok)':'var(--sub)'}">${roles.length?`상담 ${nDone}/${roles.length} 완료`:(warn?'⚠ '+warn:'')}${d.kind==='sign'?` <button class="btn small" data-dpconvert="${d.id}" style="margin-left:6px">→ 퇴원으로 전환</button>`:''}</span></div>`;
+    const progress=d.excluded?'':(d.kind==='out'?(roles.length?dpStageSummary(d):''):(roles.length?`상담 ${nDone}/${roles.length} 완료`:''));
+    if(!dOpen) return `<div class="rowitem" style="align-items:center;flex-wrap:wrap;cursor:pointer;${d.excluded?'opacity:.6':''}" data-dpfold="${d.id}">
+      <span class="key"><span style="color:var(--sub);font-size:.78rem">▸</span> ${esc(d.name)} ${MODE==='all'?bdg(d.academy):''} ${dpKindBadge(d)}${exclTag} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(d.className||'')} · ${dateTag}</span></span>
+      <span class="val" style="font-size:.78rem;color:${d.kind!=='out'&&roles.length&&nDone===roles.length?'var(--ok)':'var(--sub)'}">${progress||(warn&&!d.excluded?'⚠ '+warn:'')}${d.kind==='sign'?` <button class="btn small" data-dpconvert="${d.id}" style="margin-left:6px">→ 퇴원으로 전환</button>`:''}</span></div>`;
     return `<div class="rowitem" style="align-items:flex-start;flex-wrap:wrap">
-      <span class="key" style="display:flex;flex-direction:column;gap:2px"><span data-dpfold="${d.id}" style="cursor:pointer"><span style="color:var(--sub);font-size:.78rem">▾</span> ${esc(d.name)} ${MODE==='all'?bdg(d.academy):''} ${dpKindBadge(d)} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(d.className||'')}${st&&st.grade?' · '+esc(gradeTag(st.grade,st)):''}</span></span>
-        <span style="font-size:.72rem;color:var(--sub);font-weight:400">🗓 등록 ${esc(d.createdAt||'')}</span>
+      <span class="key" style="display:flex;flex-direction:column;gap:2px"><span data-dpfold="${d.id}" style="cursor:pointer"><span style="color:var(--sub);font-size:.78rem">▾</span> ${esc(d.name)} ${MODE==='all'?bdg(d.academy):''} ${dpKindBadge(d)}${exclTag} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(d.className||'')}${st&&st.grade?' · '+esc(gradeTag(st.grade,st)):''}</span></span>
+        ${d.kind==='out'?`<span style="font-size:.72rem;color:var(--sub);font-weight:400">🚪 퇴원일 <input type="date" data-dpout="${d.id}" value="${esc(dpOutDate(d))}" style="border:1px solid var(--line);border-radius:6px;padding:1px 5px;font-family:inherit;font-size:.72rem"></span>`:`<span style="font-size:.72rem;color:var(--sub);font-weight:400">🗓 등록 ${esc(d.createdAt||'')}</span>`}
         ${st&&st.parentPhone?`<span style="font-size:.74rem;color:var(--sub);font-weight:400">📞 ${esc(st.parentPhone)}</span>`:''}</span>
       <span class="val" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         ${warn?`<span style="font-size:.78rem;color:#b45309">⚠ ${warn}</span>`:''}
         ${d.kind==='sign'?`<button class="btn small" data-dpconvert="${d.id}" title="퇴원징후였던 학생이 실제로 퇴원하게 됐을 때 — 퇴원 상담으로 넘기고 징후 단계 상담 메모를 같이 넘겨줘요">→ 퇴원으로 전환</button>`:''}
         <button class="del" data-dpdel="${d.id}">삭제</button></span>
-      <div style="flex-basis:100%">${dpSignHistoryBlock(d)}${dpHistoryBlock(d)}</div>
-      ${roles.length?`<div style="flex-basis:100%;display:flex;flex-direction:column;gap:4px;margin-top:6px">${roles.map(r=>{ const n=dpNote(d,d.academy+'|'+r.i); const t=t0[r.i]; return `<div style="font-size:.78rem;border:1px solid var(--line);border-radius:8px;padding:5px 9px;background:#fafbfd"><b style="color:${t.color||'var(--ink)'}">${esc(t.name)}</b> <span style="color:var(--sub)">(${r.label})</span> <span style="color:${n.done?'var(--ok)':'var(--sub)'}">${n.done?'✔ 완료'+(n.date?' '+esc(n.date):''):'대기중'}</span>${n.memo?`<br><span style="color:var(--sub)">📝 ${esc(n.memo)}</span>`:''}</div>`; }).join('')}</div>`:''}
+      <div style="flex-basis:100%">${dpSignHistoryBlock(d)}${dpHistoryBlock(d)}${d.kind==='out'?`<div style="font-size:.78rem;font-weight:800;margin-top:6px">📞 퇴원생 연락 ${roles.length?'— 담당 <b style="color:'+(t0[roles[0].i].color||'var(--ink)')+'">'+esc(t0[roles[0].i].name)+'</b> (데스크)':''}</div>${dpStagesBlock(d,true)}`:''}${dpExcludeBlock(d)}</div>
+      ${d.kind!=='out'&&roles.length?`<div style="flex-basis:100%;display:flex;flex-direction:column;gap:4px;margin-top:6px">${roles.map(r=>{ const n=dpNote(d,d.academy+'|'+r.i); const t=t0[r.i]; return `<div style="font-size:.78rem;border:1px solid var(--line);border-radius:8px;padding:5px 9px;background:#fafbfd"><b style="color:${t.color||'var(--ink)'}">${esc(t.name)}</b> <span style="color:var(--sub)">(${r.label})</span> <span style="color:${n.done?'var(--ok)':'var(--sub)'}">${n.done?'✔ 완료'+(n.date?' '+esc(n.date):''):'대기중'}</span>${n.memo?`<br><span style="color:var(--sub)">📝 ${esc(n.memo)}</span>`:''}</div>`; }).join('')}</div>`:''}
     </div>`;
   }).join('');
   return `<details class="setsec" data-fold="dpAdmin" ${state.fold.dpAdmin===true?'open':''}>
     <summary style="cursor:pointer;font-weight:800;font-size:1rem;margin-bottom:8px">🚪 퇴원생 상담 관리 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">(${items.length}명 · 눌러서 접기/펴기)</span>${consultOldToggleHTML(store.dropouts)} <button class="btn small" style="font-size:.7rem;padding:2px 8px;font-weight:600" onclick="event.preventDefault();event.stopPropagation();state.dpOpenAll=!state.dpOpenAll;render(true)">${state.dpOpenAll?'학생 모두 접기':'학생 모두 펼치기'}</button></summary>
-    <div class="desc"><b>퇴원징후</b> 학생은 데스크(인포) 선생님에게 <b>학생 상담</b>, 원장님께 <b>학부모 상담</b>이 자동으로 들어가고, <b>퇴원</b> 학생은 그 달 그 반의 상담 담당 선생님께 <b>퇴원 상담</b>이 들어갑니다. 데스크·원장님은 [설정]에서 지정하세요. 이름을 치면 학생 명단에서 "한글이름(영어이름)"으로 검색됩니다.</div>
+    <div class="desc"><b>퇴원징후</b> 학생은 데스크(인포) 선생님에게 <b>학생 상담</b>, 원장님께 <b>학부모 상담</b>이 자동으로 들어가고, <b>퇴원</b> 학생은 데스크(인포) 선생님께 <b>퇴원생 연락</b>(퇴원일 기준 2주 이내 · 1개월차 · 3개월차)이 들어가고, 연락할 때가 되면 그 선생님의 [오늘 할 일]에 뜹니다. 학생 명단에서 퇴원 처리하면 자동으로 등록돼요. <b>상담 대상 제외</b>를 체크하면 더 이상 뜨지 않아요. 데스크·원장님은 [설정]에서 지정하세요. 이름을 치면 학생 명단에서 "한글이름(영어이름)"으로 검색됩니다.</div>
     <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px">
       ${academies().map(a=>`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         <datalist id="dl_dpstu_${a}">${dpOptions(a).map(o=>`<option value="${esc(o.label)}">`).join('')}</datalist>
@@ -8144,30 +8260,60 @@ function renderDropoutAdmin(){
     ${rows||'<div style="font-size:.8rem;color:#8b93a7">등록된 학생이 없습니다.</div>'}
   </details>`;
 }
+// 퇴원생 단계별 연락 칸(2주 이내 · 1개월차 · 3개월차) — 데스크 선생님이 입력
+function dpStagesBlock(d, readonly){
+  const fm=x=>{ const q=String(x).split('-'); return +q[1]+'/'+(+q[2]); };
+  const legacy=Object.keys(d.notes||{}).map(w=>({w,n:d.notes[w]||{}})).filter(x=>x.n.memo||x.n.done);
+  const t0=store.teachers[d.academy]||[];
+  return `<div style="display:flex;flex-direction:column;gap:6px;margin:6px 0">
+    ${dpStageList(d).map(s=>`<div style="border:1px solid ${s.late?'#f3c6c1':s.open?'#e3d6fb':'var(--line)'};background:${s.late?'#fff1f0':s.open?'#f6f0ff':'#fafbfd'};border-radius:8px;padding:6px 9px">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <b style="font-size:.82rem">${s.label}</b>
+        <span style="font-size:.74rem;color:${s.late?'#c0392b':'var(--sub)'}">${fm(s.from)} ~ ${fm(s.due)}${s.n.done?'':s.skipped?' · 지난 기간(건너뜀)':s.late?' · ⚠ 기한 지남':s.open?' · 지금 연락할 때예요':' · 아직 기간 전'}</span>
+        <label style="font-size:.8rem;color:var(--sub)"><input type="checkbox" data-dpst="${d.id}" data-dpstk="${s.k}" ${s.n.done?'checked':''} ${readonly?'disabled':''}> 연락 완료</label>
+        <input type="date" data-dpstdate="${d.id}" data-dpstk="${s.k}" value="${esc(s.n.date||'')}" ${readonly?'disabled':''} style="border:1px solid var(--line);border-radius:8px;padding:3px 7px;font-family:inherit;font-size:.76rem">
+      </div>
+      ${readonly?(s.n.memo?`<div style="font-size:.78rem;margin-top:3px;white-space:pre-wrap">📝 ${esc(s.n.memo)}</div>`:'')
+        :`<textarea data-dpstmemo="${d.id}" data-dpstk="${s.k}" placeholder="${s.label} 내용 메모…" style="width:100%;min-height:40px;margin-top:4px;border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-family:inherit;font-size:.82rem;box-sizing:border-box">${esc(s.n.memo||'')}</textarea>`}
+    </div>`).join('')}
+    ${legacy.length?`<div style="font-size:.76rem;color:var(--sub)">이전 퇴원 상담 메모: ${legacy.map(x=>`<b>${esc((t0[Number(String(x.w).split('|')[1])]||{}).name||'')}</b> ${x.n.done?'✔':''} ${esc(x.n.memo||'')}`).join(' / ')}</div>`:''}
+  </div>`;
+}
+// 상담 대상 제외 — 체크하면 퇴원생 상담·오늘 할 일에서 빠진다(사유는 따로 적어둔다). 관리 화면에서 다시 풀 수 있다.
+function dpExcludeBlock(d){
+  return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px">
+    <label style="font-size:.8rem;color:${d.excluded?'#c0392b':'var(--sub)'};font-weight:${d.excluded?800:400}"><input type="checkbox" data-dpexcl="${d.id}" ${d.excluded?'checked':''}> 상담 대상 제외</label>
+    <input type="text" data-dpexclr="${d.id}" value="${esc(d.excludeReason||'')}" placeholder="제외 사유 (예: 이사, 연락 거부)" style="flex:1;min-width:160px;border:1px solid var(--line);border-radius:8px;padding:4px 8px;font-family:inherit;font-size:.78rem">
+  </div>`;
+}
 function renderDropoutMine(a,i){
-  const mine=store.dropouts.filter(d=>!d._deleted && consultFresh(d) && d.academy===a && dpRoles(d).some(r=>r.i===i));
+  const mine=store.dropouts.filter(d=>!d._deleted && !d.excluded && dpVisible(d) && d.academy===a && dpRoles(d).some(r=>r.i===i));
   if(!mine.length) return '';
   const who=a+'|'+i;
   const rows=mine.map(d=>{
     const st=d.studentId?store.students.find(x=>x.id===d.studentId&&!x._deleted):null;
     const r=dpRoles(d).find(x=>x.i===i); const n=dpNote(d,who);
-    return `<div class="myclass" style="display:block">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+    const head=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
       <b>${esc(d.name)}</b>${dpKindBadge(d)}<span style="font-size:.78rem;color:var(--sub)">${esc(d.className||'')}${st&&st.grade?' · '+esc(gradeTag(st.grade,st)):''}${st&&st.school?' · '+esc(st.school):''}</span>
       ${st&&st.parentPhone?`<span style="font-size:.8rem;color:var(--sub)">📞 ${esc(st.parentPhone)}</span>`:''}
-      <span style="font-size:.74rem;color:var(--sub)">🗓 등록 ${esc(d.createdAt||'')}</span>
+      ${d.kind==='out'?`<span style="font-size:.74rem;color:var(--sub)">🚪 퇴원일 <input type="date" data-dpout="${d.id}" value="${esc(dpOutDate(d))}" style="border:1px solid var(--line);border-radius:6px;padding:2px 6px;font-family:inherit;font-size:.74rem"></span>`:`<span style="font-size:.74rem;color:var(--sub)">🗓 등록 ${esc(d.createdAt||'')}</span>`}
     </div>
     ${st&&st.note?`<div style="font-size:.76rem;color:var(--ink);background:#f6f7f9;border:1px solid var(--line);border-radius:6px;padding:5px 8px;margin-bottom:5px">📝 특이사항: ${esc(st.note)}</div>`:''}
     ${dpSignHistoryBlock(d)}
-    ${dpHistoryBlock(d)}
+    ${dpHistoryBlock(d)}`;
+    if(d.kind==='out') return `<div class="myclass" style="display:block">${head}${dpStagesBlock(d,false)}${dpExcludeBlock(d)}</div>`;
+    return `<div class="myclass" style="display:block">
+    ${head}
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
       <span style="font-size:.78rem;font-weight:800;color:var(--ink)">내 담당: ${esc(r.label)}</span>
       <label style="font-size:.8rem;color:var(--sub)"><input type="checkbox" data-dpdone="${d.id}" data-dpwho="${esc(who)}" ${n.done?'checked':''}> 상담 완료</label>
       <input type="date" data-dpdate="${d.id}" data-dpwho="${esc(who)}" value="${esc(n.date||'')}" style="border:1px solid var(--line);border-radius:8px;padding:4px 7px;font-family:inherit;font-size:.78rem">
     </div>
     <textarea data-dpmemo="${d.id}" data-dpwho="${esc(who)}" placeholder="${esc(r.label)} 내용 메모…" style="width:100%;min-height:50px;border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:.83rem">${esc(n.memo||'')}</textarea>
+    ${dpExcludeBlock(d)}
   </div>`; }).join('');
-  return `<details class="mypanel" data-fold="dpMine" ${state.fold.dpMine===true?'open':''} style="border-top-color:var(--pri)"><summary style="cursor:pointer;font-weight:800;font-size:1.05rem;margin-bottom:8px">🚪 퇴원생 상담 (${mine.length}명)</summary>${rows}</details>`;
+  const dueN=dpDueItems(a,i).length;
+  return `<details class="mypanel" id="dpMinePanel" data-fold="dpMine" ${(state.fold.dpMine===true||dueN)?'open':''} style="border-top-color:var(--pri)"><summary style="cursor:pointer;font-weight:800;font-size:1.05rem;margin-bottom:8px">🚪 퇴원생 상담·연락 (${mine.length}명)${dueN?` <span style="font-size:.8rem;color:#7c3aed">· 지금 연락할 학생 ${dueN}건</span>`:''}</summary>${rows}</details>`;
 }
 
 /* ---------- 💻 컴퓨터 자리 배치표 (초·중등 전체 · 같은 학년/같은 반 옆·앞뒤 금지) ---------- */
@@ -8747,7 +8893,7 @@ function renderMyConsult(list){
   if(!cls.length) body='<div class="empty">이번 달에 배정된 반이 없습니다. [상담 관리]에서 담당을 배정해주세요.</div>';
   cls.forEach(c=>{
     const k=ckey(c); const p=classProgress(c);
-    body+=`<div class="myclass">${esc(c.name)} <span style="font-weight:400">· ${AC[c.academy].label} · ${c.dept}${c.count?' · '+c.count+'명':''}${p.total?` · ${p.done}/${p.total} 완료`:''}</span></div>`;
+    body+=`<div class="myclass">${esc(c.name)} <span style="font-weight:400">· ${AC[c.academy].label} · ${c.dept}${p.total?' · '+p.total+'명':''}${p.total?` · ${p.done}/${p.total} 완료`:''}</span></div>`;
     if(c.students&&c.students.length) body+=consultRoster(c).map(s=>studentRow(k,s,false,c,viewingOthers)).join('');
     else { const pcm=prevConsultCmemoFor(k); body+=`<div style="padding:6px 0">
       ${pcm?`<div style="font-size:.76rem;color:var(--ink);background:#f6f7f9;border:1px solid var(--line);border-radius:6px;padding:5px 8px;margin-bottom:5px">🕘 ${esc(mLabel(shiftMonth(state.month,-1)))} 상담: ${esc(pcm)}</div>`:''}
@@ -8764,7 +8910,9 @@ function renderMyConsult(list){
 }
 
 function renderConsult(list){
-  list=list.filter(c=>c.students && c.students.length>0);
+  // 반 명단에 이름이 남아 있어도 퇴원생·이번 달 신입생(신입생 상담으로 따로 진행)만 있으면 상담할 학생이 0명이라
+  // 반 카드만 뜨고 입력 칸은 안 나오는 문제가 있었다 → 실제 상담 대상(consultRoster)이 있는 반만 보여준다
+  list=list.filter(c=>c.students && c.students.length>0 && consultRoster(c).length>0);
   const _lt=loginTeacher();
   if(_lt && !isAdminRole() && !state.tf){ state.tf={a:_lt.a,i:_lt.i}; } // 일반 선생님은 처음 진입 시엔 본인 화면, 다른 선생님 카드나 형제자매 링크로 이동한 경우엔 유지
   else if(_lt && isAdminRole() && state.tf===undefined){ state.tf={a:_lt.a,i:_lt.i}; } // 실장·관리자는 기본은 본인 화면이지만, [← 전체 반 배정 보기]로 전환 가능
@@ -8866,6 +9014,16 @@ function bindConsult(){
   v.querySelectorAll('[data-dpdone]').forEach(cb=>cb.onchange=()=>{ updateDropoutNote(cb.dataset.dpdone, cb.dataset.dpwho, 'done', cb.checked); });
   v.querySelectorAll('[data-dpdate]').forEach(d=>d.onchange=()=>{ updateDropoutNote(d.dataset.dpdate, d.dataset.dpwho, 'date', d.value); });
   v.querySelectorAll('[data-dpmemo]').forEach(t=>t.onchange=()=>{ updateDropoutNote(t.dataset.dpmemo, t.dataset.dpwho, 'memo', t.value); });
+  // 퇴원생 단계별 연락(2주 이내·1개월차·3개월차)
+  v.querySelectorAll('[data-dpst]').forEach(cb=>cb.onchange=()=>updateDropoutStage(cb.dataset.dpst, cb.dataset.dpstk, 'done', cb.checked));
+  v.querySelectorAll('[data-dpstdate]').forEach(d=>d.onchange=()=>updateDropoutStage(d.dataset.dpstdate, d.dataset.dpstk, 'date', d.value));
+  v.querySelectorAll('[data-dpstmemo]').forEach(t=>t.onchange=()=>updateDropoutStage(t.dataset.dpstmemo, t.dataset.dpstk, 'memo', t.value));
+  v.querySelectorAll('[data-dpexcl]').forEach(cb=>cb.onchange=()=>{ const x=store.dropouts.find(y=>y.id===cb.dataset.dpexcl); if(!x) return;
+    const r=v.querySelector(`[data-dpexclr="${CSS.escape(x.id)}"]`); if(r) x.excludeReason=r.value.trim();
+    if(cb.checked && !x.excludeReason){ const ans=prompt('상담 대상에서 제외하는 사유를 적어주세요 (예: 이사, 연락 거부)', ''); if(ans===null){ cb.checked=false; return; } x.excludeReason=ans.trim(); }
+    x.excluded=cb.checked; x.excludedAt=cb.checked?todayISO():''; x.updatedAt=Date.now(); save(); render(true); toast(cb.checked?`${x.name} — 상담 대상에서 제외했어요`:`${x.name} — 다시 상담 대상에 넣었어요`); });
+  v.querySelectorAll('[data-dpexclr]').forEach(t=>t.onchange=()=>{ const x=store.dropouts.find(y=>y.id===t.dataset.dpexclr); if(!x) return; x.excludeReason=t.value.trim(); x.updatedAt=Date.now(); save(); });
+  v.querySelectorAll('[data-dpout]').forEach(d=>d.onchange=()=>{ const x=store.dropouts.find(y=>y.id===d.dataset.dpout); if(!x||!d.value) return; x.outDate=d.value; x.updatedAt=Date.now(); save(); render(true); });
   v.querySelectorAll('[data-nsadd]').forEach(b=>b.onclick=()=>addNewStudentAction(b.dataset.nsadd));
   v.querySelectorAll('[data-nsdel]').forEach(b=>b.onclick=()=>removeNewStudentAction(b.dataset.nsdel));
   v.querySelectorAll('[data-nsdone]').forEach(cb=>cb.onchange= async ()=>{
@@ -9531,6 +9689,13 @@ function goToAbsentToday(){
     if(el) el.scrollIntoView({behavior:'smooth', block:'start'});
   }, 60);
 }
+function goDropoutConsult(){
+  // 오늘 할 일의 퇴원생 연락 → [상담] 탭의 내 퇴원생 상담 칸을 펼쳐서 보여준다
+  state.fold=state.fold||{}; state.fold.dpMine=true;
+  const lt=loginTeacher(); if(lt) state.tf={a:lt.a,i:lt.i};
+  goTab('consult');
+  setTimeout(()=>{ const el=document.getElementById('dpMinePanel'); if(el){ el.open=true; el.scrollIntoView({behavior:'smooth',block:'start'}); } }, 80);
+}
 function todoCard(list){
   const lt=loginTeacher(); if(!lt) return '';
   const who=whoKey(lt); const today=todayISO();
@@ -9554,6 +9719,17 @@ function todoCard(list){
     <h2>오늘 할 일</h2>`;
   // 실장 이상이 지정한 개별 상담 요청 (완료 안 된 것만)
   h2+=renderConsultRequestsMine(lt.a, lt.i, false);
+  // 🚪 퇴원생 연락 — 데스크 선생님께 배정된 퇴원생 중 지금 연락할 때(2주차 · 1개월차 · 3개월차)가 된 학생
+  { const due=dpDueItems(lt.a, lt.i);
+    if(due.length){
+      const fm=x=>{ const q=String(x).split('-'); return +q[1]+'/'+(+q[2]); };
+      h2+=`<div style="padding:6px 0;border-bottom:1px solid #f1f3f8">
+        <div style="display:flex;align-items:center;gap:8px"><span style="font-size:1rem">🚪</span><span style="font-size:.86rem;font-weight:700">퇴원생 연락 ${due.length}건</span>
+        <button class="btn small" onclick="goDropoutConsult()" style="margin-left:auto">상담 기록 →</button></div>
+        ${due.map(({d,s})=>{ const st=d.studentId?store.students.find(x=>x.id===d.studentId):null; return `<div style="font-size:.8rem;margin:3px 0 0 26px;color:${s.late?'#c0392b':'var(--ink)'}"><b>${esc(d.name)}</b> <span style="color:var(--sub)">${esc(d.className||'')} · 퇴원 ${fm(dpOutDate(d))}</span> — ${s.label}${s.late?' (⚠ '+fm(s.due)+' 지남)':' (~'+fm(s.due)+')'}${st&&st.parentPhone?` <span style="color:var(--sub)">📞 ${esc(st.parentPhone)}</span>`:''}</div>`; }).join('')}
+      </div>`;
+    }
+  }
   h2+=item(jSub, jSub?'오늘 업무일지 제출 완료':(jFilled?'오늘 업무일지 작성됨 — 제출 필요':'오늘 업무일지 미작성'),'report','daily');
   h2+=item(wpSub, wpSub?'이번 주 진도계획표 제출 완료':'이번 주 진도계획표 미제출','report','weekly');
   h2+=`<div style="display:flex;align-items:center;gap:8px;padding:8px 0">
@@ -17281,7 +17457,7 @@ function renderSet(){
   // 상담 담당 지정 — 퇴원징후 학생의 데스크(인포) 선생님 / 학부모 상담 원장님 (관리자·실장만)
   if(!isTeacher){
     h+=`<div class="setsec"><h3>🚪 퇴원 상담 담당 지정</h3>
-      <div class="desc">퇴원징후 학생을 등록하면 <b>데스크(인포) 선생님</b>에게 학생 상담, <b>원장님</b>에게 학부모 상담이 자동으로 들어갑니다. 학원별로 선생님을 골라주세요.</div>
+      <div class="desc">퇴원징후 학생을 등록하면 <b>데스크(인포) 선생님</b>에게 학생 상담, <b>원장님</b>에게 학부모 상담이 자동으로 들어갑니다. 학생을 <b>퇴원</b> 처리하면 데스크(인포) 선생님께 퇴원생 연락(2주 이내 · 1개월차 · 3개월차)이 자동 배정돼요. 학원별로 선생님을 골라주세요.</div>
       ${academies().map(a=>`<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
         ${MODE==='all'?`<span class="badge ${AC[a].cls}">${AC[a].label}</span>`:''}
         <label style="font-size:.84rem">데스크(인포) <select data-crole="${a}|desk" style="padding:6px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit"><option value="">미지정</option>${(store.teachers[a]||[]).map(t=>`<option value="${esc(t.name)}" ${consultRole(a,'desk')===t.name?'selected':''}>${esc(t.name)}</option>`).join('')}</select></label>
