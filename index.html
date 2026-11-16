@@ -709,6 +709,8 @@ select.bgname{height:2.9em;white-space:normal}
 body[data-tab="consult"] .warnpill{color:var(--sub)!important;background:#f1f2f5!important}
 body[data-tab="consult"] .badge.eb,body[data-tab="consult"] .badge.ic{background:#f1f2f5;color:var(--sub)}
 .hcal .d.ev::after{display:none}.hcal .d .evd{position:absolute;left:0;right:0;bottom:1px;display:flex;justify-content:center;gap:2px}.hcal .d .evd i{width:4px;height:4px;border-radius:50%;display:block}.hcal .d.today .evd i{box-shadow:0 0 0 1px #fff}
+/* 업무일지·진도계획표·상담 패널 위쪽 선생님 색 줄은 없앤다 — 선생님 색은 제목 앞 네모 칸에만 */
+.mypanel{border-top:1px solid var(--line)!important}
 </style>
 </head>
 <body>
@@ -5863,6 +5865,21 @@ function wtScoreInput(s, date, r, kind, disabled, extraStyle){
     <input type="number" min="0" max="${total}" step="1" placeholder="맞은 개수" value="${c==null?'':esc(String(c))}" data-wtfield="${s.id}|${date}|${kind?'nsCorrect':'correct'}" ${disabled?'disabled':''} style="width:78px;${st}">
     <span style="font-size:.82rem;font-weight:800;color:var(--ink);${extraStyle||''}">/ ${total}</span><span style="font-size:.7rem;color:var(--sub)">(${ok}개까지 OK)</span></span>`;
 }
+// 재시험 줄의 상태 드롭다운: 완료 · 지연(고르면 날짜를 골라 그날 「오늘 남는 학생」으로 옮긴다)
+function wtStateSel(z){ if(!z||!z.wtId) return ''; const q=String(z.delayedFrom||'').split('-'); return `${z.delayedFrom?`<span style="font-size:.7rem;font-weight:700;color:var(--pri);background:var(--pri-bg,#eaf0ff);border-radius:5px;padding:1px 6px;white-space:nowrap">${+q[1]}/${+q[2]}에서 지연</span>`:''}<select class="wtStateSel" data-wt="${esc(z.wtId)}" title="재시험 완료 또는 지연" style="padding:3px 6px;border:1.5px solid var(--line);border-radius:7px;font-family:inherit;font-size:.76rem;font-weight:700;background:#fff;cursor:pointer"><option value="">상태</option><option value="done">✔ 완료</option><option value="delay">📅 지연</option></select>`; }
+function wtDelayAction(wtId){
+  const isNs=String(wtId).endsWith('#ns'); const id=isNs?String(wtId).slice(0,-3):wtId;
+  const r=store.wordTests.find(x=>x.id===id); if(!r) return;
+  const st=store.students.find(x=>x.id===r.studentId);
+  const cur=(isNs?r.nsRetestDate:r.retestDate)||r.date; const d0=new Date(state.date+'T00:00:00'); d0.setDate(d0.getDate()+1);
+  bkModal('재시험 지연', `<div style="font-size:.84rem"><b>${esc(st?studentDisplayName(st.academy,st.nameKo,st.className):'')}</b> · ${isNs?'내신단어 재시험':'단어 재시험'} ${esc((isNs?r.nsWordbook:r.wordbook)||'')}</div><div style="font-size:.78rem;color:var(--sub)">재시험 볼 날짜를 고르면 그날 「오늘 남는 학생」으로 옮겨져요. (시험 본 날 ${esc(r.date)})</div><input type="date" id="wtDlDate" value="${ymd(d0)}" min="${todayISO()}" style="padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.9rem">`, ov=>{
+    const to=(ov.querySelector('#wtDlDate').value||'').trim();
+    if(!to){ toast('날짜를 고르세요'); return false; }
+    if(to===cur){ toast('지금과 같은 날짜예요'); return false; }
+    if(isNs) r.nsRetestDate=to; else r.retestDate=to;
+    r.updatedAt=Date.now(); save(); const q=to.split('-'); toast(`재시험을 ${+q[1]}/${+q[2]}로 지연했어요`); render(true);
+  }, '지연');
+}
 function markRetestDone(id){
   const isNs=String(id).endsWith('#ns'); if(isNs) id=String(id).slice(0,-3);
   const r=store.wordTests.find(x=>x.id===id); if(!r) return;
@@ -10192,10 +10209,10 @@ function renderToday(list, partsOnly){
   { const clsAll=classesFor(monthForDate(state.date)); Object.keys(stay||{}).forEach(k=>{ const recs=stay[k]||{}; if(!Object.values(recs).some(r=>r&&r.movedFrom)) return; const cl=clsAll.find(c=>ckey(c)===k); if(cl && (state.ac==='all'||cl.academy===state.ac)) collectStay(cl); }); }
  // 재시험 대상 학생도 "오늘 남는 학생"에 자동으로 합쳐서 보여준다 (재시험은 보통 남아서 다시 봐야 하므로)
   [['w',r=>r.retestNeeded && !r.retestCompleted && !r.absent],['n',r=>r.nsRetestNeeded && !r.nsRetestCompleted && !r.absent]].forEach(([kind,fil])=>
-  store.wordTests.filter(r=>r.date===state.date && fil(r)).forEach(r=>{
+  store.wordTests.filter(r=>((kind==='n'?r.nsRetestDate:r.retestDate)||r.date)===state.date && fil(r)).forEach(r=>{ // 재시험을 다른 날로 지연했으면 그 날짜에 나온다
     const st=store.students.find(x=>x.id===r.studentId); if(!st) return;
     const nameKey=st.academy+'|'+st.nameKo;
-    const retestSubj=kind==='n'?{subj:'📖 내신단어 재시험', memo:(r.nsWordbook?r.nsWordbook:'')+(r.nsRange?' · '+r.nsRange:''), done:false, isRetest:true, wtId:r.id+'#ns', wb:r.nsWordbook}:{subj:'📖 재시험', memo:(r.wordbook?r.wordbook:'')+(r.range?' · '+r.range:''), done:false, isRetest:true, wtId:r.id, wb:r.wordbook};
+    const retestSubj=kind==='n'?{subj:'📖 내신단어 재시험', memo:(r.nsWordbook?r.nsWordbook:'')+(r.nsRange?' · '+r.nsRange:''), done:false, isRetest:true, wtId:r.id+'#ns', wb:r.nsWordbook, delayedFrom:(r.nsRetestDate&&r.nsRetestDate!==r.date)?r.date:''}:{subj:'📖 재시험', memo:(r.wordbook?r.wordbook:'')+(r.range?' · '+r.range:''), done:false, isRetest:true, wtId:r.id, wb:r.wordbook, delayedFrom:(r.retestDate&&r.retestDate!==r.date)?r.date:''};
     const existing=stayList.find(x=>!x.isRetest && x.academy===st.academy && x.student===studentDisplayName(st.academy,st.nameKo,st.className));
     if(existing){ existing.subjects.push(retestSubj); return; } // 이미 다른 이유로 남는 학생이면 같은 줄에 재시험 칸만 추가
     seenStayName.add(nameKey);
@@ -10210,7 +10227,7 @@ function renderToday(list, partsOnly){
         const doneSubjects=x.subjects.filter(s=>s.done);
         return `<div class="rowitem" style="align-items:flex-start"><span class="key">${esc(x.student)} ${MODE==='all'?bdg(x.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(x.className)}</span>${stayMovedTag(x)}</span>
           <span class="val" style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
-           ${openSubjects.map(s=>`<span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">${s.subj?`<b style="font-size:.76rem;color:${s.isRetest?'#b45309':'var(--sub)'}">${s.isRetest?'':'📚 '}${esc(s.subj)}</b>`:''} ${s.memo?esc(s.memo):'<span style="color:#c3c9d6">메모 없음</span>'} ${s.isRetest?`${wtRetestSheetBtn(s.wtId, s.wb)}<button class="btn small" data-wtdone="${s.wtId}">✔ 완료</button>`:`${stayStateSel(x, s.subj||'', true)}`}</span>`).join('')}            ${doneSubjects.length?`<span style="font-size:.72rem;color:#8b93a7">✔ 완료: ${doneSubjects.map(s=>esc(s.subj||'')).join(', ')}</span>`:''}
+           ${openSubjects.map(s=>`<span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">${s.subj?`<b style="font-size:.76rem;color:${s.isRetest?'#b45309':'var(--sub)'}">${s.isRetest?'':'📚 '}${esc(s.subj)}</b>`:''} ${s.memo?esc(s.memo):'<span style="color:#c3c9d6">메모 없음</span>'} ${s.isRetest?`${wtRetestSheetBtn(s.wtId, s.wb)}${wtStateSel(s)}`:`${stayStateSel(x, s.subj||'', true)}`}</span>`).join('')}            ${doneSubjects.length?`<span style="font-size:.72rem;color:#8b93a7">✔ 완료: ${doneSubjects.map(s=>esc(s.subj||'')).join(', ')}</span>`:''}
           </span></div>`;
       }).join(''):'<div style="font-size:.82rem;color:#8b93a7">오늘 남는 학생이 없습니다.</div>'}
     </div></div>`:'';
@@ -10706,7 +10723,7 @@ function renderToday(list, partsOnly){
     ${sel?`<div class="hbox">${boxHead(sel,'출석 '+sel.present+'/'+sel.n+' · 숙제 '+sel.hwdone+'/'+sel.n)}${homePrevHwBox(sel.c, sel.k, sel.allSubjNamesToday)}<div class="hasg">${sel.asgBox}</div>${sel.attBody}</div>`:emptyMsg}</div>`;
   const hwCard='';
   const myStay=stayList.filter(x=>cardKeys.has(x.k) || (x.movedFrom && x.cl && lt && teacherTeaches(x.cl, lt)));
-  const stayCard=isAdminRole()?'':`<div class="hcard"><h2>오늘 남는 학생</h2><div class="hdesc">출석 체크에서 '오늘 남기'를 체크한 학생이 이유와 함께 여기에 모여요.</div>${myStay.length?myStay.map(x=>`<div class="hstayi"><b>${esc(x.student)}</b> <span>${esc(x.className)}</span>${stayMovedTag(x)}${(x.s&&!x.retestOnly)?`<span style="float:right">${stayStateSel(x,'',false)}</span>`:''}<div>${x.subjects.filter(z=>!z.done && !z.isRetest).map(z=>esc([z.subj,z.memo].filter(Boolean).join(' · '))).filter(Boolean).join(' / ')}</div>${x.subjects.filter(z=>!z.done && z.isRetest).map(z=>`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:3px"><span style="font-size:.78rem;color:#b45309;font-weight:800">${esc(z.subj)}</span><span style="font-size:.78rem">${esc(z.memo||'')}</span>${wtRetestSheetBtn(z.wtId, z.wb)}<button class="btn small" data-wtdone="${esc(z.wtId)}">✔ 완료</button></div>`).join('')}</div>`).join(''):'<div class="hempty">아직 남는 학생이 없어요</div>'}</div>`;
+  const stayCard=isAdminRole()?'':`<div class="hcard"><h2>오늘 남는 학생</h2><div class="hdesc">출석 체크에서 '오늘 남기'를 체크한 학생이 이유와 함께 여기에 모여요.</div>${myStay.length?myStay.map(x=>`<div class="hstayi"><b>${esc(x.student)}</b> <span>${esc(x.className)}</span>${stayMovedTag(x)}${(x.s&&!x.retestOnly)?`<span style="float:right">${stayStateSel(x,'',false)}</span>`:''}<div>${x.subjects.filter(z=>!z.done && !z.isRetest).map(z=>esc([z.subj,z.memo].filter(Boolean).join(' · '))).filter(Boolean).join(' / ')}</div>${x.subjects.filter(z=>!z.done && z.isRetest).map(z=>`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:3px"><span style="font-size:.78rem;color:#b45309;font-weight:800">${esc(z.subj)}</span><span style="font-size:.78rem">${esc(z.memo||'')}</span>${wtRetestSheetBtn(z.wtId, z.wb)}${wtStateSel(z)}</div>`).join('')}</div>`).join(''):'<div class="hempty">아직 남는 학생이 없어요</div>'}</div>`;
   // 🚨 결석·지각 카드 — 전체 현황과 같은 구성(특이사항 · 결석·지각 목록+사유 · 접히는 결석생 과제), 내 반 학생만
   const myAbsAll=[...absentHwList.map(x=>({...x,a:'결'})), ...lateHwList.map(x=>({...x,a:'지'})), ...earlyHwList.map(x=>({...x,a:'조퇴'}))].filter(isMyAbs);
   const myAbsRows=myAbsAll.filter(x=>absDeptOk(x.dept));
@@ -10935,6 +10952,7 @@ function bindToday(){
     st2[k]=st2[k]||{}; st2[k][st]=st2[k][st]||{}; st2[k][st].bySubject=st2[k][st].bySubject||{};
     st2[k][st].bySubject[subjKey(subj)]=inp.value; save(); render(true);
   });
+  v.querySelectorAll('.wtStateSel').forEach(sl=>sl.onchange=()=>{ const id=sl.dataset.wt, val=sl.value; sl.value=''; if(val==='done') markRetestDone(id); else if(val==='delay') wtDelayAction(id); });
   v.querySelectorAll('.stayStateSel').forEach(sl=>sl.onchange=()=>{
     const k=sl.dataset.k, sname=sl.dataset.s, subj=sl.dataset.subj, val=sl.value; sl.value='';
     if(val==='delay'){ stayMoveAction(k, sname); return; }
@@ -12177,9 +12195,9 @@ function hgSyncLive(academy, targetMonth){
 // 인수인계표 칸 너비 — 보는 사람 화면(이 브라우저)에서만 적용, 저장/동기화 안 됨(다른 선생님에게 영향 없음)
 // 반 칸 하나에 「지난달 반명 / 이번달 반명 입력칸」을 위아래로 같이 넣는다 (시안 디자인)
 const HG_COLS=[
-  {key:'sel', w:44}, {key:'cls', w:150}, {key:'subject', w:100}, {key:'targetSubject', w:130},
-  {key:'prevTeacher', w:110}, {key:'targetTeacher', w:100}, {key:'prevBook', w:170}, {key:'book', w:170},
-  {key:'lastHw', w:150}, {key:'progress', w:90}, {key:'note', w:150}, {key:'targetProgress', w:100}
+  {key:'sel', w:40}, {key:'cls', w:130}, {key:'subject', w:88}, {key:'targetSubject', w:96},
+  {key:'prevTeacher', w:92}, {key:'targetTeacher', w:88}, {key:'prevBook', w:220}, {key:'book', w:220},
+  {key:'lastHw', w:110}, {key:'progress', w:100}, {key:'targetProgress', w:110}, {key:'note', w:300}
 ];
 // 합치기 한 행들이 원래 표에서 서로 떨어져 있어도, 화면엔 항상 나란히 모아서 보여준다(저장된 순서 자체는 안 건드림)
 function hgDisplayOrder(rows){
@@ -12213,18 +12231,24 @@ function hgClusterInfo(groupRows){
   }
   return info;
 }
+// 칸 숨기기 — 엑셀처럼 안 쓰는 칸을 접어둔다 (이 브라우저에서만, 다른 선생님 화면엔 영향 없음). 짝 칸(지난달→이번달)은 같이 숨긴다
+const HG_HIDE_GROUPS=[['subject','과목명',['subject','targetSubject']],['teacher','담당',['prevTeacher','targetTeacher']],['prevBook','지난달 교재',['prevBook']],['book','이번달 교재',['book']],['lastHw','지난 과제',['lastHw']],['progress','진도',['progress']],['targetProgress','이번달 진도',['targetProgress']],['note','특이사항',['note']]];
+function hgHidden(){ try{ const a=JSON.parse(localStorage.getItem('hgHiddenCols')||'[]'); return Array.isArray(a)?a:[]; }catch(e){ return []; } }
+function hgHiddenCols(){ const g=hgHidden(); const out=new Set(); HG_HIDE_GROUPS.forEach(([id,,cols])=>{ if(g.includes(id)) cols.forEach(c=>out.add(c)); }); return out; }
+function hgSetHidden(arr){ try{ localStorage.setItem('hgHiddenCols', JSON.stringify(arr)); }catch(e){} }
+function hgResetView(){ try{ localStorage.removeItem('hgColWidths2'); localStorage.removeItem('hgHiddenCols'); }catch(e){} }
 function hgColWidths(){
   let saved={};
-  try{ saved=JSON.parse(localStorage.getItem('hgColWidths')||'{}'); }catch(e){}
+  try{ saved=JSON.parse(localStorage.getItem('hgColWidths2')||'{}'); }catch(e){} // 칸 너비 기본값을 새로 정하면서 예전에 끌어서 넓혀둔 너비는 초기화(키 변경)
   const out={};
   HG_COLS.forEach(c=>{ out[c.key]=Math.max(40, Number(saved[c.key])||c.w); });
   return out;
 }
 function hgSaveColWidth(key, w){
   let saved={};
-  try{ saved=JSON.parse(localStorage.getItem('hgColWidths')||'{}'); }catch(e){}
+  try{ saved=JSON.parse(localStorage.getItem('hgColWidths2')||'{}'); }catch(e){}
   saved[key]=Math.max(40, Math.round(w));
-  localStorage.setItem('hgColWidths', JSON.stringify(saved));
+  localStorage.setItem('hgColWidths2', JSON.stringify(saved));
 }
 function hgClassOptions(a, targetMonth){
   return editArr(a, targetMonth).filter(c=>!c._deleted).map(c=>c.name).sort((x,y)=>x.localeCompare(y,'ko'));
@@ -12354,7 +12378,10 @@ function renderHandoverGrid(){
     </span>
     <button class="btn small" id="hgMergeBtn" title="같은 반 안에서 체크하면: 체크된 항목만 골라서 합칠 수 있어요(예: 담당만 체크하면 담당 칸만 하나로 합쳐지고 과목명·교재·진도는 그대로 유지) · 서로 다른 반에서 체크하면: 없어진 반을 다른 반으로 흡수하듯, 반 전체를 하나로 묶어서 보여줍니다">🔗 체크한 과목 행 합치기</button>
     <button class="btn small" id="hgAddClassBtn" title="지난달엔 없던 반을 새로 만들거나, 이미 추가한 반에 과목을 한 줄 더 추가할 때 사용">➕ 새 반(과목) 추가</button>
-    <span style="font-size:.76rem;color:#8b93a7;margin-left:auto">모든 선생님이 같이 보고 같이 수정하는 표입니다 · 선생님별로 구분되지 않습니다 · 칸 경계를 드래그하면 너비를 조절할 수 있어요(내 화면에만 적용)</span>
+    <span style="position:relative;display:inline-block"><button class="btn small" id="hgColsBtn" title="안 쓰는 칸을 숨기거나 다시 보이게 해요 (내 화면에만 적용)">👁 칸 숨기기${hgHidden().length?` (${hgHidden().length})`:''}</button>
+      <div id="hgColsMenu" style="display:none;position:absolute;left:0;top:110%;z-index:60;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(23,27,46,.14);padding:8px 10px;min-width:170px">${HG_HIDE_GROUPS.map(([id,label])=>`<label style="display:flex;align-items:center;gap:6px;padding:4px 2px;font-size:.82rem;cursor:pointer;white-space:nowrap"><input type="checkbox" data-hghide="${id}" ${hgHidden().includes(id)?'':'checked'}> ${label}</label>`).join('')}<div style="font-size:.7rem;color:var(--sub);margin-top:4px">체크를 풀면 그 칸이 숨겨져요</div></div></span>
+    <button class="btn small" id="hgResetView" title="끌어서 바꾼 칸 너비와 숨긴 칸을 처음 상태로 되돌려요 (내 화면에만 적용)">↺ 칸 원래대로</button>
+    <span style="font-size:.76rem;color:#8b93a7;margin-left:auto">모든 선생님이 같이 보고 같이 수정하는 표입니다 · 선생님별로 구분되지 않습니다 · 칸 경계를 드래그하면 너비를 조절할 수 있어요 · 너비·숨긴 칸은 내 화면에만 적용</span>
   </div>`;
   if(!rows.length){
     h+=`<div class="empty">${prevLabel}에 등록된 반·과목 자료가 없어 표를 만들 수 없습니다. [반 · 교재]에서 ${prevLabel} 자료를 먼저 입력해주세요.</div>`;
@@ -12379,7 +12406,7 @@ function renderHandoverGrid(){
     const dataAttr=mergeGroup?`data-hgmergefield="${mergeGroup}|${field}"`:`data-hgfield="${rid}|${field}"`;
     return `<input type="text" value="${esc(val||'')}" ${dataAttr}${cls?` class="${cls}"`:''}${ph?` placeholder="${esc(ph)}"`:''}>`;
   };
-  const colw=hgColWidths();
+  const colw=hgColWidths(); const hgHid=hgHiddenCols();
   const sm=(t)=>{ const m=String(t).match(/^(\d{4})년\s*(\d+)월\s*→\s*(\d{4})년\s*(\d+)월$/); return `<small>${m&&m[1]===m[3]?`${m[1]}년 ${m[2]}월 → ${m[4]}월`:t}</small>`; }; // 머리줄은 "2026년 11월 → 12월"처럼 (해가 바뀌면 둘 다 표시)
   // 짝 칸(지난달 → 이번달)은 머리줄 글자를 앞 칸에만 쓰고 뒤 칸까지 이어서 보이게 한다
   const colHeads={
@@ -12387,12 +12414,12 @@ function renderHandoverGrid(){
     subject:[`과목명${sm(prevLabel+' → '+targetLabel)}`,'hg-pair'], targetSubject:['',''],
     prevTeacher:[`담당${sm(prevLabel+' → '+targetLabel)}`,'hg-pair'], targetTeacher:['',''],
     prevBook:[`${prevLabel} 교재`,''], book:[`${targetLabel} 교재`,''],
-    lastHw:['지난 과제',''], progress:['진도',''], note:['특이사항',''], targetProgress:[`${targetLabel} 진도`,'']
+    lastHw:['지난 과제',''], progress:['진도',''], note:['특이사항',''], targetProgress:[`${String(targetLabel).replace(/^\d{4}년\s*/,'')} 진도`,'']
   };
   const colTitles={sel:'선택',cls:`${prevLabel} 반명 → ${targetLabel} 반명`,subject:`${prevLabel} 과목명`,targetSubject:`${targetLabel} 과목명`,prevTeacher:`${prevLabel} 담당`,targetTeacher:`${targetLabel} 담당`,prevBook:`${prevLabel} 교재`,book:`${targetLabel} 교재`,lastHw:'지난 과제',progress:'진도',note:'특이사항',targetProgress:`${targetLabel} 진도`};
   const hgOpts=hgClassOptions(a,targetMonth);
-  h+=`${teacherDatalist(a)}<datalist id="dl_hgclass_${a}">${hgOpts.map(nm=>`<option value="${esc(nm)}">`).join('')}</datalist><div style="overflow-x:auto"><table class="hgx" style="width:${HG_COLS.reduce((n,c)=>n+colw[c.key],0)}px;min-width:0">
-  <colgroup>${HG_COLS.map(c=>`<col style="width:${colw[c.key]}px">`).join('')}</colgroup>
+  h+=`${teacherDatalist(a)}<datalist id="dl_hgclass_${a}">${hgOpts.map(nm=>`<option value="${esc(nm)}">`).join('')}</datalist><div style="overflow-x:auto"><table class="hgx" style="width:${HG_COLS.reduce((n,c)=>n+(hgHid.has(c.key)?0:colw[c.key]),0)}px;min-width:0">
+  <colgroup>${HG_COLS.map(c=>`<col data-hgcol="${c.key}" style="width:${colw[c.key]}px${hgHid.has(c.key)?';visibility:collapse':''}">`).join('')}</colgroup>
   <thead><tr>${HG_COLS.map(c=>`<th class="${colHeads[c.key][1]}" title="${esc(colTitles[c.key])}"${c.key==='sel'?' style="text-align:center;padding-right:8px"':''}>${colHeads[c.key][0]}<span class="hg-resizer" data-col="${c.key}" title="드래그해서 칸 너비 조절 (이 화면에서만 적용)" style="position:absolute;right:0;top:0;bottom:0;width:8px;cursor:col-resize;user-select:none"></span></th>`).join('')}</tr></thead><tbody>
   ${groups.map((g2,gi)=>{
     const curTarget=(g2.rows[0]||{}).targetClass||'';
@@ -12446,8 +12473,8 @@ function renderHandoverGrid(){
     ${bookTd}
     <td>${txtCell(r.lastHw,'lastHw',r.id,true)}</td>
     <td>${txtCell(r.progress,'progress',r.id)}</td>
-    <td>${txtCell(r.note,'note',r.id,true)}</td>
     ${targetProgressTd}
+    <td>${txtCell(r.note,'note',r.id,true)}</td>
   </tr>`;
     }).join('');
   }).join('')}
@@ -12632,6 +12659,11 @@ function bindHandoverGrid(){
     save(); render(true);
   });
   // 칸 너비 드래그 조절 — 이 브라우저(내 화면)에만 저장됨, 다른 선생님 화면엔 영향 없음
+  const cb=v.querySelector('#hgColsBtn'), cm=v.querySelector('#hgColsMenu');
+  if(cb&&cm){ cb.onclick=e=>{ e.stopPropagation(); cm.style.display=cm.style.display==='none'?'block':'none'; }; cm.onclick=e=>e.stopPropagation();
+    document.addEventListener('click', ()=>{ if(cm.isConnected) cm.style.display='none'; }, {once:true}); }
+  v.querySelectorAll('[data-hghide]').forEach(ch=>ch.onchange=()=>{ const id=ch.dataset.hghide; let h=hgHidden().filter(x=>x!==id); if(!ch.checked) h.push(id); hgSetHidden(h); render(true); setTimeout(()=>{ const m=document.getElementById('hgColsMenu'); if(m) m.style.display='block'; },0); });
+  const rv=v.querySelector('#hgResetView'); if(rv) rv.onclick=()=>{ hgResetView(); toast('칸 너비와 숨긴 칸을 처음 상태로 되돌렸어요'); render(true); };
   v.querySelectorAll('.hg-resizer').forEach(rz=>{
     rz.addEventListener('mousedown', e=>{
       e.preventDefault();
@@ -12640,7 +12672,8 @@ function bindHandoverGrid(){
       const colIdx=HG_COLS.findIndex(c=>c.key===key);
       const col=table.querySelectorAll('colgroup col')[colIdx];
       const startX=e.clientX, startW=col.offsetWidth || parseInt(col.style.width,10) || 80;
-      const onMove=e2=>{ const w=Math.max(40, startW + (e2.clientX-startX)); col.style.width=w+'px'; };
+      const tw0=table.offsetWidth;
+      const onMove=e2=>{ const w=Math.max(40, startW + (e2.clientX-startX)); col.style.width=w+'px'; table.style.width=(tw0+(w-startW))+'px'; }; // 표 전체 너비도 같이 늘리고 줄여야 다른 칸이 밀리지 않는다
       const onUp=e2=>{
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
@@ -12676,7 +12709,6 @@ function renderReport(){
     ${state.rkind==='weekly'?`<button class="btn small" id="wkPrev">◀ 지난 주</button><button class="btn small" id="wkNext">다음 주 ▶</button>`:''}
     ${state.rkind!=='handover'?`<span style="font-size:.82rem;color:var(--sub)">${state.rkind==='daily'?wdOf(state.date)+'요일':days[0]+' ~ '+days[5]+' (월~토)'}</span>`:''}
     ${pick}
-    ${lt && state.rkind!=='handover'?`<span class="mytag" style="background:${lt.t.color}">👤 ${esc(lt.t.name)}</span>`:''}
     <span style="font-size:.72rem;color:#8b93a7;margin-left:auto">${state.rkind==='daily'?'수업·진도는 자료로 자동, 나머지는 직접 작성 → 인쇄·엑셀로 제출':state.rkind==='weekly'?'다음 주 수업·교재·과제·진도를 자료로 자동 채움 · 테스트 등 직접 수정':'반·과목 자료로 자동 생성 · 모든 선생님이 함께 보고 수정'}</span>
   </div>`;
   if(state.rkind==='handover') return h+renderHandoverGrid();
