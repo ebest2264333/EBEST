@@ -855,6 +855,7 @@ if(!store.uploadTombstones) store.uploadTombstones={};
 if(!store.uploadStamps) store.uploadStamps={};
 if(!store.fieldStamps) store.fieldStamps={};
 if(!store.wordbookOptions) store.wordbookOptions=['초등 베이직','초등 컴플리트','중등 실력','중등 고난도','고등 베이직','수능 2000','하이스트','하이퍼'];
+if(!store.wordbookPerDay) store.wordbookPerDay={}; // 단어장별 하루(Day)당 단어 수 {학원:{단어장이름:개수}} — 단어시험 맞은 개수 입력·재시험 자동 판정에 사용
 if(!store.testPaperOptions) store.testPaperOptions=['단원평가','미니테스트','누적테스트','재시험지'];
 if(!store.giveSel) store.giveSel={};
 if(!store.submits) store.submits=[];
@@ -1103,11 +1104,11 @@ store.syllabusSeeded=true; // 예전에 기본으로 들어있던 'Spider Phonic
 if(!store.examAnalysis) store.examAnalysis=[]; // 내신 분석 — {id, academy, school, grade, examTitle, examRange, examDate, prepStart, prepEnd, teacherLecture, teacherIBT, note, categories:[{name,count,questions:[{id,no,question,points,difficulty}]}], updatedAt, updatedBy} · 월 상관없이 항상 보임, 모든 선생님 열람·수정 가능(Syllabus처럼 보관용)
 if(!store.absentNotes) store.absentNotes={}; // 날짜별 결석생 요약의 '특이사항' 자유 메모 {YYYY-MM-DD: text}
 if(!store.examTrends) store.examTrends=[]; // 동향 분석 리포트 — {id, academy, school, grade, title, memo, source:'ai'|'upload', entryIds, snaps, files, report:{headline,strategy,metrics,changes,teaching}, aiModel, createdAt, updatedAt, createdBy, _deleted} · 내신 분석 탭 안의 두 번째 탭, AI로 만든 리포트는 자동 저장
-const SHARE_FIELDS=['walletLog','walletTokens','bookCfg','bookBilling','bookOrders','bookNeed','bookGiveLog','bookStock','bookStockLog','wordBooks','uploads','bookedit','bookdone','daysedit','timeedit','calendar','calendarTombstones','calCatColors','meetings','teachers','adminEmail','enrollment','newStudents','dropouts','compSeats','classOrder','consultRoles','students','admissionConsults','wordTests','attend','homework','stayback','bookGiven','uploadTombstones','uploadStamps','wordbookOptions','testPaperOptions','giveSel','consultRequests','classRenames','records','assign','cmemo','worklog','weekplan','submits','handover','boardPosts','handoverGrid','monthOverride','examAnalysis','examTrends','absentNotes','bookCatalog','tuitionCatalog','papercheckEnabled','papercheckCols','papercheckData','worklogMonthly','worklogWeekly','wlMemo','yearSched','ttVersions','ttVerAuto','classMoves'];
+const SHARE_FIELDS=['walletLog','walletTokens','bookCfg','bookBilling','bookOrders','bookNeed','bookGiveLog','bookStock','bookStockLog','wordBooks','uploads','bookedit','bookdone','daysedit','timeedit','calendar','calendarTombstones','calCatColors','meetings','teachers','adminEmail','enrollment','newStudents','dropouts','compSeats','classOrder','consultRoles','students','admissionConsults','wordTests','attend','homework','stayback','bookGiven','uploadTombstones','uploadStamps','wordbookOptions','wordbookPerDay','testPaperOptions','giveSel','consultRequests','classRenames','records','assign','cmemo','worklog','weekplan','submits','handover','boardPosts','handoverGrid','monthOverride','examAnalysis','examTrends','absentNotes','bookCatalog','tuitionCatalog','papercheckEnabled','papercheckCols','papercheckData','worklogMonthly','worklogWeekly','wlMemo','yearSched','ttVersions','ttVerAuto','classMoves'];
 // syllabus(실러버스)는 PDF/한글/워드 첨부가 커서 별도 경로(/syllabus)로, 낮은 빈도로만 동기화합니다 — 그래야 매 5초/매 입력마다 전체를 전송하지 않습니다.
 // 반 자료·학생 명단처럼 "삭제"가 중요한 항목은 병합하지 않고 통째로 교체한다(마지막 저장이 우선).
 // 병합 방식(mergeById)에는 삭제라는 개념이 없어서, 지운 반·학생이 다른 기기 자료와 합쳐지며 계속 되살아나기 때문.
-const REPLACE_FIELDS=['bookCfg','wordBooks','papercheckEnabled','papercheckCols','papercheckData','yearSched','ttVersions','ttVerAuto','compSeats','classOrder','uploads','students','teachers','bookedit','bookdone','daysedit','timeedit','wordbookOptions','testPaperOptions','handoverGrid'];
+const REPLACE_FIELDS=['bookCfg','wordBooks','papercheckEnabled','papercheckCols','papercheckData','yearSched','ttVersions','ttVerAuto','compSeats','classOrder','uploads','students','teachers','bookedit','bookdone','daysedit','timeedit','wordbookOptions','wordbookPerDay','testPaperOptions','handoverGrid'];
 // 출결·숙제 등은 여러 선생님이 동시에 서로 다른 학생을 입력하므로 기존처럼 병합해야 안전하다.
 function isReplaceField(f){ return REPLACE_FIELDS.includes(f); }
 // 각 항목을 마지막으로 편집한 시각 — 교체 방식에서 "누가 더 최신인지" 판단에 사용
@@ -5790,8 +5791,58 @@ function upsertWordTest(studentId,academy,date,field,value){
     const ranges=twoDays.map(x=>x.range).filter(Boolean);
     if(ranges.length) r.range=ranges.join(' + ');
   }
+  // 맞은 개수·범위·단어장이 바뀌면 전체 개수(데이 수 × 데이당 단어 수)와 재시험 여부를 다시 계산한다
+  if(!r.absent){
+    if(['correct','range','wordbook','accumulate'].includes(field)) wtApplyCorrect(r, academy, '');
+    if(['nsCorrect','nsRange','nsWordbook'].includes(field)) wtApplyCorrect(r, academy, 'ns');
+  }
   r.updatedAt=Date.now();
   save(); render(true);
+}
+/* 단어시험 맞은 개수 → 점수·재시험 자동 판정
+   · 단어장별 "데이당 단어 수"는 [교재 재고 → 단어장·시험지 목록]에서 설정
+   · 범위는 콤마(,)·점(.)·+ 로 데이를 나눠 센다 (예: "3,4" "3.4" → 2데이, "3-5"/"3~5" → 3데이)
+   · 틀린 개수가 전체의 10%를 넘으면 재시험 자동 체크 */
+const WT_PASS_WRONG_RATE=0.1;
+function wbPerDay(a, book){ const m=((store.wordbookPerDay||{})[a])||{}; const n=Number(m[String(book||'').trim()]); return n>0?n:0; }
+function wtRangeDays(range){
+  let n=0;
+  String(range||'').split(/[,.+·，]/).map(t=>t.trim()).filter(Boolean).forEach(t=>{
+    const m=t.match(/(\d+)\s*[-~]\s*(\d+)/);
+    if(m){ const a=+m[1], b=+m[2]; n += b>=a ? b-a+1 : 1; }
+    else if(/\d/.test(t)) n+=1;
+  });
+  return n;
+}
+function wtTotalFor(a, book, range){ const p=wbPerDay(a,book), d=wtRangeDays(range); return (p&&d)?p*d:0; }
+function wtAllowedWrong(total){ return Math.floor(total*WT_PASS_WRONG_RATE+1e-9); }
+function wtApplyCorrect(r, academy, kind){
+  const P=kind?{book:'nsWordbook',range:'nsRange',c:'nsCorrect',score:'nsScore',rt:'nsRetestNeeded',done:'nsRetestCompleted',doneD:'nsRetestCompletedDate'}
+               :{book:'wordbook',range:'range',c:'correct',score:'score',rt:'retestNeeded',done:'retestCompleted',doneD:'retestCompletedDate'};
+  const raw=r[P.c];
+  if(raw===undefined) return;
+  if(raw===''||raw===null){ r[P.score]=''; return; } // 맞은 개수를 지우면 점수도 비운다(재시험 체크는 손으로 한 것일 수 있어 그대로)
+  const total=wtTotalFor(academy, r[P.book], r[P.range]); if(!total) return;
+  const num=Number(raw); if(!isFinite(num)) return;
+  const correct=Math.max(0, Math.min(total, Math.floor(num)));
+  r[P.c]=correct; r[P.score]=correct+'/'+total;
+  const fail=(total-correct) > wtAllowedWrong(total);
+  if(!!r[P.rt]!==fail){ r[P.rt]=fail; if(!fail){ r[P.done]=false; r[P.doneD]=''; } }
+}
+// 맞은 개수 입력칸(전체 개수는 고정 표시) — 데이당 단어 수가 설정 안 됐거나 범위에서 데이를 못 찾으면 기존 점수 칸을 쓴다
+function wtScoreInput(s, date, r, kind, disabled, extraStyle){
+  const book=kind?r.nsWordbook:r.wordbook, range=kind?r.nsRange:r.range;
+  const total=wtTotalFor(s.academy, book, range);
+  const st='padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;'+(extraStyle||'');
+  if(!total){
+    const f=kind?'nsScore':'score';
+    return `<input type="text" placeholder="점수 (예: 18/20)" value="${esc(r[f]||'')}" data-wtfield="${s.id}|${date}|${f}" ${disabled?'disabled':''} title="${book&&!wbPerDay(s.academy,book)?'이 단어장의 데이당 단어 수를 설정하면 맞은 개수만 입력할 수 있어요':''}" style="width:90px;${st}">`;
+  }
+  const c=kind?r.nsCorrect:r.correct; const ok=wtAllowedWrong(total);
+  const p=wbPerDay(s.academy,book), d=wtRangeDays(range);
+  return `<span style="display:inline-flex;align-items:center;gap:3px" title="${d}데이 × 데이당 ${p}개 = ${total}개 · ${ok}개까지 틀려도 통과, 그보다 많이 틀리면 재시험 자동 체크">
+    <input type="number" min="0" max="${total}" step="1" placeholder="맞은 개수" value="${c==null?'':esc(String(c))}" data-wtfield="${s.id}|${date}|${kind?'nsCorrect':'correct'}" ${disabled?'disabled':''} style="width:78px;${st}">
+    <span style="font-size:.82rem;font-weight:800;color:var(--ink);${extraStyle||''}">/ ${total}</span><span style="font-size:.7rem;color:var(--sub)">(${ok}개까지 OK)</span></span>`;
 }
 function markRetestDone(id){
   const isNs=String(id).endsWith('#ns'); if(isNs) id=String(id).slice(0,-3);
@@ -5895,7 +5946,7 @@ function wtFieldsFor(s, date){
     return `<span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:4px 6px;background:#ecfdf5;border-radius:8px"><b style="font-size:.78rem;color:#047857">📖 내신단어</b>
       <select data-wtfield="${s.id}|${date}|nsWordbook" ${nsAbs?'disabled':''} style="width:120px;${st}"><option value="">단어장 선택</option>${opts.map(o=>`<option value="${esc(o)}" ${r.nsWordbook===o?'selected':''}>${esc(o)}</option>`).join('')}</select>
       <input type="text" placeholder="범위" value="${esc(r.nsRange||'')}" data-wtfield="${s.id}|${date}|nsRange" ${nsAbs?'disabled':''} style="width:110px;${st}">
-      <input type="text" placeholder="점수 (예: 18/20)" value="${esc(r.nsScore||'')}" data-wtfield="${s.id}|${date}|nsScore" ${nsAbs?'disabled':''} style="width:90px;${st}">
+      ${wtScoreInput(s, date, r, 'ns', nsAbs, dim)}
       <label style="font-size:.8rem;color:${r.nsRetestNeeded?'#c0392b':'var(--sub)'};${dim}"><input type="checkbox" data-wtnsretest="${s.id}|${date}" ${r.nsRetestNeeded?'checked':''} ${nsAbs?'disabled':''}> 재시험(O)</label></span>`;
   };
   if(mOn && !wOn){
@@ -5913,8 +5964,8 @@ function wtFieldsFor(s, date){
     const isNaeshin=String(r.wordbook||'').includes('내신'); // 내신 단어장은 한글/믹스/영어 구분이 없다
     return `${wbSel}
         ${isNaeshin?'':langSel}
-        <input type="text" placeholder="범위" value="${esc(r.range||'')}" data-wtfield="${s.id}|${date}|range" ${r.absent?'disabled':''} style="width:110px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
-        <input type="text" placeholder="점수 (예: 18/20)" value="${esc(r.score||'')}" data-wtfield="${s.id}|${date}|score" ${r.absent?'disabled':''} style="width:90px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
+        <input type="text" placeholder="범위 (예: 3,4)" value="${esc(r.range||'')}" data-wtfield="${s.id}|${date}|range" ${r.absent?'disabled':''} style="width:110px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
+        ${wtScoreInput(s, date, r, '', r.absent, dim)}
         ${studentIsHigh(s)?`<label style="font-size:.8rem;color:${r.accumulate?'#7c3aed':'var(--sub)'};${dim}" title="체크하면 이전 등원일 이틀치 시험 범위를 자동으로 이어서 채워줍니다"><input type="checkbox" data-wtaccum="${s.id}|${date}" ${r.accumulate?'checked':''} ${r.absent?'disabled':''}> 📚 누적</label>`:''}
         <label style="font-size:.8rem;color:${r.retestNeeded?'#c0392b':'var(--sub)'};${dim}"><input type="checkbox" data-wtretest="${s.id}|${date}" ${r.retestNeeded?'checked':''} ${r.absent?'disabled':''}> 재시험(O)</label>`;
   };
@@ -6291,7 +6342,8 @@ function renderBookLists(){
     h+=`<div class="setsec"><h3>${AC[a].label}</h3>`;
     [['wb','📖 단어장 목록',wbOptionsFor(a),'새 단어장 이름 (예: 중등 심화)'],['tp','📝 단어 시험지 목록',tpOptionsFor(a),'새 시험지 이름 (예: 단원평가 3회)']].forEach(([t,title,list,ph])=>{
       h+=`<div style="font-weight:800;font-size:.86rem;margin:8px 0 6px">${title}</div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">${list.map((o,i)=>`<span class="stu">${esc(o)} <b data-bl${t}del="${a}|${i}" style="cursor:pointer;color:#c0392b;margin-left:3px">×</b></span>`).join('')||'<span style="font-size:.82rem;color:#8b93a7">등록된 항목이 없습니다.</span>'}</div>
+      ${t==='wb'?'<div style="font-size:.74rem;color:var(--sub);margin:-2px 0 6px">단어장마다 <b>데이당 단어 수</b>를 적어두면, 단어시험에서 범위(예: 3,4)만 쓰면 전체 개수가 자동으로 나오고 <b>맞은 개수</b>만 입력하면 돼요. 10%까지 틀리면 통과, 더 틀리면 재시험이 자동 체크돼요.</div>':''}
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">${list.map((o,i)=>`<span class="stu">${esc(o)}${t==='wb'?` <input type="number" min="0" step="1" data-blwbper="${a}|${i}" value="${wbPerDay(a,o)||''}" placeholder="데이당" title="데이당 단어 수" style="width:62px;padding:2px 5px;border:1px solid var(--line);border-radius:6px;font-family:inherit;font-size:.78rem">개`:''} <b data-bl${t}del="${a}|${i}" style="cursor:pointer;color:#c0392b;margin-left:3px">×</b></span>`).join('')||'<span style="font-size:.82rem;color:#8b93a7">등록된 항목이 없습니다.</span>'}</div>
       <div style="display:flex;gap:6px;margin-bottom:6px"><input type="text" data-bl${t}in="${a}" placeholder="${ph}" style="flex:1;min-width:140px;padding:6px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.86rem"><button class="btn small" data-bl${t}add="${a}">+ 추가</button></div>`;
     });
     h+=`</div>`;
@@ -6305,6 +6357,13 @@ function bindBookLists(v){
     const add=a=>{ const inp=v.querySelector(`[data-bl${t}in="${a}"]`); const val=(inp&&inp.value||'').trim(); if(!val) return; const l=getL(t,a); if(!l.includes(val)) l.push(val); setL(t,a,l); };
     v.querySelectorAll(`[data-bl${t}add]`).forEach(b=>b.onclick=()=>add(b.dataset[`bl${t}add`]));
     v.querySelectorAll(`[data-bl${t}in]`).forEach(i=>i.onkeydown=e=>{ if(e.key==='Enter') add(i.dataset[`bl${t}in`]); });
+  });
+  v.querySelectorAll('[data-blwbper]').forEach(inp=>inp.onchange=()=>{
+    const [a,i]=inp.dataset.blwbper.split('|'); const name=wbOptionsFor(a)[Number(i)]; if(!name) return;
+    const n=Math.max(0, Math.floor(Number(inp.value)||0));
+    store.wordbookPerDay=store.wordbookPerDay||{}; store.wordbookPerDay[a]=Object.assign({}, store.wordbookPerDay[a]||{});
+    if(n) store.wordbookPerDay[a][name]=n; else delete store.wordbookPerDay[a][name];
+    save(); toast(`${name} — 데이당 ${n||'미설정'}${n?'개':''}`);
   });
   const xd=v.querySelector('[data-blxd]'); if(xd) xd.onclick=async()=>{
     try{
