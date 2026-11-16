@@ -708,6 +708,7 @@ select.bgname{height:2.9em;white-space:normal}
 .srow .sn.done,.chead .prg.done{color:var(--pri)}
 body[data-tab="consult"] .warnpill{color:var(--sub)!important;background:#f1f2f5!important}
 body[data-tab="consult"] .badge.eb,body[data-tab="consult"] .badge.ic{background:#f1f2f5;color:var(--sub)}
+.hcal .d.ev::after{display:none}.hcal .d .evd{position:absolute;left:0;right:0;bottom:1px;display:flex;justify-content:center;gap:2px}.hcal .d .evd i{width:4px;height:4px;border-radius:50%;display:block}.hcal .d.today .evd i{box-shadow:0 0 0 1px #fff}
 </style>
 </head>
 <body>
@@ -2748,10 +2749,12 @@ function homeCalCard(linkLabel){
   let cells=['일','월','화','수','목','금','토'].map(w=>`<div class="w">${w}</div>`).join('');
   for(let i=0;i<first.getDay();i++) cells+='<div></div>';
   for(let dd=1;dd<=last;dd++){ const iso=`${y}-${String(m).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
-    cells+=`<div class="d ${iso===today?'today':''} ${has(iso)?'ev':''}">${dd}</div>`; }
+    const dayEvs=evs.filter(ev=>ev.start<=iso && iso<=(ev.end||ev.start)); const cols=[...new Set(dayEvs.map(ev=>catColor(ev.cat)))].slice(0,3); // 일정 분류에서 고른 색으로 점을 찍는다(분류가 여러 개면 최대 3개)
+    cells+=`<div class="d ${iso===today?'today':''} ${dayEvs.length?'ev':''}" ${dayEvs.length?`title="${esc(dayEvs.map(ev=>ev.title).join(' · '))}"`:''}>${dd}${cols.length?`<span class="evd">${cols.map(c=>`<i style="background:${c}"></i>`).join('')}</span>`:''}</div>`; }
   const up=evs.filter(ev=>(ev.end||ev.start)>=today).sort((a,b)=>String(a.start).localeCompare(String(b.start))).slice(0,3);
   const list=up.length?up.map(ev=>{ const d0=ev.start<today?today:ev.start; const on=ev.start<=today && today<=(ev.end||ev.start);
-    return `<div class="hev"><div class="dd ${on?'on':''}"><small>${wdOf(d0)}</small>${+d0.slice(8,10)}</div><div class="tx">${esc(ev.title||'')}<small>${esc(ev.cat||'')}${ev.end&&ev.end!==ev.start?' · '+esc(ev.start.slice(5).replace('-','/'))+' ~ '+esc(ev.end.slice(5).replace('-','/')):(d0.slice(0,7)!==today.slice(0,7)?' · '+esc(d0.slice(5).replace('-','/')):'')}</small></div></div>`; }).join('')
+    const cc=catColor(ev.cat);
+    return `<div class="hev"><div class="dd ${on?'on':''}" style="${on?`background:${cc};color:#fff`:`background:color-mix(in srgb, ${cc} 14%, #fff);color:${cc}`}"><small style="color:inherit;opacity:.8">${wdOf(d0)}</small>${+d0.slice(8,10)}</div><div class="tx">${esc(ev.title||'')}<small><b style="color:${cc};font-weight:700">${esc(ev.cat||'')}</b>${ev.end&&ev.end!==ev.start?' · '+esc(ev.start.slice(5).replace('-','/'))+' ~ '+esc(ev.end.slice(5).replace('-','/')):(d0.slice(0,7)!==today.slice(0,7)?' · '+esc(d0.slice(5).replace('-','/')):'')}</small></div></div>`; }).join('')
     :'<div class="hempty" style="margin-top:10px">다가오는 일정이 없어요</div>';
   return `<div class="hcard"><div class="hh" style="margin-bottom:8px"><h2>이번 주 일정</h2><span class="sp"></span><button class="hlink todogo" data-tab="cal">${esc(linkLabel||'일정 · 연간 보기')}</button></div>
     <div style="font-size:.84rem;font-weight:800;margin-bottom:4px">${y}년 ${m}월</div><div class="hcal">${cells}</div>
@@ -2862,10 +2865,11 @@ function renderOverview(){
       if(!pre.length) return '';
       const fm=d=>{ const q=String(d).split('-'); return +q[1]+'/'+(+q[2]); };
       return `<div style="margin-top:8px;display:flex;flex-direction:column;gap:3px"><div style="font-size:.74rem;font-weight:800;color:var(--sub)">✈ 등록된 결석 예정 ${pre.length}명</div>${pre.map(st=>`<div style="font-size:.78rem;display:flex;gap:6px;align-items:center;flex-wrap:wrap"><b>${esc(studentDisplayName(st.academy,st.nameKo,st.className))}</b><span style="color:var(--sub)">${esc(st.className||'')}</span><span>${fm(st.absFrom)}${(st.absTo&&st.absTo!==st.absFrom)?'~'+fm(st.absTo):''}${st.absReason?' · '+esc(st.absReason):''}</span><button class="btn small" data-rsabsdone="${st.id}">취소</button></div>`).join('')}</div>`; })()}</div>`;
-  const absCard=(ex)=>`<div class="hcard absunified" id="ovAbsCard"><div class="hh"><h2>🚨 오늘 결석 · 지각 학생</h2><span class="hsub2">${tAtt.rows.length?`결석 ${tAtt.rows.filter(r=>r.a==='결').length} · 지각 ${tAtt.rows.filter(r=>r.a==='지').length}${tAtt.rows.some(r=>r.a==='조퇴')?` · 조퇴 ${tAtt.rows.filter(r=>r.a==='조퇴').length}`:''}`:''}</span><span class="sp"></span>${ex&&ex.absCopy?ex.absCopy:''}<button class="hlink todogo" data-tab="attend">출결 (월별) 보기</button></div>
+  const absRowsF=tAtt.rows.filter(r=>absDeptOk(r.c.dept));
+  const absCard=(ex)=>`<div class="hcard absunified" id="ovAbsCard"><div class="hh"><h2>🚨 오늘 결석 · 지각 학생</h2>${absDeptSelHTML()}<span class="hsub2">${tAtt.rows.length?`결석 ${absRowsF.filter(r=>r.a==='결').length} · 지각 ${absRowsF.filter(r=>r.a==='지').length}${absRowsF.some(r=>r.a==='조퇴')?` · 조퇴 ${absRowsF.filter(r=>r.a==='조퇴').length}`:''}`:''}</span><span class="sp"></span>${ex&&ex.absCopy?ex.absCopy:''}<button class="hlink todogo" data-tab="attend">출결 (월별) 보기</button></div>
     ${ex&&ex.absExtras?`<div style="margin:4px 0 6px">${ex.absExtras}</div>`:''}
     ${absAddBox}
-    ${tAtt.rows.length?`<div class="ovabslist">${tAtt.rows.slice().sort((x,y)=>({'결':0,'지':1,'조퇴':2}[x.a]-{'결':0,'지':1,'조퇴':2}[y.a])).map(r=>{
+    ${absRowsF.length?`<div class="ovabslist">${absRowsF.slice().sort((x,y)=>({'결':0,'지':1,'조퇴':2}[x.a]-{'결':0,'지':1,'조퇴':2}[y.a])).map(r=>{
       // 결석·지각·조퇴 학생 한 줄 + 사유 입력 + (결석이면) 과제 안내(카톡 전송 체크·메모·복사)
       const k=ckey(r.c); const reason=(((hw[k]||{})[r.s])||{}).absReasonToday||''; const miss=r.a==='결'&&!reason;
       const lab=r.a==='결'?'결석':r.a==='조퇴'?'조퇴':'지각';
@@ -2874,7 +2878,7 @@ function renderOverview(){
       const rin=`<input type="text" class="absreasoninput" data-k="${esc(k)}" data-s="${esc(r.s)}" placeholder="${lab} 사유${r.a==='결'?'':' (선택)'}" value="${esc(reason)}" style="width:100%;box-sizing:border-box;border:1.5px solid ${miss?'var(--pri)':'var(--line)'};border-radius:7px;padding:4px 8px;font-family:inherit;font-size:.78rem">`;
       return `<div class="ovabsrow ${cell?'two':''}">
         <div class="ovabswho"><span class="opill ${r.a==='결'?'no':'na'}">${lab}</span><b>${esc(studentDisplayName(r.c.academy,r.s,r.c.name))}</b><span title="${esc(r.c.name)}${teaOf(r.c)?' · '+esc(teaOf(r.c)):''}">${esc(r.c.name)}${teaOf(r.c)?' · '+esc(teaOf(r.c)):''}</span></div>
-        ${rin}${cell}</div>`; }).join('')}</div>`:'<div class="hempty">오늘 결석·지각으로 체크된 학생이 없어요.</div>'}
+        ${rin}${cell}</div>`; }).join('')}</div>`:(tAtt.rows.length?'<div class="hempty">이 부서에는 오늘 결석·지각 학생이 없어요.</div>':'<div class="hempty">오늘 결석·지각으로 체크된 학생이 없어요.</div>')}
     ${ex&&ex.absent?ex.absent:''}
     </div>`;
   // 처리할 일
@@ -2906,6 +2910,11 @@ function renderOverview(){
   return tiles+`<div class="ovtop">${absCard(parts)}<div class="ovstay">${parts.stay}</div><div class="ovtodo">${todoCard2}</div></div>`
     +`<div class="hgrid ov ov2"><div class="hcol">${tTable}<div class="o2">${bars}${hwCard}</div></div><div class="hcol">${homeCalCard('일정 추가')}${homeMeetCard(true)}</div></div>`;
 }
+// 결석·지각 목록 · 결석생 과제를 초등/중등/고등으로 나눠 보는 드롭다운 (전체 현황 · 내 수업 공통, 이 브라우저에서만 기억)
+function absDeptVal(){ return state.absDept||''; }
+function absDeptOk(d){ const f=absDeptVal(); return !f || (d||'기타')===f; }
+function absDeptSelHTML(){ const f=absDeptVal(); return `<select class="absDeptSel" title="부서별로 보기" style="padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.8rem;font-weight:700;background:#fff">${[['','전체 부서'],['초등','초등'],['중등','중등'],['고등','고등']].map(([v,l])=>`<option value="${v}" ${f===v?'selected':''}>${l}</option>`).join('')}</select>`; }
+function bindAbsDeptSel(root){ (root||document).querySelectorAll('.absDeptSel').forEach(sl=>sl.onchange=()=>{ state.absDept=sl.value; render(true); }); }
 function bindOverview(){
   const v=document.getElementById('view');
   v.querySelectorAll('.todogo').forEach(b=>b.onclick=()=>{ if(b.dataset.rk) state.rkind=b.dataset.rk; if(b.dataset.bsub) state.bsub=b.dataset.bsub; goTab(b.dataset.tab); });
@@ -10244,7 +10253,7 @@ function renderToday(list, partsOnly){
       return String(saved||assignItemTextForSubject(x.assignK||x.k, sj.subj, x.subjects.length===1)||'').trim() || indivHwFor(x, sj);
     }); };
   // 결석생 과제 칸에는 숙제가 있는 결석생만 보여준다 (사유는 위 결석·지각 목록에서 입력) — 전체 현황·내 수업 같음
-  const absentHwShown = absentHwList.filter(x=>isMyAbs(x) && hwSubjsOf(x).length);
+  const absentHwShown = absentHwList.filter(x=>isMyAbs(x) && hwSubjsOf(x).length && absDeptOk(x.dept));
 
   if (absentHwShown.length) {
     depts.forEach(deptName => {
@@ -10263,16 +10272,19 @@ function renderToday(list, partsOnly){
             const hrecTop=(hw[x.k]||{})[x.s]||{};
             const bySubj=hrecTop.bySubject||{};
             const hwSubjs=hwSubjsOf(x); // 숙제 내용이 없는 과목은 안 보여준다
-            return `<div style="padding:10px 0;border-bottom:1px solid #f1f3f8;display:flex;flex-direction:column;gap:6px">
+            const copyBtns=hwSubjs.length?`<button type="button" class="hwkakaocopy" data-k="${esc(x.k)}" data-s="${esc(x.s)}" data-classname="${esc(x.className)}" title="과목별 내용을 <날짜 과제> 형식으로 묶어 클립보드에 복사합니다 — 카톡에서 그 반 채팅방에 붙여넣기만 하면 돼요" style="flex:none;border:1px solid #f5c6cb;background:#fee500;color:#3c1e1e;border-radius:6px;padding:3px 9px;font-size:.74rem;font-weight:700;cursor:pointer;white-space:nowrap">📋 복사</button>${x.kakaoOpenChatUrl?`<button type="button" class="hwkakaoopenroom" data-url="${esc(x.kakaoOpenChatUrl)}" data-classname="${esc(x.className)}" title="이 반 카톡 오픈채팅방을 새 창으로 엽니다 (평소엔 안 눌러도 돼요 — PC 카카오톡에 이미 있는 방을 직접 클릭하는 게 더 빠릅니다)" style="flex:none;border:1px solid var(--line);background:#fff;color:#5a6478;border-radius:6px;padding:3px 7px;font-size:.74rem;cursor:pointer">↗</button>`:''}`:'';
+            return `<div data-hwblock="1" style="padding:10px 0;border-bottom:1px solid #f1f3f8;display:flex;flex-direction:column;gap:6px">
               <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
                 <b style="font-size:.92rem;color:#c0392b">${esc(x.student)}</b>
                 <span style="font-size:.78rem;font-weight:600;color:var(--sub)">[${esc(x.className)}] ${MODE==='all'?bdg(x.academy):''}</span>
+                ${copyBtns}
                 ${reasonMissing?'<span style="font-size:.72rem;color:#c0392b;font-weight:700">⚠ 사유 미입력</span>':''}
               </div>
-              <div style="display:flex;gap:8px;align-items:center">
-                <input type="text" class="absreasoninput" data-k="${esc(x.k)}" data-s="${esc(x.s)}" placeholder="결석 사유를 입력하세요 (예: 병원, 여행 등)" value="${esc(x.absReasonToday)}" style="flex:1;border:1.5px solid ${reasonMissing?'#e7b3ab':'#f1f3f8'};border-radius:8px;padding:6px 10px;font-family:inherit;font-size:.82rem;background:${reasonMissing?'#fff8f8':'#fbfcfe'}">
+              <div style="display:grid;grid-template-columns:${hwSubjs.length?'minmax(0,1fr) minmax(0,1.4fr)':'1fr'};gap:8px;align-items:start">
+              <div style="min-width:0;display:flex;gap:8px;align-items:center">
+                <input type="text" class="absreasoninput" data-k="${esc(x.k)}" data-s="${esc(x.s)}" placeholder="결석 사유 (예: 병원)" value="${esc(x.absReasonToday)}" style="flex:1;min-width:0;width:100%;border:1.5px solid ${reasonMissing?'#e7b3ab':'#f1f3f8'};border-radius:8px;padding:6px 10px;font-family:inherit;font-size:.82rem;background:${reasonMissing?'#fff8f8':'#fbfcfe'}">
               </div>
-              ${hwSubjs.length?`<div style="display:flex;flex-direction:column;gap:6px;margin-top:4px">
+              ${hwSubjs.length?`<div style="min-width:0;display:flex;flex-direction:column;gap:6px">
                 ${hwSubjs.map(sj=>{
                   const savedMemo = (sj.subj ? (bySubj[subjKey(sj.subj)] && bySubj[subjKey(sj.subj)].kakaoMemo) : hrecTop.kakaoMemo) || '';
                   // 이 학생만 따로 적어둔 메모가 없으면, 위(오늘의 과제)에 그 과목으로 적어둔 내용을 기본값으로 보여준다 — 직접 고치면 그 학생만 따로 저장됨
@@ -10280,19 +10292,15 @@ function renderToday(list, partsOnly){
                   const indivMemo = savedMemo ? '' : indivHwFor(x, sj);
                   const autoMemo = (savedMemo || indivMemo) ? '' : assignItemTextForSubject(x.assignK||x.k, sj.subj, x.subjects.length===1);
                   const subjMemo = savedMemo || indivMemo || autoMemo;
-                  return `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-                    <label class="hwlab" style="color:${sj.kakaoSent?'#27ae60':'#b45309'};font-weight:800;background:#fff;padding:3px 8px;border:1px solid ${sj.kakaoSent?'#27ae60':'#f5c6cb'};border-radius:6px;min-width:140px;text-align:center">
-                      <input type="checkbox" class="hwkakaochk" data-k="${esc(x.k)}" data-s="${esc(x.s)}" data-subj="${esc(sj.subj||'')}" ${sj.kakaoSent?'checked':''}> 💬 ${sj.subj?esc(sj.subj)+' - ':''}카톡 전송
+                  return `<div style="display:flex;gap:6px;align-items:center">
+                    <label class="hwlab" title="체크하면 카톡 전송함으로 표시돼요" style="flex:none;color:${sj.kakaoSent?'#27ae60':'#b45309'};font-weight:800;background:#fff;padding:3px 7px;border:1px solid ${sj.kakaoSent?'#27ae60':'#f5c6cb'};border-radius:6px;white-space:nowrap">
+                      <input type="checkbox" class="hwkakaochk" data-k="${esc(x.k)}" data-s="${esc(x.s)}" data-subj="${esc(sj.subj||'')}" ${sj.kakaoSent?'checked':''}> ${sj.subj?esc(sj.subj)+' ':''}전송
                     </label>
-                    <input type="text" class="hwkakaomemo" data-k="${esc(x.k)}" data-s="${esc(x.s)}" data-subj="${esc(sj.subj||'')}" data-assignk="${esc(x.assignK||x.k)}" data-only="${x.subjects.length===1?'1':'0'}" placeholder="전송할 숙제/진도 내용 입력" value="${esc(subjMemo)}" title="${autoMemo?'오늘의 과제에 적어둔 내용이 자동으로 채워졌어요 — 이 학생만 다르게 보내려면 직접 수정하세요':'복사할 때는 오늘의 과제 기본 숙제에 이 개인 숙제가 자동으로 더해져요'}" style="flex:1;min-width:180px;border:1px solid ${autoMemo?'#cfe3ff':'#dcdde1'};border-radius:6px;padding:4px 8px;font-family:inherit;font-size:.8rem;background:${autoMemo?'#f7fbff':'#fff'}">
-                    ${autoMemo?'<span style="font-size:.68rem;color:#5a8fd6;font-weight:700;white-space:nowrap">↳ 오늘의 과제에서 자동 입력</span>':indivMemo?'<span style="font-size:.68rem;color:#8b5a00;font-weight:700;white-space:nowrap">↳ 개별 숙제 — 복사 시 기본 숙제 + 이 내용</span>':'<span style="font-size:.68rem;color:#8b5a00;font-weight:700;white-space:nowrap">↳ 복사 시 기본 숙제 + 이 내용이 합쳐져요</span>'}
+                    <input type="text" class="hwkakaomemo" data-k="${esc(x.k)}" data-s="${esc(x.s)}" data-subj="${esc(sj.subj||'')}" data-assignk="${esc(x.assignK||x.k)}" data-only="${x.subjects.length===1?'1':'0'}" placeholder="전송할 숙제/진도 내용 입력" value="${esc(subjMemo)}" title="${autoMemo?'오늘의 과제에 적어둔 내용이 자동으로 채워졌어요 — 이 학생만 다르게 보내려면 직접 수정하세요':'복사할 때는 오늘의 과제 기본 숙제에 이 개인 숙제가 자동으로 더해져요'}" style="flex:1;min-width:0;border:1px solid ${autoMemo?'#cfe3ff':'#dcdde1'};border-radius:6px;padding:4px 8px;font-family:inherit;font-size:.8rem;background:${autoMemo?'#f7fbff':'#fff'}">
                   </div>`;
                 }).join('')}
-              </div>
-              <div style="display:flex;gap:8px;align-items:center;margin-top:2px">
-                <button type="button" class="hwkakaocopy" data-k="${esc(x.k)}" data-s="${esc(x.s)}" data-classname="${esc(x.className)}" title="위 과목별 내용을 <날짜 과제> 형식으로 묶어 클립보드에 복사합니다 — 카톡에서 그 반 채팅방에 붙여넣기만 하면 돼요" style="flex:none;border:1px solid #f5c6cb;background:#fee500;color:#3c1e1e;border-radius:6px;padding:5px 9px;font-size:.76rem;font-weight:700;cursor:pointer;white-space:nowrap">📋 복사</button>
-                ${x.kakaoOpenChatUrl?`<button type="button" class="hwkakaoopenroom" data-url="${esc(x.kakaoOpenChatUrl)}" data-classname="${esc(x.className)}" title="이 반 카톡 오픈채팅방을 새 창으로 엽니다 (평소엔 안 눌러도 돼요 — PC 카카오톡에 이미 있는 방을 직접 클릭하는 게 더 빠릅니다)" style="flex:none;border:1px solid var(--line);background:#fff;color:#5a6478;border-radius:6px;padding:5px 7px;font-size:.76rem;cursor:pointer">↗</button>`:''}
               </div>`:''}
+              </div>
             </div>`;
           }).join('')}
         </div>
@@ -10657,11 +10665,12 @@ function renderToday(list, partsOnly){
   const myStay=stayList.filter(x=>cardKeys.has(x.k));
   const stayCard=isAdminRole()?'':`<div class="hcard"><h2>오늘 남는 학생</h2><div class="hdesc">출석 체크에서 '오늘 남기'를 체크한 학생이 이유와 함께 여기에 모여요.</div>${myStay.length?myStay.map(x=>`<div class="hstayi"><b>${esc(x.student)}</b> <span>${esc(x.className)}</span><div>${x.subjects.filter(z=>!z.done && !z.isRetest).map(z=>esc([z.subj,z.memo].filter(Boolean).join(' · '))).filter(Boolean).join(' / ')}</div>${x.subjects.filter(z=>!z.done && z.isRetest).map(z=>`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:3px"><span style="font-size:.78rem;color:#b45309;font-weight:800">${esc(z.subj)}</span><span style="font-size:.78rem">${esc(z.memo||'')}</span>${wtRetestSheetBtn(z.wtId, z.wb)}<button class="btn small" data-wtdone="${esc(z.wtId)}">✔ 완료</button></div>`).join('')}</div>`).join(''):'<div class="hempty">아직 남는 학생이 없어요</div>'}</div>`;
   // 🚨 결석·지각 카드 — 전체 현황과 같은 구성(특이사항 · 결석·지각 목록+사유 · 접히는 결석생 과제), 내 반 학생만
-  const myAbsRows=[...absentHwList.map(x=>({...x,a:'결'})), ...lateHwList.map(x=>({...x,a:'지'})), ...earlyHwList.map(x=>({...x,a:'조퇴'}))].filter(isMyAbs);
+  const myAbsAll=[...absentHwList.map(x=>({...x,a:'결'})), ...lateHwList.map(x=>({...x,a:'지'})), ...earlyHwList.map(x=>({...x,a:'조퇴'}))].filter(isMyAbs);
+  const myAbsRows=myAbsAll.filter(x=>absDeptOk(x.dept));
   // 실장 이상(관리자·실장·원장)은 「전체 현황」에 같은 카드가 있으니 선생님 화면에서는 안 보여준다
-  const myAbsCard=(!myAbsRows.length || isAdminRole())?'':`<div class="hcard absunified" id="ovAbsCard"><div class="hh"><h2>🚨 오늘 결석 · 지각 학생</h2><span class="hsub2">결석 ${myAbsRows.filter(r=>r.a==='결').length} · 지각 ${myAbsRows.filter(r=>r.a==='지').length}${myAbsRows.some(r=>r.a==='조퇴')?` · 조퇴 ${myAbsRows.filter(r=>r.a==='조퇴').length}`:''}${lt?' · 내 반 기준':''}</span></div>
+  const myAbsCard=(!myAbsAll.length || isAdminRole())?'':`<div class="hcard absunified" id="ovAbsCard"><div class="hh"><h2>🚨 오늘 결석 · 지각 학생</h2>${absDeptSelHTML()}<span class="hsub2">결석 ${myAbsRows.filter(r=>r.a==='결').length} · 지각 ${myAbsRows.filter(r=>r.a==='지').length}${myAbsRows.some(r=>r.a==='조퇴')?` · 조퇴 ${myAbsRows.filter(r=>r.a==='조퇴').length}`:''}${lt?' · 내 반 기준':''}</span></div>
     <div style="margin:4px 0 6px">${absentNoteBox}</div>
-    <div class="ovabslist">${myAbsRows.map(r=>{
+    <div class="ovabslist">${myAbsRows.length?'':'<div class="hempty">이 부서에는 오늘 결석·지각 학생이 없어요.</div>'}${myAbsRows.map(r=>{
       const lab=r.a==='결'?'결석':r.a==='조퇴'?'조퇴':'지각'; const miss=r.a==='결'&&!r.absReasonToday;
       return `<div class="ovabsrow"><div class="ovabswho"><span class="opill ${r.a==='결'?'no':'na'}">${lab}</span><b>${esc(r.student)}</b><span>${esc(r.className)}</span></div>
         <input type="text" class="absreasoninput" data-k="${esc(r.k)}" data-s="${esc(r.s)}" placeholder="${lab} 사유${r.a==='결'?'':' (선택)'}" value="${esc(r.absReasonToday)}" style="width:100%;box-sizing:border-box;border:1.5px solid ${miss?'var(--pri)':'var(--line)'};border-radius:7px;padding:4px 8px;font-family:inherit;font-size:.78rem"></div>`; }).join('')}</div>
@@ -10671,6 +10680,7 @@ function renderToday(list, partsOnly){
 function bindToday(){
   const v=document.getElementById('view');
   bindWordTest();
+  bindAbsDeptSel(v);
   v.querySelectorAll('[data-absdept]').forEach(el=>el.addEventListener('toggle', ()=>{
     state.absentDeptOpen=state.absentDeptOpen||{};
     state.absentDeptOpen[el.dataset.absdept]=el.open;
@@ -13525,7 +13535,7 @@ function renderCal(){
       <input type="text" id="evTitle" placeholder="일정 제목 (예: 태장고 기말고사, 여름방학)" style="flex:1;min-width:180px;padding:7px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
       <select id="evCat" style="padding:7px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-weight:700">${CAL_CATS.map(c=>`<option>${c}</option>`).join('')}</select>
       <select id="evA" style="padding:7px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-weight:700">
-        <option value="all">두 학원 공통</option><option value="ebest">이베스트</option><option value="icon">아이콘</option></select>
+        ${[['all','두 학원 공통'],['ebest','이베스트'],['icon','아이콘']].map(([v,l])=>`<option value="${v}" ${v===(MODE==='all'?'all':MODE)?'selected':''}>${l}</option>`).join('')}</select>
       <button class="btn primary" id="evAdd">일정 추가</button></div>`;
   }
   // 기본은 왼쪽 월 달력 + 오른쪽 일정 목록을 같이 보여준다
