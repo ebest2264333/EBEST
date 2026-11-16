@@ -6903,7 +6903,8 @@ function nsJoinedThisMonth(c, sname){
     return ns.name===sname && (!ns.className||ns.className===c.name);
   });
 }
-function consultRoster(c){ return (c.students||[]).filter(sname=>!nsJoinedThisMonth(c,sname)); }
+// 퇴원한 학생은 상담 명단에서 뺀다 — 단, 이번 달에 이미 상담 기록(완료 체크·내용)이 있으면 기록 보존을 위해 남긴다
+function consultRoster(c){ const rec=mRecords()[ckey(c)]||{}; return (c.students||[]).filter(sname=>!nsJoinedThisMonth(c,sname) && (!isWithdrawnRosterName(c.academy,sname,c.name) || (rec[sname]&&(rec[sname].done||rec[sname].memo)))); }
 function classProgress(c){
   const rec=mRecords()[ckey(c)]||{};
   const ros=consultRoster(c);
@@ -8411,6 +8412,8 @@ function backfillStudentsFromRosters(){
           if(!nameKo) return;
           const dupe=store.students.find(x=>x.academy===a && !x._deleted && x.nameKo===nameKo && (x.nameEn||'')===(nameEn||'') && x.className===c.name);
           if(dupe) return;
+          // 학생 명단에서 지운(삭제 표시된) 같은 이름이 있으면 다시 만들지 않는다 — 반 자료에 이름이 남아 있어도 재원생으로 되살아나지 않게
+          if(store.students.some(x=>x._deleted && x.academy===a && x.nameKo===nameKo && (!x.nameEn||!nameEn||x.nameEn===nameEn))) return;
           store.students.push({id:genStudentId(), academy:a, nameKo, nameEn, className:c.name, grade:'', school:'',
             parentPhone:'', preCheck:'', note:'', status:'재원', statusReason:'', siblings:[], createdAt:todayISO(), updatedAt:Date.now()});
           created++;
