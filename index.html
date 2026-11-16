@@ -2889,7 +2889,17 @@ function renderOverview(){
   try{ const inAc=x=>!x._deleted&&acs.includes(x.academy); const rn=store.students.filter(x=>inAc(x)&&stuReturnDue(x)&&!x.returnNotified).length; const an=store.students.filter(x=>inAc(x)&&x.status==='퇴원'&&stuAftercareDue(x)).length;
     if(rn) todo.push([`휴원생 복귀 확인 연락 ${rn}명`,'class="hlink todogo" data-tab="roster"']);
     if(an) todo.push([`퇴원 애프터케어 대상 ${an}명`,'class="hlink todogo" data-tab="roster"']); }catch(e){}
-  const todoCard2=`<div class="hcard"><h2>처리할 일</h2><div style="margin-top:6px">${todo.length?todo.map(([l,attr])=>`<div class="otodo"><span>${esc(l)}</span><span style="margin-left:auto"></span><button ${attr.includes('class=')?attr:'class="hlink" '+attr}>바로가기</button></div>`).join(''):'<div class="hempty">지금 처리할 일이 없어요.</div>'}</div></div>`;
+  // 📦 교재 주문 권장 — [교재 → 재고]에서 ⚠로 표시되는 품목(주문 기준 미만이거나 다음달 필요 권수 부족). 주문을 넣으면(주문 대기) 빠진다
+  try{ if(isAdminRole()){
+    const nm=bkNeedMap();
+    const lows=(store.bookStock||[]).filter(it=>!it._deleted && acs.includes(it.academy)).map(it=>({it,c:bkCalc(it,nm)})).filter(x=>x.c.low)
+      .sort((a,b)=>(a.c.stock-a.c.min)-(b.c.stock-b.c.min));
+    if(lows.length){
+      const sub=lows.slice(0,4).map(({it,c})=>`${it.name} ${c.stock}권${c.lackOn?` (${c.lack}권 부족)`:''}`).join(' · ')+(lows.length>4?` 외 ${lows.length-4}개`:'');
+      todo.push([`📦 교재 주문 권장 ${lows.length}개`,'class="hlink todogo" data-tab="books" data-bsub="stock"', sub]);
+    }
+  } }catch(e){}
+  const todoCard2=`<div class="hcard"><h2>처리할 일</h2><div style="margin-top:6px">${todo.length?todo.map(([l,attr,sub])=>`<div class="otodo"><span>${esc(l)}${sub?`<span style="display:block;font-size:.74rem;font-weight:400;color:var(--sub);margin-top:2px">${esc(sub)}</span>`:''}</span><span style="margin-left:auto"></span><button ${attr.includes('class=')?attr:'class="hlink" '+attr}>바로가기</button></div>`).join(''):'<div class="hempty">지금 처리할 일이 없어요.</div>'}</div></div>`;
   let parts={stay:'',absent:''}; try{ state.date=today; parts=renderToday(filtered(), true)||parts; }catch(e){ console.error('전체 현황 — 결석생·남는 학생 칸 오류', e); }
   // 결석생 과제 안내는 따로 접힌 칸 대신 결석·지각 목록 안에 학생별로 합쳐 보여준다
   // 관리자가 가장 많이 보는 「오늘 결석·지각」과 「오늘 남는 학생」을 맨 위 한 줄에 나란히
@@ -2898,9 +2908,9 @@ function renderOverview(){
 }
 function bindOverview(){
   const v=document.getElementById('view');
-  v.querySelectorAll('.todogo').forEach(b=>b.onclick=()=>{ if(b.dataset.rk) state.rkind=b.dataset.rk; goTab(b.dataset.tab); });
+  v.querySelectorAll('.todogo').forEach(b=>b.onclick=()=>{ if(b.dataset.rk) state.rkind=b.dataset.rk; if(b.dataset.bsub) state.bsub=b.dataset.bsub; goTab(b.dataset.tab); });
   { const ts=state.todaySub; state.todaySub='day'; try{ bindToday(); }catch(e){ console.error('전체 현황 bind 오류', e); } state.todaySub=ts; } // 결석생·남는 학생 칸의 버튼·입력칸은 홈과 같은 처리기를 쓴다
-  v.querySelectorAll('.todogo').forEach(b=>b.onclick=()=>{ if(b.dataset.rk) state.rkind=b.dataset.rk; goTab(b.dataset.tab); });
+  v.querySelectorAll('.todogo').forEach(b=>b.onclick=()=>{ if(b.dataset.rk) state.rkind=b.dataset.rk; if(b.dataset.bsub) state.bsub=b.dataset.bsub; goTab(b.dataset.tab); });
   // 전체 현황에서는 결석생 칸이 같은 카드 안에 있으니, 탭을 옮기지 않고 그 칸을 펼쳐서 보여준다
   v.querySelectorAll('[data-ovgo]').forEach(b=>b.onclick=()=>{ const oc=document.getElementById('ovAbsCard'); if(oc){ oc.scrollIntoView({behavior:'smooth',block:'start'}); const mi=[...oc.querySelectorAll('.absreasoninput')].find(i=>!i.value); if(mi) mi.focus(); return; } const el=document.getElementById('absentTodayDetails'); if(el){ el.open=true; state.absentSectionOpen=true; el.scrollIntoView({behavior:'smooth',block:'start'}); } else goToAbsentToday(); });
   // ✏ 이름 검색 → 결석/지각 + 사유 → 추가
