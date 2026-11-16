@@ -549,9 +549,8 @@ main{margin-top:12px}
 /* ===== 전체 현황 배치: 맨 위 결석·지각 + 남는 학생 / 아래 선생님 현황 + 처리할 일 ===== */
 .ovtop{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:stretch;margin-bottom:14px}
 .ovtop>*{min-width:0}.ovstay,.ovtodo{display:flex;flex-direction:column}.ovstay>*,.ovtodo>*{flex:1}
-.ovtodo>*{border-top:3px solid var(--warn)!important;margin:0!important}
+.ovtodo>*{margin:0!important}
 .ovtop>.hcard,.ovstay>*{margin:0!important}
-.ovstay>*{border-top:3px solid var(--pri)!important}
 .hgrid.ov.ov2{grid-template-columns:minmax(0,1.25fr) minmax(0,1fr)}
 .ov2 .otbl{font-size:.8rem}
 .ov2 .otbl th{padding:5px 6px}
@@ -560,7 +559,6 @@ main{margin-top:12px}
 @media(max-width:1250px){.ovtop{grid-template-columns:1fr 1fr}}@media(max-width:800px){.ovtop{grid-template-columns:1fr}}
 
 /* ===== 전체 현황: 담당색 외의 색 빼기 ===== */
-body[data-tab="today"] .ovtop>.hcard,body[data-tab="today"] .ovstay>*,body[data-tab="today"] .ovtodo>*{border-top:3px solid var(--pri)!important}
 body[data-tab="today"] .ov2 .opill.ok{background:#f1f2f5;color:var(--sub)}
 body[data-tab="today"] .ov2 .opill.no{background:var(--pri-bg);color:var(--pri)}
 body[data-tab="today"] .absunified [style*="#c0392b"],body[data-tab="today"] .absunified [style*="#b45309"],body[data-tab="today"] .absunified [style*="#2e5fb7"],body[data-tab="today"] .absunified [style*="#f3d9a4"],body[data-tab="today"] .absunified [style*="#cfe0fb"]{color:var(--ink)!important;border-color:var(--line)!important}
@@ -569,7 +567,6 @@ body[data-tab="today"] .absunified [style*="background:#fff8f8"],body[data-tab="
 body[data-tab="today"] .ohw .b i{background:var(--pri)}
 
 /* ===== 전체 현황: 오늘 결석·지각 통합 카드 ===== */
-.absunified{border-top:3px solid var(--pri)}
 .absunified #absentTodayDetails{margin:12px 0 0!important;border:1px solid var(--line)!important;border-top:1px solid var(--line)!important;background:#fff!important;box-shadow:none;padding-top:10px}
 .absunified #absentTodayDetails h3{font-size:.9rem}
 
@@ -2732,6 +2729,7 @@ function homePrevHwBox(c, k, subjNames){
   return `<div class="hprev"><div class="pl">지난 숙제<small>${esc(lab||'기록 없음')}</small></div>${lines.length?`<ol>${lines.map(x=>`<li>${esc(x)}</li>`).join('')}</ol>`:'<div style="flex:1;color:var(--sub)">지난 수업 때 적어둔 숙제가 없어요.</div>'}<button class="hlink todogo" data-tab="hwrange">이전 숙제 더 보기</button></div>`;
 }
 /* ----- 관리자·실장 「전체 현황」 ----- */
+let _ovAbsCands=[]; // 전체 현황 결석·지각 검색 추가 후보 (오늘 수업 있는 반의 학생)
 function renderOverview(){
   const today=todayISO(), wd=wdOf(today), acs=academies();
   const nd=new Date(), nowH=nd.getHours()+nd.getMinutes()/60;
@@ -2787,7 +2785,20 @@ function renderOverview(){
   // 오늘 결석·지각 학생
   const teaOf=c=>[...new Set((c.subjects||[]).filter(x=>subjOnDay(x,wd)&&x.teacher).map(x=>x.teacher))].join(', ');
   // 오늘 결석·지각 — 요약 표 + (그 아래 접힌) 사유 입력·결석생 과제 안내를 한 카드로 합쳐 맨 위에 보여준다
+  // ✏ 실장님이 이름 검색으로 바로 결석·지각을 넣는 칸 — 오늘 수업 있는 반의 학생이 후보
+  _ovAbsCands=[]; tc.forEach(c=>{ const host=mergeHostOf(c); const keys=(host && !daySubjectNames(c,wd).length)?attKeysWithOwner(host,ckey(c),wd):attKeysFor(c,wd);
+    activeStudentsForDate(c,today).forEach(s=>_ovAbsCands.push({c, s, k:ckey(c), keys, label:studentDisplayName(c.academy,s,c.name)})); });
+  const IN='padding:6px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.84rem';
+  const absAddBox=`<div style="margin:4px 0 10px;padding:8px 10px;background:#fafbfd;border:1px solid var(--line);border-radius:8px">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <input type="search" id="ovAbsQ" placeholder="🔍 학생 이름 검색해서 결석·지각 추가" autocomplete="off" style="${IN};flex:1;min-width:170px">
+      <select id="ovAbsT" style="${IN}"><option value="결">결석</option><option value="지">지각</option></select>
+      <input type="text" id="ovAbsR" placeholder="사유" style="${IN};flex:1;min-width:120px">
+      <button type="button" class="btn small primary" id="ovAbsGo">추가</button></div>
+    <div id="ovAbsRes" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
+    <div style="font-size:.72rem;color:var(--sub);margin-top:4px">결석은 오늘 모든 수업이 결석, 지각은 첫 수업만 지각으로 기록돼요</div></div>`;
   const absCard=(extra)=>`<div class="hcard absunified"><div class="hh"><h2>🚨 오늘 결석 · 지각 학생</h2><span class="hsub2">${tAtt.rows.length?`결석 ${tAtt.rows.filter(r=>r.a==='결').length} · 지각 ${tAtt.rows.filter(r=>r.a!=='결').length}`:''}</span><span class="sp"></span><button class="hlink todogo" data-tab="attend">출결 (월별) 보기</button></div>
+    ${absAddBox}
     ${tAtt.rows.length?`<div style="overflow:auto"><table class="otbl"><thead><tr><th>학생</th><th>반</th><th>담당</th><th>구분</th><th>사유</th></tr></thead><tbody>
     ${tAtt.rows.map(r=>{ const k=ckey(r.c); const reason=(((hw[k]||{})[r.s])||{}).absReasonToday||''; return `<tr><td><b>${esc(studentDisplayName(r.c.academy,r.s,r.c.name))}</b></td><td>${esc(r.c.name)}</td><td>${esc(teaOf(r.c))}</td><td>${r.a==='결'?'결석':'지각'}</td><td>${reason?`<span class="opill na">${esc(reason)}</span>`:(r.a==='결'?'<span class="opill no">사유 미입력</span>':'<span class="opill na">-</span>')}</td></tr>`; }).join('')}
     </tbody></table></div>`:'<div class="hempty">오늘 결석·지각으로 체크된 학생이 없어요.</div>'}${extra||''}</div>`;
@@ -2817,6 +2828,36 @@ function bindOverview(){
   v.querySelectorAll('.todogo').forEach(b=>b.onclick=()=>{ if(b.dataset.rk) state.rkind=b.dataset.rk; goTab(b.dataset.tab); });
   // 전체 현황에서는 결석생 칸이 같은 카드 안에 있으니, 탭을 옮기지 않고 그 칸을 펼쳐서 보여준다
   v.querySelectorAll('[data-ovgo]').forEach(b=>b.onclick=()=>{ const el=document.getElementById('absentTodayDetails'); if(el){ el.open=true; state.absentSectionOpen=true; el.scrollIntoView({behavior:'smooth',block:'start'}); } else goToAbsentToday(); });
+  // ✏ 이름 검색 → 결석/지각 + 사유 → 추가
+  const q=v.querySelector('#ovAbsQ'), res=v.querySelector('#ovAbsRes'), go=v.querySelector('#ovAbsGo');
+  if(q && res && go){
+    let pick=null, hits=[];
+    const draw=()=>{
+      const t=q.value.trim().toLowerCase().replace(/\s+/g,'');
+      hits=t?_ovAbsCands.filter(x=>(x.label+x.s).toLowerCase().replace(/\s+/g,'').includes(t)).slice(0,12):[];
+      if(pick && !hits.includes(pick)) pick=null;
+      if(!pick && hits.length===1) pick=hits[0];
+      res.innerHTML=t&&!hits.length?'<span style="font-size:.78rem;color:var(--sub)">오늘 수업 있는 반에 그 이름의 학생이 없어요</span>'
+        :hits.map((x,i)=>`<button type="button" class="chip ${x===pick?'on':''}" data-ovabsi="${i}">${esc(x.label)} <span style="opacity:.7;font-size:.74rem">[${esc(x.c.name)}]</span></button>`).join('');
+      res.querySelectorAll('[data-ovabsi]').forEach(b=>b.onclick=()=>{ pick=hits[+b.dataset.ovabsi]; draw(); });
+    };
+    q.oninput=draw;
+    q.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); go.click(); } };
+    go.onclick=()=>{
+      if(!pick){ toast(hits.length?'목록에서 학생을 골라주세요':'학생 이름을 검색하세요'); return; }
+      const type=v.querySelector('#ovAbsT').value, reason=v.querySelector('#ovAbsR').value.trim();
+      const at=atFor(todayISO());
+      pick.keys.forEach(({key},i)=>{
+        at[key]=at[key]||{};
+        if(type==='결') at[key][pick.s]='결'; // 결석: 오늘 모든 수업 결석
+        else if(i===0) at[key][pick.s]='지'; // 지각: 첫 수업만 지각
+        else if(at[key][pick.s]==='결') delete at[key][pick.s]; // 결석이었다가 지각으로 바꾸면 뒤 수업 결석은 지운다
+      });
+      if(reason){ const hw2=hwFor(todayISO()); hw2[pick.k]=hw2[pick.k]||{}; hw2[pick.k][pick.s]=hw2[pick.k][pick.s]||{}; hw2[pick.k][pick.s].absReasonToday=reason; }
+      toast(`${pick.label} — ${type==='결'?'결석':'지각'} 처리했어요`);
+      save(); render(true);
+    };
+  }
 }
 function buildTabs(){
   tabLegacyMap();
