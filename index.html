@@ -298,6 +298,29 @@ footer{max-width:1180px;margin:0 auto;padding:0 20px 40px;font-size:.73rem;color
 }
 /* 인수인계표 드래그 칸 · 학원 화폐 모바일 카드 */
 .hg-gcell{cursor:grab;user-select:none}.hg-gcell:active{cursor:grabbing}
+/* 인수인계표 — 시안 디자인 (밝은 머리줄 · 반 칸에 지난달/이번달 반명 같이 · 담당은 색 알약 · 이번달 교재는 노란 칸) */
+.hgx{border-collapse:separate;border-spacing:0;table-layout:fixed;width:max-content;min-width:100%;background:#fff;border:1px solid #e3e6ec;border-radius:10px}
+.hgx th{position:relative;background:#f8f9fb;color:var(--ink);font-size:.76rem;font-weight:800;text-align:left;padding:11px 14px 11px 8px;border-bottom:1px solid #e3e6ec;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hgx th.hg-pair{overflow:visible;z-index:1}
+.hgx th small{font-weight:500;color:var(--sub);margin-left:5px;font-size:.72rem}
+.hgx td{border-top:1px solid #eef0f4;padding:6px;vertical-align:middle;font-size:.82rem}
+.hgx tbody tr:first-child>td{border-top:none}
+.hgx tr.hg-gtop>td{border-top:1px solid #d5dae3}
+.hgx td.hg-gcol{background:#f8f9fb;vertical-align:top;padding:12px 10px;border-right:1px solid #eef0f4}
+.hgx input[type=text]{width:100%;box-sizing:border-box;border:1px solid #d5dae3;border-radius:8px;padding:8px 10px;font-family:inherit;font-size:.82rem;background:#fff;color:var(--ink)}
+.hgx input[type=text]:focus{outline:none;border-color:var(--pri);box-shadow:0 0 0 2px var(--pri-bg)}
+.hgx input.hg-plain{border-color:transparent;background:transparent;padding-left:2px}
+.hgx input.hg-plain:hover,.hgx input.hg-plain:focus{border-color:#d5dae3;background:#fff}
+.hgx input.hg-gtarget{font-weight:800}
+.hgx input.hg-tea{text-align:center;font-weight:800;border-radius:999px;border-color:transparent;padding:5px 6px}
+.hgx input.hg-tea.hg-t{border-radius:8px;padding:8px 6px;border-width:1.5px}
+.hgx input.hg-book{background:#fff8db;border-color:#f0dc9a}
+.hgx .hg-prevsub{color:var(--sub);display:flex;align-items:center;gap:4px}
+.hgx .hg-prevsub>span:first-child{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hgx .hg-arrow{color:#8b93a7;flex:none;font-size:.9rem}
+.hgx .hg-mini{flex:none;border:none;background:#eef0f4;color:#5a6478;border-radius:5px;padding:2px 6px;font-size:.66rem;cursor:pointer;line-height:1.5;white-space:nowrap}
+.hgx .hg-gname{font-weight:800;font-size:.98rem;display:flex;align-items:center;gap:4px;margin-bottom:8px;cursor:grab;user-select:none}
+.hgx .hg-gname:active{cursor:grabbing}
 .hg-grip{color:#6b7690;font-size:.95rem;line-height:1;padding:2px 3px;border-radius:4px;user-select:none}.hg-grip:hover{background:#e6e9f0;color:#333}.hg-grip:active{cursor:grabbing}tr.hg-over>td{background:#ede9fe!important;box-shadow:inset 0 2px 0 #6d28d9}
 
 
@@ -7996,6 +8019,32 @@ function updateDropoutNote(id,who,field,value){
   save();
   if(field!=='memo') render(true);
 }
+// 퇴원징후 → 퇴원으로 바뀐 학생: 같은 학생의 「퇴원」 상담을 만들고(그 달 그 반 상담 담당에게 감), 징후 단계 상담 메모(데스크·원장님)는
+// 새 기록의 signHistory에 옮겨 담아 퇴원 상담 화면에서 같이 보이게 한다. 원래 징후 기록은 목록에서 빠진다(_deleted).
+function convertDropoutToOut(id){
+  const d=store.dropouts.find(x=>x.id===id && !x._deleted); if(!d || d.kind!=='sign') return;
+  if(!confirm(`${d.name} 학생을 퇴원으로 전환할까요?\n· 그 달 ${d.className||'그 반'} 상담 담당 선생님께 퇴원 상담이 들어가요\n· 퇴원징후 단계에서 적은 상담 메모는 퇴원 상담 화면에 같이 보여요\n· 퇴원징후 기록은 목록에서 빠져요`)) return;
+  const t0=store.teachers[d.academy]||[];
+  const hist=Object.keys(d.notes||{}).map(who=>{
+    const n=d.notes[who]||{}; const i=Number(String(who).split('|')[1]);
+    const role=(dpRoles(d).find(r=>r.i===i)||{}).label||'상담';
+    return {teacher:(t0[i]||{}).name||'', role, memo:n.memo||'', done:!!n.done, date:n.date||''};
+  }).filter(x=>x.memo||x.done);
+  const sh={from:d.createdAt||'', to:todayISO(), items:hist};
+  const exist=store.dropouts.find(x=>!x._deleted && x.studentId && x.studentId===d.studentId && x.kind==='out');
+  if(exist){ exist.signHistory=sh; exist.updatedAt=Date.now(); }
+  else store.dropouts.push({id:genClassId(), academy:d.academy, studentId:d.studentId, name:d.name, kind:'out', className:d.className||'', notes:{}, createdAt:todayISO(), signHistory:sh, aiSummary:d.aiSummary||null, updatedAt:Date.now()});
+  d._deleted=true; d.convertedAt=todayISO(); d.updatedAt=Date.now();
+  save(); render(true);
+  toast(`${d.name} — 퇴원으로 전환했어요`);
+}
+function dpSignHistoryBlock(d){
+  const sh=d.signHistory; if(!sh) return '';
+  return `<div style="margin:6px 0;border:1px solid var(--line);background:#fff;border-radius:6px;padding:6px 9px">
+    <b style="font-size:.78rem">🕘 이전 퇴원징후 상담</b> <span style="font-size:.72rem;color:var(--sub)">${esc(sh.from||'')} 등록 → ${esc(sh.to||'')} 퇴원 전환</span>
+    ${(sh.items||[]).length?sh.items.map(x=>`<div style="font-size:.78rem;border-top:1px dashed var(--line);padding:4px 0;margin-top:4px"><b>${esc(x.teacher)}</b> <span style="color:var(--sub)">(${esc(x.role)})</span> <span style="color:${x.done?'var(--ok)':'var(--sub)'}">${x.done?'✔ 완료'+(x.date?' '+esc(x.date):''):'미완료'}</span>${x.memo?`<div style="white-space:pre-wrap;margin-top:2px">${esc(x.memo)}</div>`:''}</div>`).join(''):'<div style="font-size:.76rem;color:var(--sub);margin-top:3px">징후 단계에 적힌 상담 메모가 없어요.</div>'}
+  </div>`;
+}
 function removeDropoutAction(id){
   const d=store.dropouts.find(x=>x.id===id); if(!d) return;
   if(!confirm('이 퇴원 상담 기록을 삭제할까요?')) return;
@@ -8066,15 +8115,16 @@ function renderDropoutAdmin(){
     const dOpen=!!(state.dpOpenAll || (state.dpOpen&&state.dpOpen[d.id])); const nDone=roles.filter(r=>dpNote(d,d.academy+'|'+r.i).done).length;
     if(!dOpen) return `<div class="rowitem" style="align-items:center;flex-wrap:wrap;cursor:pointer" data-dpfold="${d.id}">
       <span class="key"><span style="color:var(--sub);font-size:.78rem">▸</span> ${esc(d.name)} ${MODE==='all'?bdg(d.academy):''} ${dpKindBadge(d)} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(d.className||'')} · 등록 ${esc(String(d.createdAt||'').slice(5))}</span></span>
-      <span class="val" style="font-size:.78rem;color:${roles.length&&nDone===roles.length?'var(--ok)':'var(--sub)'}">${roles.length?`상담 ${nDone}/${roles.length} 완료`:(warn?'⚠ '+warn:'')}</span></div>`;
+      <span class="val" style="font-size:.78rem;color:${roles.length&&nDone===roles.length?'var(--ok)':'var(--sub)'}">${roles.length?`상담 ${nDone}/${roles.length} 완료`:(warn?'⚠ '+warn:'')}${d.kind==='sign'?` <button class="btn small" data-dpconvert="${d.id}" style="margin-left:6px">→ 퇴원으로 전환</button>`:''}</span></div>`;
     return `<div class="rowitem" style="align-items:flex-start;flex-wrap:wrap">
       <span class="key" style="display:flex;flex-direction:column;gap:2px"><span data-dpfold="${d.id}" style="cursor:pointer"><span style="color:var(--sub);font-size:.78rem">▾</span> ${esc(d.name)} ${MODE==='all'?bdg(d.academy):''} ${dpKindBadge(d)} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(d.className||'')}${st&&st.grade?' · '+esc(gradeTag(st.grade,st)):''}</span></span>
         <span style="font-size:.72rem;color:var(--sub);font-weight:400">🗓 등록 ${esc(d.createdAt||'')}</span>
         ${st&&st.parentPhone?`<span style="font-size:.74rem;color:var(--sub);font-weight:400">📞 ${esc(st.parentPhone)}</span>`:''}</span>
       <span class="val" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         ${warn?`<span style="font-size:.78rem;color:#b45309">⚠ ${warn}</span>`:''}
+        ${d.kind==='sign'?`<button class="btn small" data-dpconvert="${d.id}" title="퇴원징후였던 학생이 실제로 퇴원하게 됐을 때 — 퇴원 상담으로 넘기고 징후 단계 상담 메모를 같이 넘겨줘요">→ 퇴원으로 전환</button>`:''}
         <button class="del" data-dpdel="${d.id}">삭제</button></span>
-      <div style="flex-basis:100%">${dpHistoryBlock(d)}</div>
+      <div style="flex-basis:100%">${dpSignHistoryBlock(d)}${dpHistoryBlock(d)}</div>
       ${roles.length?`<div style="flex-basis:100%;display:flex;flex-direction:column;gap:4px;margin-top:6px">${roles.map(r=>{ const n=dpNote(d,d.academy+'|'+r.i); const t=t0[r.i]; return `<div style="font-size:.78rem;border:1px solid var(--line);border-radius:8px;padding:5px 9px;background:#fafbfd"><b style="color:${t.color||'var(--ink)'}">${esc(t.name)}</b> <span style="color:var(--sub)">(${r.label})</span> <span style="color:${n.done?'var(--ok)':'var(--sub)'}">${n.done?'✔ 완료'+(n.date?' '+esc(n.date):''):'대기중'}</span>${n.memo?`<br><span style="color:var(--sub)">📝 ${esc(n.memo)}</span>`:''}</div>`; }).join('')}</div>`:''}
     </div>`;
   }).join('');
@@ -8108,6 +8158,7 @@ function renderDropoutMine(a,i){
       <span style="font-size:.74rem;color:var(--sub)">🗓 등록 ${esc(d.createdAt||'')}</span>
     </div>
     ${st&&st.note?`<div style="font-size:.76rem;color:var(--ink);background:#f6f7f9;border:1px solid var(--line);border-radius:6px;padding:5px 8px;margin-bottom:5px">📝 특이사항: ${esc(st.note)}</div>`:''}
+    ${dpSignHistoryBlock(d)}
     ${dpHistoryBlock(d)}
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
       <span style="font-size:.78rem;font-weight:800;color:var(--ink)">내 담당: ${esc(r.label)}</span>
@@ -8810,6 +8861,7 @@ function bindConsult(){
   v.querySelectorAll('[data-dpai]').forEach(b=>b.onclick=()=>dpAiSummarize(b.dataset.dpai,b));
   v.querySelectorAll('[data-dpadd]').forEach(b=>b.onclick=()=>addDropoutAction(b.dataset.dpadd));
   v.querySelectorAll('[data-dpdel]').forEach(b=>b.onclick=()=>removeDropoutAction(b.dataset.dpdel));
+  v.querySelectorAll('[data-dpconvert]').forEach(b=>b.onclick=(e)=>{ e.preventDefault(); e.stopPropagation(); convertDropoutToOut(b.dataset.dpconvert); });
   v.querySelectorAll('[data-dpfold]').forEach(b=>b.onclick=()=>{ state.dpOpen=state.dpOpen||{}; const id=b.dataset.dpfold; if(state.dpOpenAll){ state.dpOpenAll=false; state.dpOpen={}; store.dropouts.forEach(x=>{ if(x.id!==id) state.dpOpen[x.id]=true; }); } else state.dpOpen[id]=!state.dpOpen[id]; render(true); });
   v.querySelectorAll('[data-dpdone]').forEach(cb=>cb.onchange=()=>{ updateDropoutNote(cb.dataset.dpdone, cb.dataset.dpwho, 'done', cb.checked); });
   v.querySelectorAll('[data-dpdate]').forEach(d=>d.onchange=()=>{ updateDropoutNote(d.dataset.dpdate, d.dataset.dpwho, 'date', d.value); });
@@ -11720,10 +11772,11 @@ function regenHandoverGrid(academy, targetMonth, onlyTeacherName){
   save();
 }
 // 인수인계표 칸 너비 — 보는 사람 화면(이 브라우저)에서만 적용, 저장/동기화 안 됨(다른 선생님에게 영향 없음)
+// 반 칸 하나에 「지난달 반명 / 이번달 반명 입력칸」을 위아래로 같이 넣는다 (시안 디자인)
 const HG_COLS=[
-  {key:'sel', w:36}, {key:'prevClass', w:90}, {key:'targetClass', w:90}, {key:'subject', w:74}, {key:'targetSubject', w:74},
-  {key:'prevTeacher', w:78}, {key:'targetTeacher', w:78}, {key:'prevBook', w:150}, {key:'book', w:150},
-  {key:'lastHw', w:150}, {key:'progress', w:78}, {key:'note', w:150}, {key:'targetProgress', w:78}
+  {key:'sel', w:44}, {key:'cls', w:150}, {key:'subject', w:100}, {key:'targetSubject', w:130},
+  {key:'prevTeacher', w:92}, {key:'targetTeacher', w:100}, {key:'prevBook', w:170}, {key:'book', w:170},
+  {key:'lastHw', w:150}, {key:'progress', w:90}, {key:'note', w:150}, {key:'targetProgress', w:100}
 ];
 // 합치기 한 행들이 원래 표에서 서로 떨어져 있어도, 화면엔 항상 나란히 모아서 보여준다(저장된 순서 자체는 안 건드림)
 function hgDisplayOrder(rows){
@@ -11908,25 +11961,37 @@ function renderHandoverGrid(){
   // 선생님이 ▲▼ 버튼으로 직접 옮긴 순서(g.groupOrder)가 있으면 그 순서가 우선한다 (저장된 rows 순서 자체는 안 건드림)
   const defaultGroups=hgDefaultGroups(a, prevMonth, targetMonth, rows, g);
   const groups=hgApplyGroupOrder(g, defaultGroups);
-  const teaCell=(name, field, rid, mergeGroup)=>{
-    const color=teacherColorByName(a, name);
-    const dataAttr=mergeGroup?`data-hgmergefield="${mergeGroup}|${field}"`:`data-hgfield="${rid}|${field}"`;
-    return `<input type="text" list="dl_teachers_${a}" value="${esc(name||'')}" ${dataAttr} style="width:100%;min-width:64px;border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-family:inherit;font-size:.8rem;font-weight:800;text-align:center;color:#fff;background:${color||'#8b93a7'}">`;
+  // 담당 알약 색 — 선생님 색을 연하게 깔고 글씨는 진하게 (이번달 칸은 테두리까지)
+  const teaStyle=(name, isTarget)=>{
+    const c=teacherColorByName(a, name)||'#8b93a7';
+    return `background:color-mix(in srgb, ${c} 16%, #fff);color:color-mix(in srgb, ${c} 70%, #000);${isTarget?`border-color:color-mix(in srgb, ${c} 75%, #fff)`:''}`;
   };
-  const txtCell=(val, field, rid, wide, mergeGroup)=>{
+  const teaCell=(name, field, rid, mergeGroup)=>{
     const dataAttr=mergeGroup?`data-hgmergefield="${mergeGroup}|${field}"`:`data-hgfield="${rid}|${field}"`;
-    return `<input type="text" value="${esc(val||'')}" ${dataAttr} style="width:100%;border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-family:inherit;font-size:.8rem">`;
+    const isTarget=field!=='prevTeacher';
+    return `<input type="text" list="dl_teachers_${a}" value="${esc(name||'')}" ${dataAttr} class="hg-tea${isTarget?' hg-t':''}" placeholder="${isTarget?'담당':''}" style="${teaStyle(name,isTarget)}">`;
+  };
+  const txtCell=(val, field, rid, wide, mergeGroup, cls, ph)=>{
+    const dataAttr=mergeGroup?`data-hgmergefield="${mergeGroup}|${field}"`:`data-hgfield="${rid}|${field}"`;
+    return `<input type="text" value="${esc(val||'')}" ${dataAttr}${cls?` class="${cls}"`:''}${ph?` placeholder="${esc(ph)}"`:''}>`;
   };
   const colw=hgColWidths();
-  const colLabels=['선택',`${prevLabel} 반명`,`${targetLabel} 반명`,`${prevLabel} 과목명`,`${targetLabel} 과목명`,`${prevLabel} 담당`,`${targetLabel} 담당`,`${prevLabel} 교재`,`${targetLabel} 교재`,'지난 과제','진도','특이사항',`${targetLabel} 진도`];
+  const sm=(t)=>`<small>${t}</small>`;
+  // 짝 칸(지난달 → 이번달)은 머리줄 글자를 앞 칸에만 쓰고 뒤 칸까지 이어서 보이게 한다
+  const colHeads={
+    sel:['선택',''], cls:[`반${sm(prevLabel+' → '+targetLabel)}`,''],
+    subject:[`과목명${sm(prevLabel+' → '+targetLabel)}`,'hg-pair'], targetSubject:['',''],
+    prevTeacher:[`담당${sm(prevLabel+' → '+targetLabel)}`,'hg-pair'], targetTeacher:['',''],
+    prevBook:[`${prevLabel} 교재`,''], book:[`${targetLabel} 교재`,''],
+    lastHw:['지난 과제',''], progress:['진도',''], note:['특이사항',''], targetProgress:[`${targetLabel} 진도`,'']
+  };
+  const colTitles={sel:'선택',cls:`${prevLabel} 반명 → ${targetLabel} 반명`,subject:`${prevLabel} 과목명`,targetSubject:`${targetLabel} 과목명`,prevTeacher:`${prevLabel} 담당`,targetTeacher:`${targetLabel} 담당`,prevBook:`${prevLabel} 교재`,book:`${targetLabel} 교재`,lastHw:'지난 과제',progress:'진도',note:'특이사항',targetProgress:`${targetLabel} 진도`};
   const hgOpts=hgClassOptions(a,targetMonth);
-  h+=`${teacherDatalist(a)}<datalist id="dl_hgclass_${a}">${hgOpts.map(nm=>`<option value="${esc(nm)}">`).join('')}</datalist><div style="overflow-x:auto"><table style="border-collapse:collapse;table-layout:fixed;width:max-content;min-width:100%">
+  h+=`${teacherDatalist(a)}<datalist id="dl_hgclass_${a}">${hgOpts.map(nm=>`<option value="${esc(nm)}">`).join('')}</datalist><div style="overflow-x:auto"><table class="hgx">
   <colgroup>${HG_COLS.map(c=>`<col style="width:${colw[c.key]}px">`).join('')}</colgroup>
-  <thead><tr>${HG_COLS.map((c,ci)=>`<th style="position:relative;background:var(--ink);color:#fff;padding:7px 14px 7px 8px;font-size:.76rem;text-align:center;border:1px solid #333;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${esc(colLabels[ci])}">${colLabels[ci]}<span class="hg-resizer" data-col="${c.key}" title="드래그해서 칸 너비 조절 (이 화면에서만 적용)" style="position:absolute;right:0;top:0;bottom:0;width:8px;cursor:col-resize;user-select:none"></span></th>`).join('')}</tr></thead><tbody>
+  <thead><tr>${HG_COLS.map(c=>`<th class="${colHeads[c.key][1]}" title="${esc(colTitles[c.key])}"${c.key==='sel'?' style="text-align:center;padding-right:8px"':''}>${colHeads[c.key][0]}<span class="hg-resizer" data-col="${c.key}" title="드래그해서 칸 너비 조절 (이 화면에서만 적용)" style="position:absolute;right:0;top:0;bottom:0;width:8px;cursor:col-resize;user-select:none"></span></th>`).join('')}</tr></thead><tbody>
   ${groups.map((g2,gi)=>{
     const curTarget=(g2.rows[0]||{}).targetClass||'';
-    const hgUpBtn=`<button type="button" data-hggroupup="${esc(g2.key)}" title="반 순서 위로 옮기기" ${gi===0?'disabled':''} style="border:none;background:#e6e9f0;color:#5a6478;border-radius:3px;padding:0 3px;font-size:.6rem;cursor:pointer;line-height:1.3;${gi===0?'opacity:.35;cursor:default':''}">▲</button>`;
-    const hgDownBtn=`<button type="button" data-hggroupdown="${esc(g2.key)}" title="반 순서 아래로 옮기기" ${gi===groups.length-1?'disabled':''} style="border:none;background:#e6e9f0;color:#5a6478;border-radius:3px;padding:0 3px;font-size:.6rem;cursor:pointer;line-height:1.3;${gi===groups.length-1?'opacity:.35;cursor:default':''}">▼</button>`;
     // 반이 합쳐졌다가 다음 달 다시 갈라지는 경우처럼, 같은 지난달 반 소속 과목들의 "이번달 반명"을 서로 다르게 적어야 할 때 켜는 모드
     const splitMode=!!(g.splitTargetGroups && g.splitTargetGroups[norm(g2.key)]);
     const displayRows=hgDisplayOrder(g2.rows); // 합쳐진 행들은 원래 떨어져 있어도 화면에선 나란히 모아서 보여준다
@@ -11935,77 +12000,55 @@ function renderHandoverGrid(){
       const ci=cinfo[ri];
       const mfields=(ci.span>1 && r.mergeFields) ? r.mergeFields : [];
       // 항목(과목명·담당·교재·진도)마다 따로 합쳐졌는지 확인해서, 합쳐진 항목만 세로로 하나로 묶고 나머지는 행별로 그대로 보여준다
-      const mergableTd=(fieldKey, tdStyleNormal, tdStyleMerged, normalHtml, mergedHtmlBuilder, restoreHtml)=>{
+      const mergableTd=(fieldKey, normalHtml, mergedHtmlBuilder)=>{
         const merged=mfields.includes(fieldKey);
         if(merged){
           if(!ci.isHead) return ''; // 합쳐진 칸의 나머지 행은 rowspan으로 가려지므로 아예 안 그림
-          const unmergeBtn=`<button type="button" data-hgunmerge="${esc(ci.mergeGroup)}|${fieldKey}" title="이 항목만 합치기 해제" style="flex:none;border:none;background:#e6e9f0;color:#5a6478;border-radius:4px;padding:0 4px;font-size:.62rem;cursor:pointer;line-height:1.6">✕</button>`;
-          return `<td rowspan="${ci.span}" style="${tdStyleMerged};vertical-align:middle"><div style="display:flex;align-items:center;gap:3px">${unmergeBtn}<div style="flex:1;min-width:0">${mergedHtmlBuilder()}</div></div></td>`;
+          const unmergeBtn=`<button type="button" class="hg-mini" data-hgunmerge="${esc(ci.mergeGroup)}|${fieldKey}" title="이 항목만 합치기 해제">✕</button>`;
+          return `<td rowspan="${ci.span}"><div style="display:flex;align-items:center;gap:3px">${unmergeBtn}<div style="flex:1;min-width:0">${mergedHtmlBuilder()}</div></div></td>`;
         }
-        return `<td style="${tdStyleNormal}">${normalHtml}${restoreHtml||''}</td>`;
+        return `<td>${normalHtml}</td>`;
       };
-      const restoreBtn=(!mfields.includes('targetSubject'))?`<button type="button" data-hgrestoreprev="${r.id}" title="지난달 과목명(${esc(r.subject)}) 그대로 가져오기" style="flex:none;border:none;background:#e6e9f0;color:#5a6478;border-radius:4px;padding:2px 5px;font-size:.66rem;cursor:pointer;white-space:nowrap;margin-left:3px">↺</button>`:'';
+      const restoreBtn=(!mfields.includes('targetSubject') && r.subject && r.targetSubject!==r.subject)?`<button type="button" class="hg-mini" data-hgrestoreprev="${r.id}" title="지난달 과목명(${esc(r.subject)}) 그대로 가져오기">↺</button>`:'';
       const targetSubjectTd=mergableTd('targetSubject',
-        'border:1px solid var(--line);padding:6px;text-align:center;font-weight:700',
-        'border:1px solid var(--line);padding:6px;text-align:center;font-weight:700',
-        `<div style="display:flex;align-items:center;gap:2px"><div style="flex:1;min-width:0">${txtCell(r.targetSubject,'targetSubject',r.id)}</div>${restoreBtn}</div>`,
+        `<div style="display:flex;align-items:center;gap:3px"><div style="flex:1;min-width:0">${txtCell(r.targetSubject,'targetSubject',r.id)}</div>${restoreBtn}</div>`,
         ()=>txtCell(r.targetSubject,'targetSubject',r.id,false,ci.mergeGroup));
       const targetTeacherTd=mergableTd('targetTeacher',
-        'border:1px solid var(--line);padding:6px;text-align:center',
-        'border:1px solid var(--line);padding:6px;text-align:center',
         teaCell(r.targetTeacher,'targetTeacher',r.id),
         ()=>teaCell(r.targetTeacher,'targetTeacher',r.id,ci.mergeGroup));
       const bookTd=mergableTd('book',
-        'border:1px solid var(--line);padding:6px;background:#fff3cd',
-        'border:1px solid var(--line);padding:6px;background:#fff3cd',
-        txtCell(r.book,'book',r.id,true),
-        ()=>txtCell(r.book,'book',r.id,true,ci.mergeGroup));
+        txtCell(r.book,'book',r.id,true,null,'hg-book'),
+        ()=>txtCell(r.book,'book',r.id,true,ci.mergeGroup,'hg-book'));
       const targetProgressTd=mergableTd('targetProgress',
-        'border:1px solid var(--line);padding:6px;text-align:center',
-        'border:1px solid var(--line);padding:6px;text-align:center',
         txtCell(r.targetProgress,'targetProgress',r.id),
         ()=>txtCell(r.targetProgress,'targetProgress',r.id,false,ci.mergeGroup));
-      const targetCells = `
+      // ✂️ 과목별로 반명을 따로 적는 모드면, 지난달 과목명 칸 위에 이 과목의 이번달 반명 입력칸을 작게 붙인다
+      const splitClassInp=splitMode?`<input type="text" list="dl_hgclass_${a}" data-hgfield="${r.id}|targetClass" value="${esc(r.targetClass||'')}" placeholder="이번달 반" title="이 과목의 ${esc(targetLabel)} 반명" class="hg-gtarget" style="margin-bottom:4px;padding:5px 7px;font-size:.76rem;${r.targetClass?'':'color:#c0392b'}">`:'';
+      const groupCell=ri===0?`<td class="hg-gcol" rowspan="${g2.rows.length}">
+      <div class="hg-gname hg-gcell" data-hggrip="${esc(g2.key)}" draggable="true" title="잡고 끌어서 반 순서 옮기기"><span class="hg-grip">⠿</span><span>${esc(g2.key)}</span></div>
+      ${splitMode
+        ? `<div style="font-size:.72rem;color:var(--sub);margin-bottom:6px">과목별로 반명 입력 중</div><button type="button" class="hg-mini" data-hgmergetarget="${esc(g2.key)}" title="과목별로 나눠 적은 반명을 다시 하나로 합치기">🔗 반명 하나로</button>`
+        : `<div style="display:flex;align-items:center;gap:4px"><input type="text" list="dl_hgclass_${a}" data-hggroupclass="${esc(g2.key)}" value="${esc(curTarget)}" placeholder="반 선택·입력" class="hg-gtarget" style="${curTarget?'':'color:#c0392b'}"><button type="button" class="hg-mini" data-hgsplittarget="${esc(g2.key)}" title="반이 나뉘어서 과목마다 다음달 반명이 다를 때 — 과목별로 따로 입력하게 바꾸기">✂️</button></div>`}
+      ${g2.mergeKeyId?`<button type="button" class="hg-mini" data-hgclassunmerge="${esc(g2.mergeKeyId)}" title="반 통째로 합치기 해제 — 원래의 각 반으로 다시 나눕니다" style="margin-top:6px;color:#b45309">✕ 합치기 해제</button>`:''}
+    </td>`:'';
+      return `<tr data-hggrp="${esc(g2.key)}"${ri===0&&gi>0?' class="hg-gtop"':''}>
+    <td style="text-align:center"><input type="checkbox" data-hgmergesel="${r.id}"></td>
+    ${groupCell}
+    <td title="지난달 과목명 — 참고용, 수정 안 됨">${splitClassInp}<div class="hg-prevsub"><span>${esc(r.subject)||'—'}</span><span class="hg-arrow">→</span></div></td>
     ${targetSubjectTd}
-    <td style="border:1px solid var(--line);padding:6px;text-align:center">${teaCell(r.prevTeacher,'prevTeacher',r.id)}</td>
+    <td><div style="display:flex;align-items:center;gap:4px"><div style="flex:1;min-width:0">${teaCell(r.prevTeacher,'prevTeacher',r.id)}</div><span class="hg-arrow">→</span></div></td>
     ${targetTeacherTd}
-    <td style="border:1px solid var(--line);padding:6px">${txtCell(r.prevBook,'prevBook',r.id,true)}</td>
+    <td>${txtCell(r.prevBook,'prevBook',r.id,true,null,'hg-plain','교재 없음')}</td>
     ${bookTd}
-    <td style="border:1px solid var(--line);padding:6px">${txtCell(r.lastHw,'lastHw',r.id,true)}</td>
-    <td style="border:1px solid var(--line);padding:6px;text-align:center">${txtCell(r.progress,'progress',r.id)}</td>
-    <td style="border:1px solid var(--line);padding:6px">${txtCell(r.note,'note',r.id,true)}</td>
-    ${targetProgressTd}`;
-      const targetClassCell=splitMode
-        ? `<td style="border:1px solid var(--line);padding:6px;text-align:center;vertical-align:middle">
-      <div style="display:flex;align-items:center;gap:3px">
-        <input type="text" list="dl_hgclass_${a}" data-hgfield="${r.id}|targetClass" value="${esc(r.targetClass||'')}" placeholder="반 선택·직접 입력" style="flex:1;min-width:0;border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-family:inherit;font-size:.8rem;font-weight:800;text-align:center;${r.targetClass?'':'color:#c0392b'}">
-        ${ri===0?`<button type="button" data-hgmergetarget="${esc(g2.key)}" title="과목별로 나눠 적은 반명을 다시 하나로 합치기" style="flex:none;border:none;background:#e6e9f0;color:#5a6478;border-radius:4px;padding:0 4px;font-size:.62rem;cursor:pointer;line-height:1.6">🔗</button>`:''}
-      </div>
-    </td>`
-        : (ri===0?`<td rowspan="${g2.rows.length}" style="border:1px solid var(--line);padding:6px;text-align:center;vertical-align:middle">
-      <div style="display:flex;align-items:center;gap:3px">
-        <input type="text" list="dl_hgclass_${a}" data-hggroupclass="${esc(g2.key)}" value="${esc(curTarget)}" placeholder="반 선택·직접 입력" style="flex:1;min-width:0;border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-family:inherit;font-size:.8rem;font-weight:800;text-align:center;${curTarget?'':'color:#c0392b'}">
-        <button type="button" data-hgsplittarget="${esc(g2.key)}" title="반이 나뉘어서 과목마다 다음달 반명이 다를 때 — 과목별로 따로 입력하게 바꾸기" style="flex:none;border:none;background:#e6e9f0;color:#5a6478;border-radius:4px;padding:0 4px;font-size:.62rem;cursor:pointer;line-height:1.6">✂️</button>
-      </div>
-    </td>`:'');
-      return `<tr data-hggrp="${esc(g2.key)}">
-    <td style="border:1px solid var(--line);padding:6px;text-align:center"><input type="checkbox" data-hgmergesel="${r.id}"></td>
-    ${ri===0?`<td class="hg-gcell" data-hggrip="${esc(g2.key)}" draggable="true" title="이 칸 아무 데나 잡고 끌어서 반 순서 옮기기" rowspan="${g2.rows.length}" style="border:1px solid var(--line);padding:6px;text-align:center;font-weight:800;background:#f6f8fc;vertical-align:middle">
-      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px">
-        <div style="display:flex;align-items:center;gap:4px">
-          <span class="hg-grip">⠿</span>
-          <span>${esc(g2.key)}</span>
-        </div>
-        ${g2.mergeKeyId?`<button type="button" data-hgclassunmerge="${esc(g2.mergeKeyId)}" title="반 통째로 합치기 해제 — 원래의 각 반으로 다시 나눕니다" style="border:none;background:#e6e9f0;color:#b45309;border-radius:4px;padding:1px 5px;font-size:.6rem;cursor:pointer;white-space:nowrap">✕ 합치기 해제</button>`:''}
-      </div>
-    </td>`:''}
-    ${targetClassCell}
-    <td style="border:1px solid var(--line);padding:6px;text-align:center;font-weight:700;color:var(--sub)" title="지난달 과목명 — 참고용, 수정 안 됨">${esc(r.subject)}</td>
-    ${targetCells}
+    <td>${txtCell(r.lastHw,'lastHw',r.id,true)}</td>
+    <td>${txtCell(r.progress,'progress',r.id)}</td>
+    <td>${txtCell(r.note,'note',r.id,true)}</td>
+    ${targetProgressTd}
   </tr>`;
     }).join('');
   }).join('')}
-  </tbody></table></div>`;
+  </tbody></table></div>
+  <div style="font-size:.74rem;color:var(--sub);margin-top:6px">노란 칸이 ${esc(targetLabel)}에 새로 정할 교재예요 · 반 이름(⠿)을 잡고 끌면 반 순서를 옮길 수 있어요</div>`;
   return h;
 }
 function bindHandoverGrid(){
