@@ -2210,6 +2210,11 @@ function activeStudentsForDate(c, dateStr){
   const mvs=(store.classMoves||[]).filter(x=>x && !x.deleted && x.a===c.academy && x.date>String(dateStr||'') && (!c._src || c._src>=(x.month||'')) && (x.from===c.name||x.to===c.name))
     .sort((p,q)=>String(q.date).localeCompare(String(p.date)) || (q.updatedAt||0)-(p.updatedAt||0));
   mvs.forEach(x=>{ if(x.to===c.name) list=list.filter(n=>n!==x.name); if(x.from===c.name && !list.includes(x.name)) list=list.concat([x.name]); });
+  // 휴원 중인 학생은 휴원이 시작된 날부터 출석부·숙제 체크 명단에서 뺀다 (그 전 날짜 기록은 그대로 남는다)
+  const ds=String(dateStr||'');
+  list=list.filter(n=>{ const st=matchStudentByRosterName(c.academy,n,c.name); if(!st||st.status!=='휴원') return true;
+    const hs=(st.sl||[]).filter(e=>e&&e.s==='휴원'); const e=hs.length?hs[hs.length-1]:null;
+    const from=e?(e.d||((e.m||'')?e.m+'-01':'')):''; return !!(from && ds && ds<from); });
   return list;
 }
 // 학생 한 명을 날짜 기준으로 다른 반으로 옮긴다 (학생 명단·반 명단 갱신 + 이동 기록). month: 반영할 달
@@ -2814,8 +2819,8 @@ function renderOverview(){
         const ok=raw.length>1 ? need.every(sn=>r.doneSubjects&&r.doneSubjects[sn]) : !!r.done; if(ok) hc++; }); });
     // 진도계획표는 IBT·모의고사·단어시험만 맡은 선생님은 작성 대상이 아님 → '-'
     const needW=classesFor(monthForDate(today)).some(c=>acs.includes(c.academy)&&(c.subjects||[]).some(x=>String(x.teacher||'').trim().toLowerCase()===tnm && x.subject && !isNoHwSubj(x.subject) && !isWordTestSubject(x)));
-    trs.push({lt,cls:mine.length,n,ac,hc,hn,needW,j:!!findSubmit('journal',whoKey(lt),today),w:!!findSubmit('weekplan',whoKey(lt),wk0)}); }));
-  const noJ=trs.filter(x=>!x.j).length, noW=trs.filter(x=>x.needW&&!x.w).length;
+    trs.push({lt,dir:t.role==='원장',cls:mine.length,n,ac,hc,hn,needW,j:!!findSubmit('journal',whoKey(lt),today),w:!!findSubmit('weekplan',whoKey(lt),wk0)}); }));
+  const noJ=trs.filter(x=>!x.j&&!x.dir).length, noW=trs.filter(x=>x.needW&&!x.w).length;
   // 수업이 끝났는데 출석 체크가 다 안 된 반
   const unchk=tc.filter(c=>{ const r=parseRange(timeOfDay(c,wd)); if(!r||r[1]>nowH) return false; const st=activeStudentsForDate(c,today); return st.length && st.some(s=>!attStatusAgg(c,wd,s,at)); });
   // 상담 대기
@@ -2832,7 +2837,7 @@ function renderOverview(){
   const pill=(ok,a,b)=>`<span class="opill ${ok?'ok':'no'}">${ok?a:b}</span>`;
   const tTable=`<div class="hcard"><div class="hh"><h2>선생님별 오늘 현황</h2><span class="sp"></span><button class="hlink todogo" data-tab="report">업무보고 전체 보기</button></div>
     ${trs.length?`<div style="overflow:auto"><table class="otbl"><thead><tr><th>선생님</th><th>오늘 수업</th><th>출석 체크</th><th>숙제 체크</th><th>업무일지</th><th>진도계획표</th></tr></thead><tbody>
-    ${trs.map(x=>`<tr><td><b>${esc(x.lt.t.name)}</b>${MODE==='all'?' '+bdg(x.lt.a):''}</td><td>${x.cls}개 반</td><td>${x.ac} / ${x.n}</td><td>${x.hn?`${x.hc} / ${x.hn}`:'<span style="color:var(--sub)">- / -</span>'}</td><td>${pill(x.j,'제출','미제출')}</td><td>${x.needW?pill(x.w,'제출','미제출'):'<span class="opill na">-</span>'}</td></tr>`).join('')}
+    ${trs.map(x=>`<tr><td><b>${esc(x.lt.t.name)}</b>${MODE==='all'?' '+bdg(x.lt.a):''}</td><td>${x.cls}개 반</td><td>${x.ac} / ${x.n}</td><td>${x.hn?`${x.hc} / ${x.hn}`:'<span style="color:var(--sub)">- / -</span>'}</td><td>${x.dir?(x.j?pill(true,'제출됨','-'):'<span class="opill na">-</span>'):pill(x.j,'제출','미제출')}</td><td>${x.needW?pill(x.w,'제출','미제출'):'<span class="opill na">-</span>'}</td></tr>`).join('')}
     </tbody></table></div>`:'<div class="hempty">오늘 수업이 있는 선생님이 없어요.</div>'}</div>`;
   // 최근 5일(수업 있는 날) 출석률
   const days=[]; { const d=new Date(today+'T00:00:00'); for(let i=0;i<21&&days.length<5;i++){ const iso=ymd(d); if(dayCls(iso).length){ const r=dayAtt(iso); days.unshift({iso,rate:r.rate}); } d.setDate(d.getDate()-1); } }
@@ -10007,7 +10012,8 @@ function todoCard(list){
       </div>`;
     }
   }
-  h2+=item(jSub, jSub?'오늘 업무일지 제출 완료':(jFilled?'오늘 업무일지 작성됨 — 제출 필요':'오늘 업무일지 미작성'),'report','daily');
+  if(lt.t.role==='원장'){ if(jSub) h2+=item(true,'오늘 업무일지 제출됨','report','daily'); } // 원장은 업무일지 제출이 필수가 아님 — 제출했을 때만 표시
+  else h2+=item(jSub, jSub?'오늘 업무일지 제출 완료':(jFilled?'오늘 업무일지 작성됨 — 제출 필요':'오늘 업무일지 미작성'),'report','daily');
   h2+=item(wpSub, wpSub?'이번 주 진도계획표 제출 완료':'이번 주 진도계획표 미제출','report','weekly');
   h2+=`<div style="display:flex;align-items:center;gap:8px;padding:8px 0">
     <span class="tdo ${tot&&d>=tot?'ok':''}"></span>
@@ -10782,7 +10788,7 @@ function renderToday(list, partsOnly){
   const futB=isToday?base.filter(x=>{ const t=startOf(x); return t!=null&&t>nowH; }):[];
   const nextTxt=futB.length?`다음 ${fmtH(startOf(futB[0]))} · ${futB.filter(x=>startOf(x)===startOf(futB[0])).map(x=>x.c.name).join(', ')}`:(base.length?(isToday?'오늘 수업이 모두 시작됐어요':state.date):'수업 없음');
   const tileArr=[{pri:1,t:`${wd}요일 수업`,s:nextTxt,v:base.length,u:'개 반'},{t:'출석 체크',s:lt&&!state.myOnly?'내 수업 학생 기준':'오늘 수업 학생 기준',v:sumP,u:'/ '+sumN+'명'},{t:'숙제 체크',s:lt&&!state.myOnly?'내 수업 학생 기준':'오늘 수업 학생 기준',v:sumH,u:'/ '+sumN+'명'}];
-  if(lt){ const td0=todayISO(); const nTodo=(findSubmit('journal',whoKey(lt),td0)?0:1)+(findSubmit('weekplan',whoKey(lt),weekOf(td0)[0])?0:1); tileArr.push({t:'오늘 할 일',s:'업무일지 · 진도계획표',v:nTodo,u:'건'}); }
+  if(lt){ const td0=todayISO(); const nTodo=((lt.t.role==='원장'||findSubmit('journal',whoKey(lt),td0))?0:1)+(findSubmit('weekplan',whoKey(lt),weekOf(td0)[0])?0:1); tileArr.push({t:'오늘 할 일',s:'업무일지 · 진도계획표',v:nTodo,u:'건'}); }
   else tileArr.push({t:'오늘 일정',s:'일정 · 연간에 등록된 일정',v:eventsOn(state.date).length,u:'건'});
   const tiles=homeTiles(tileArr);
   const seg=lt?`<span class="seg"><button id="subDay" class="${monthView?'':'on'}">오늘 기록</button><button id="subMonth" class="${monthView?'on':''}">월별 출결부</button></span>`:'';
@@ -19439,10 +19445,13 @@ function renderWallet(){
   const deptClasses={}; ['초등','중등','고등'].forEach(d=>{ deptClasses[d]=optsOf(classesOf(d)); const c=state.wlClassBy[d]; if(c&&c!=='all'&&!deptClasses[d].some(o=>o.v===c)) state.wlClassBy[d]='all'; });
   const rows=wlRows();
   const sum={'달러':0,'코인':0}; rows.forEach(x=>{ sum[x.u.name]+=wlBal(x.s.id); });
+  state.wlSortBy=state.wlSortBy||{};
+  const avgOf=a=>a.length?Math.round(a.reduce((n,x)=>n+wlBal(x.s.id),0)/a.length*10)/10:0;
+  const mh=rows.filter(x=>x.u.dept==='중등'||x.u.dept==='고등'); // 중·고등부 전체 평균(코인)
   const admin=isAdminRole();
   let h=`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
     <input type="search" id="wlSearch" value="${esc(state.wlQ||'')}" placeholder="🔍 이름 검색 (Enter)" style="padding:7px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;min-width:150px">
-    <span style="font-size:.82rem;color:var(--sub);font-weight:700">${rows.length}명${sum['달러']?` · 💵 ${sum['달러'].toLocaleString()}달러`:''}${sum['코인']?` · ${wlSymHtml({name:'코인'})} ${sum['코인'].toLocaleString()}코인`:''}</span></div>
+    <span style="font-size:.82rem;color:var(--sub);font-weight:700">${rows.length}명${sum['달러']?` · 💵 ${sum['달러'].toLocaleString()}달러`:''}${sum['코인']?` · ${wlSymHtml({name:'코인'})} ${sum['코인'].toLocaleString()}코인`:''}${mh.length?` · 중·고등부 평균 <b style="color:var(--pri)">${avgOf(mh).toLocaleString()}</b>코인`:''}</span></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"><button class="btn" data-wlprintall>🖨 현재 목록 카드 인쇄 (${rows.length}명)</button><button class="btn" data-wlprintsel>🖨 선택한 학생 카드 인쇄 (<span id="wlSelN">${rows.filter(x=>(state.wlSel||{})[x.s.id]).length}</span>명)</button><button class="btn" data-wlrepub>🔄 QR 전체 다시 올리기</button>${admin?'<button class="btn" data-wlimgs>🖼 저금통 그림</button>':''}
     <span style="font-size:.76rem;color:var(--sub);align-self:center">초등부는 달러, 중등·고등부는 코인이에요 · 적립·사용은 모든 선생님이 입력할 수 있어요 · 사유는 안 적어도 돼요(비우면 담당 과목으로 기록)</span></div>`;
   if(!rows.length) return h+'<div class="empty">표시할 학생이 없어요. (반이 정해진 재원생만 나와요)</div>';
@@ -19455,8 +19464,11 @@ function renderWallet(){
   groups.forEach(g=>{
     const fk='wl'+g.d; const open = state.fold[fk]!==false; // 모든 부 기본 펼침
     const gs={}; g.rows.forEach(x=>{ gs[x.u.name]=(gs[x.u.name]||0)+wlBal(x.s.id); });
-    h+=`<details class="wldept" data-wlfold="${fk}" ${open?'open':''}><summary><b>${esc(g.l)}</b> <span>${g.rows.length}명${Object.keys(gs).map(n=>` · ${n==='달러'?'💵':wlSymHtml({name:n})} ${gs[n].toLocaleString()}${esc(n)}`).join('')}</span></summary>
-      ${deptClasses[g.d]?`<div style="padding:8px 10px;border-bottom:1px solid var(--line);background:#fafbfd"><select data-wlclassdept="${g.d}" style="padding:6px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;min-width:140px"><option value="all">${esc(g.l)} 모든 반</option>${deptClasses[g.d].map(o=>`<option value="${esc(o.v)}" ${state.wlClassBy[g.d]===o.v?'selected':''}>${esc(o.l)}</option>`).join('')}</select></div>`:''}
+    const srt=state.wlSortBy[g.d]||'class'; // 정렬: 반 순서(기본) / 적은 순 / 많은 순
+    if(srt!=='class'){ g.rows=g.rows.slice().sort((a,b)=>{ const d=wlBal(a.s.id)-wlBal(b.s.id); return (srt==='asc'?d:-d)||String(a.s.name||'').localeCompare(String(b.s.name||''),'ko'); }); }
+    const avg=avgOf(g.rows);
+    h+=`<details class="wldept" data-wlfold="${fk}" ${open?'open':''}><summary><b>${esc(g.l)}</b> <span>${g.rows.length}명${Object.keys(gs).map(n=>` · ${n==='달러'?'💵':wlSymHtml({name:n})} ${gs[n].toLocaleString()}${esc(n)}`).join('')} · 평균 ${avg.toLocaleString()}</span></summary>
+      ${deptClasses[g.d]?`<div style="padding:8px 10px;border-bottom:1px solid var(--line);background:#fafbfd"><select data-wlclassdept="${g.d}" style="padding:6px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;min-width:140px"><option value="all">${esc(g.l)} 모든 반</option>${deptClasses[g.d].map(o=>`<option value="${esc(o.v)}" ${state.wlClassBy[g.d]===o.v?'selected':''}>${esc(o.l)}</option>`).join('')}</select> <select data-wlsortdept="${g.d}" title="정렬" style="padding:6px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit"><option value="class" ${srt==='class'?'selected':''}>반 순서대로</option><option value="asc" ${srt==='asc'?'selected':''}>${g.d==='초등'?'달러':'코인'} 적은 순</option><option value="desc" ${srt==='desc'?'selected':''}>${g.d==='초등'?'달러':'코인'} 많은 순</option></select></div>`:''}
       <div style="overflow:auto"><table style="border-collapse:collapse;width:100%;font-size:.88rem;background:#fff">${head}<tbody>`;
     g.rows.forEach(({s,u})=>{
     const bal=wlBal(s.id); const last=wlEntries(s.id)[0];
@@ -19476,6 +19488,7 @@ function bindWallet(){
   const v=document.getElementById('view');
   // 부마다 반을 따로 고른다(중등부 JM1 + 고등부 고2를 동시에 보기 등)
   v.querySelectorAll('[data-wlclassdept]').forEach(cs=>cs.onchange=()=>{ state.wlClassBy=state.wlClassBy||{}; state.wlClassBy[cs.dataset.wlclassdept]=cs.value; render(true); });
+  v.querySelectorAll('[data-wlsortdept]').forEach(cs=>cs.onchange=()=>{ state.wlSortBy=state.wlSortBy||{}; state.wlSortBy[cs.dataset.wlsortdept]=cs.value; render(true); });
   const sr=v.querySelector('#wlSearch'); if(sr) sr.onchange=()=>{ state.wlQ=sr.value; render(true); };
   v.querySelectorAll('[data-wlopen]').forEach(b=>b.onclick=()=>{ const [id,t]=b.dataset.wlopen.split('|'); if(t==='led') wlOpenLedger(id,'in'); else wlQuick(id,t); });
   v.querySelectorAll('[data-wlqr]').forEach(b=>b.onclick=()=>wlOpenQr(b.dataset.wlqr));
