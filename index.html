@@ -328,6 +328,7 @@ footer{max-width:1180px;margin:0 auto;padding:0 20px 40px;font-size:.73rem;color
 :root{--pri:#2453e3;--pri-bg:#eaf0ff;--bg:#f1f3f8}
 .shell{max-width:none;margin:0;align-items:stretch}
 .sbrand{display:flex;align-items:center;gap:10px;padding:2px 6px 16px}
+.slogo img{width:100%;height:100%;object-fit:contain;border-radius:inherit;display:block}.slogo.has{background:#fff;border:1px solid var(--line)}
 .slogo{width:34px;height:34px;border-radius:10px;background:var(--pri);color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:1.05rem;flex:none}
 .sbrand b{display:block;font-size:.98rem;font-weight:800;line-height:1.25}
 .sbrand small{display:block;font-size:.7rem;color:var(--sub)}
@@ -717,7 +718,7 @@ body[data-tab="consult"] .badge.eb,body[data-tab="consult"] .badge.ic{background
 <body>
 <div class="shell">
   <aside class="sidebar">
-    <div class="sbrand"><span class="slogo">e</span><span><b id="title"></b><small id="titleSub"></small></span></div>
+    <div class="sbrand"><span class="slogo" id="slogo">e</span><span><b id="title"></b><small id="titleSub"></small></span></div>
     <nav class="tabs" id="tabsnav"></nav>
   </aside>
   <div class="content">
@@ -849,7 +850,7 @@ if(!store.bookCfg) store.bookCfg={orderDay:20}; // 교재 재고 설정 — orde
 if(!store.bookBilling) store.bookBilling=[]; // 교재비 청구 완료 기록 {id,sk(학생키),upTo(이 시각까지 배부분 청구),amount,count,date,by,_deleted}
 if(!store.bookOrders) store.bookOrders=[]; // 주문 대기 {id,itemId,qty,date,eta,received,receivedAt,by,_deleted}
 if(!store.bookNeed) store.bookNeed={}; // 다음달 교재 소요 — {YYYY-MM: {반키|과목키: {teacher:true, by, at}}} 교사용 필요 체크
-if(!store.walletLog) store.walletLog=[]; if(!store.walletTokens) store.walletTokens=[]; // 학원 화폐 내역·QR 코드
+if(!store.logos) store.logos={}; if(!store.walletLog) store.walletLog=[]; if(!store.walletTokens) store.walletTokens=[]; // 학원 화폐 내역·QR 코드
 if(!store.bookStock) store.bookStock=[]; // 교재 재고 품목 {id,academy,name,cat,min,base(기준일),_deleted}
 if(!store.bookStockLog) store.bookStockLog=[]; // 입고·출고 기록 {id,itemId,type:'in'|'out',qty,date,memo,by}
 if(!store.bookGiveLog) store.bookGiveLog=[]; // 교재 배부 내역(언제·누구에게·무슨 교재) — 같은 교재를 여러 번 배부해도 매번 남는다
@@ -1108,7 +1109,7 @@ store.syllabusSeeded=true; // 예전에 기본으로 들어있던 'Spider Phonic
 if(!store.examAnalysis) store.examAnalysis=[]; // 내신 분석 — {id, academy, school, grade, examTitle, examRange, examDate, prepStart, prepEnd, teacherLecture, teacherIBT, note, categories:[{name,count,questions:[{id,no,question,points,difficulty}]}], updatedAt, updatedBy} · 월 상관없이 항상 보임, 모든 선생님 열람·수정 가능(Syllabus처럼 보관용)
 if(!store.absentNotes) store.absentNotes={}; // 날짜별 결석생 요약의 '특이사항' 자유 메모 {YYYY-MM-DD: text}
 if(!store.examTrends) store.examTrends=[]; // 동향 분석 리포트 — {id, academy, school, grade, title, memo, source:'ai'|'upload', entryIds, snaps, files, report:{headline,strategy,metrics,changes,teaching}, aiModel, createdAt, updatedAt, createdBy, _deleted} · 내신 분석 탭 안의 두 번째 탭, AI로 만든 리포트는 자동 저장
-const SHARE_FIELDS=['walletLog','walletTokens','bookCfg','bookBilling','bookOrders','bookNeed','bookGiveLog','bookStock','bookStockLog','wordBooks','uploads','bookedit','bookdone','daysedit','timeedit','calendar','calendarTombstones','calCatColors','meetings','teachers','adminEmail','enrollment','newStudents','dropouts','compSeats','classOrder','consultRoles','students','admissionConsults','wordTests','attend','homework','stayback','bookGiven','uploadTombstones','uploadStamps','wordbookOptions','wordbookPerDay','testPaperOptions','giveSel','consultRequests','classRenames','records','assign','cmemo','worklog','weekplan','submits','handover','boardPosts','handoverGrid','monthOverride','examAnalysis','examTrends','absentNotes','bookCatalog','tuitionCatalog','papercheckEnabled','papercheckCols','papercheckData','worklogMonthly','worklogWeekly','wlMemo','yearSched','ttVersions','ttVerAuto','classMoves'];
+const SHARE_FIELDS=['logos','walletLog','walletTokens','bookCfg','bookBilling','bookOrders','bookNeed','bookGiveLog','bookStock','bookStockLog','wordBooks','uploads','bookedit','bookdone','daysedit','timeedit','calendar','calendarTombstones','calCatColors','meetings','teachers','adminEmail','enrollment','newStudents','dropouts','compSeats','classOrder','consultRoles','students','admissionConsults','wordTests','attend','homework','stayback','bookGiven','uploadTombstones','uploadStamps','wordbookOptions','wordbookPerDay','testPaperOptions','giveSel','consultRequests','classRenames','records','assign','cmemo','worklog','weekplan','submits','handover','boardPosts','handoverGrid','monthOverride','examAnalysis','examTrends','absentNotes','bookCatalog','tuitionCatalog','papercheckEnabled','papercheckCols','papercheckData','worklogMonthly','worklogWeekly','wlMemo','yearSched','ttVersions','ttVerAuto','classMoves'];
 // syllabus(실러버스)는 PDF/한글/워드 첨부가 커서 별도 경로(/syllabus)로, 낮은 빈도로만 동기화합니다 — 그래야 매 5초/매 입력마다 전체를 전송하지 않습니다.
 // 반 자료·학생 명단처럼 "삭제"가 중요한 항목은 병합하지 않고 통째로 교체한다(마지막 저장이 우선).
 // 병합 방식(mergeById)에는 삭제라는 개념이 없어서, 지운 반·학생이 다른 기기 자료와 합쳐지며 계속 되살아나기 때문.
@@ -18026,6 +18027,11 @@ function renderSet(){
     <div class="desc">위 방법으로도 반·학생 자료가 계속 되살아날 때 쓰는 마지막 수단입니다. <b>모든 달의 반 데이터 + 학생 명단 전체</b>를 삭제하고, 서버(동기화) 자료도 병합 없이 지금 이 화면 상태로 강제로 덮어씁니다. 다른 기기에 남아있던 자료도 전부 사라집니다. <b>되돌릴 수 없는 작업</b>이니 반드시 먼저 [데이터 내보내기]로 백업하세요.</div>
     <button class="btn" style="color:#c0392b;border-color:#e7b3ab;font-weight:800" id="nuclearResetBtn">🚨 ${academies().map(a=>AC[a].label).join('/')} 전체 삭제 + 서버 강제 덮어쓰기</button>
   </div>`;
+  if(isAdminRole()) h+=`<div class="setsec"><h3>학원 로고</h3>
+    <div class="desc">왼쪽 위 이름 옆 로고를 학원마다 따로 정할 수 있어요. 그림 파일을 고르면 작게 줄여서 저장하고, 모든 선생님 화면에 같이 보여요. (정사각형 그림이 가장 예뻐요)</div>
+    ${academies().map(a=>{ const src=(store.logos||{})[a]||''; return `<div style="display:flex;align-items:center;gap:10px;margin:8px 0;flex-wrap:wrap"><span style="width:44px;height:44px;border-radius:10px;border:1px solid var(--line);background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden;font-weight:800;color:var(--pri)">${src?`<img src="${src}" style="width:100%;height:100%;object-fit:contain">`:esc(String(AC[a].label).charAt(0))}</span>
+      <b style="min-width:70px">${esc(AC[a].label)}</b><label class="btn small" style="cursor:pointer">그림 선택<input type="file" accept="image/*" class="logoFile" data-a="${a}" style="display:none"></label>${src?`<button class="btn small logoDel" data-a="${a}">기본으로</button>`:''}</div>`; }).join('')}
+  </div>`;
   h+=`<div class="setsec"><h3>데이터 백업</h3>
     <div class="desc">선생님 설정·상담 기록·업로드 자료를 파일로 저장하거나, 다른 컴퓨터/다른 파일(관리자용↔선생님용)에서 저장한 파일을 불러옵니다.</div>
     <div class="cbtns"><button class="btn primary" id="exp">데이터 내보내기 (JSON)</button>
@@ -18377,6 +18383,10 @@ function bindSet(){
   });
   v.querySelectorAll('.tname').forEach(inp=>inp.onchange=()=>{ if(!isAdminRole())return; const t=store.teachers[inp.dataset.a][inp.dataset.i]; t.name=inp.value.trim()||'이름없음'; t.updatedAt=Date.now(); save(); render(true); });
   v.querySelectorAll('.tpw').forEach(inp=>inp.onchange=()=>{ if(!isAdminRole())return; const t=store.teachers[inp.dataset.a][inp.dataset.i]; t.pw=inp.value; t.updatedAt=Date.now(); save(); });
+  v.querySelectorAll('.logoFile').forEach(inp=>inp.onchange=()=>{ const f=inp.files&&inp.files[0]; if(!f||!isAdminRole()) return; const a=inp.dataset.a;
+    const rd=new FileReader(); rd.onload=()=>{ const im=new Image(); im.onload=()=>{ const M=160, r=Math.min(1,M/Math.max(im.width,im.height)); const cv=document.createElement('canvas'); cv.width=Math.max(1,Math.round(im.width*r)); cv.height=Math.max(1,Math.round(im.height*r)); cv.getContext('2d').drawImage(im,0,0,cv.width,cv.height);
+      store.logos=store.logos||{}; store.logos[a]=cv.toDataURL('image/png'); save(); render(true); toast('로고를 저장했어요'); }; im.onerror=()=>toast('그림을 읽지 못했어요'); im.src=rd.result; }; rd.readAsDataURL(f); });
+  v.querySelectorAll('.logoDel').forEach(b=>b.onclick=()=>{ if(!isAdminRole()) return; const a=b.dataset.a; if(store.logos) delete store.logos[a]; save(); render(true); });
   v.querySelectorAll('.trolesel').forEach(sel=>sel.onchange=()=>{
     if(!isAdminRole()) return;
     const a=sel.dataset.a, i=Number(sel.dataset.i), t=store.teachers[a][i], v2=sel.value;
@@ -18846,10 +18856,19 @@ document.addEventListener('pointercancel', _ptrRelease, true);
 document.addEventListener('dragend', _ptrRelease, true);
 document.addEventListener('mouseup', _ptrRelease, true);
 window.addEventListener('blur', _ptrRelease);
+// 왼쪽 위 로고 — 학원별로 올려둔 그림이 있으면 그걸, 없으면 기본 글자. 여러 학원을 보는 파일에서는 지금 고른 학원 기준
+function logoAcNow(){ const acs=academies(); if(acs.length===1) return acs[0]; return (state.ac&&state.ac!=='all')?state.ac:null; }
+function applySidebarLogo(){
+  const el=document.getElementById('slogo'); if(!el) return;
+  const ac=logoAcNow(); const src=ac?((store.logos||{})[ac]||''):'';
+  if(src){ if(el.dataset.src!==src){ el.innerHTML='<img alt="">'; el.firstChild.src=src; el.dataset.src=src; } el.classList.add('has'); }
+  else { el.classList.remove('has'); delete el.dataset.src; el.textContent=ac?String(ac).charAt(0):'e'; }
+}
 function render(keepOpen){
   if(_ptrDown && Date.now()-_ptrDownAt<3000){ _pendingRender = (_pendingRender===null) ? !!keepOpen : (_pendingRender && !!keepOpen); return; }
   tabLegacyMap();
   try{ applyTeacherTheme(); document.body.setAttribute('data-tab', state.tab||''); }catch(e){ console.error('테마 적용 오류', e); }
+  try{ applySidebarLogo(); }catch(e){}
   requestAnimationFrame(()=>{ try{ tlTick(); homeFoldInit(); }catch(e){ console.error('홈 화면 표시 오류', e); } });
   const v=document.getElementById('view');
   const same=(_lastRenderTab===state.tab);
