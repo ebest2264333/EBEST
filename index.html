@@ -7662,10 +7662,16 @@ function renderHwRange(list){
       <label class="hwlab"><input type="checkbox" id="myOnly" ${state.myOnly?'checked':''}> 내 수업만 보기</label>`:''}
     <span style="font-size:.76rem;color:var(--sub)">칸을 누르면 숙제 완료 여부가 바로 바뀝니다 · 그날그날 체크는 [오늘 수업] 탭에서도 가능합니다</span></div>`;
   let any=false;
+  const shownNames=new Set(cls.map(x=>x.name));
   cls.forEach(c=>{
-    if(!(c.students&&c.students.length)) return;
-    if(!cdays(c)) return;
+    { const host=mergeHostOf(c); if(host && shownNames.has(host.name)) return; } // 합반 짝 반은 주 반 표 안에 같이 나온다 (출결부와 같은 방식)
+    const guest=mergeGuestOf(c); const guestStu=guest?(guest.students||[]):[];
+    if(!(c.students&&c.students.length) && !guestStu.length) return;
+    if(!cdays(c) && !['월','화','수','목','금','토','일'].some(w=>classMeets(c,w))) return;
     const k=ckey(c);
+    // 합반 짝 반 학생도 같은 표에 — 숙제 기록은 짝 반 키로 저장돼 있다(오늘 수업 화면과 같은 방식)
+    const gOwn=!!(guest && (guest.subjects||[]).some(x=>x&&x.subject));
+    const people=[...(c.students||[]).map(s=>({s,cc:c,kk:k,nm:c.name})), ...guestStu.map(s=>({s,cc:gOwn?guest:c,kk:ckey(guest),nm:guest.name}))];
     const dates=monthDates(c);
     if(!dates.length) return;
     any=true;
@@ -7679,22 +7685,22 @@ function renderHwRange(list){
         </span>`
       : '';
     h+=`<details class="ysec" open><summary style="cursor:pointer;padding:10px 16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:1.02rem">${hl(c.name)}</b> ${bdg(c.academy)}
-      <span style="font-size:.75rem;font-weight:400;color:var(--sub)">${esc(cdays(c))} · ${c.students.length}명</span>${tabs}</summary>`;
+      <span style="font-size:.75rem;font-weight:400;color:var(--sub)">${esc(cdays(c)||'')} · ${people.length}명${guest?' (🔗 '+esc(guest.name)+' 합반 '+guestStu.length+'명 포함)':''}</span>${tabs}</summary>`;
     if(curView!=='all'){
       const subj=curView;
       h+=`<div class="attwrap"><table class="atable"><thead><tr><th>학생</th>${dates.map(d=>hwDateTh(c,k,d,subj)).join('')}<th>완료</th></tr></thead><tbody>`;
-      c.students.forEach(s=>{
+      people.forEach(({s,cc,kk,nm})=>{
         let doneCnt=0, applicable=0;
-        let row=`<tr><td class="nm">${hl(studentDisplayName(c.academy,s,c.name))}</td>`;
+        let row=`<tr><td class="nm">${hl(studentDisplayName(c.academy,s,nm))}</td>`;
         dates.forEach(d=>{
           // IBT·L/C는 기본 숙제없음 취급 — 지난 수업 때 이 학생에게 개별 숙제를 적어준 경우에만 체크 대상에 포함
-          const selfStudyExcluded = isNoHwSubj(subj) && !prevIndivHwText(c, k, s, subj, d, true);
-          if(!subjectMeetsOnDate(c, subj, d) || noHwMapFor(k, d)[noHwStoreKey(subj)] || selfStudyExcluded){ row+=`<td class="mk" style="cursor:default;color:#c8ccd6">-</td>`; return; }
+          const selfStudyExcluded = isNoHwSubj(subj) && !prevIndivHwText(cc, kk, s, subj, d, true);
+          if(!subjectMeetsOnDate(cc, subj, d) || noHwMapFor(kk, d)[noHwStoreKey(subj)] || selfStudyExcluded){ row+=`<td class="mk" style="cursor:default;color:#c8ccd6">-</td>`; return; }
           applicable++;
-          const rec=(store.homework[d]&&store.homework[d][k])?store.homework[d][k][s]:null;
+          const rec=(store.homework[d]&&store.homework[d][kk])?store.homework[d][kk][s]:null;
           const mk=hwMarkOf(rec, subj);
           if(mk==='O') doneCnt++;
-          row+=`<td class="mk ${mk==='O'?'m출':mk==='△'?'m지':'m결'}" data-d="${d}" data-k="${esc(k)}" data-s="${esc(s)}" data-subj="${esc(subj)}">${mk||'·'}</td>`;
+          row+=`<td class="mk ${mk==='O'?'m출':mk==='△'?'m지':'m결'}" data-d="${d}" data-k="${esc(kk)}" data-s="${esc(s)}" data-subj="${esc(subj)}">${mk||'·'}</td>`;
         });
         row+=`<td class="tot">${doneCnt}/${applicable}</td></tr>`;
         h+=row;
@@ -7702,22 +7708,22 @@ function renderHwRange(list){
       h+='</tbody></table></div>';
     } else {
       h+=`<div class="attwrap"><table class="atable"><thead><tr><th>학생</th>${dates.map(d=>hwDateTh(c,k,d,'')).join('')}<th>완료</th></tr></thead><tbody>`;
-      c.students.forEach(s=>{
+      people.forEach(({s,cc,kk,nm})=>{
         let doneCnt=0, applicable=0;
-        let row=`<tr><td class="nm">${hl(studentDisplayName(c.academy,s,c.name))}</td>`;
+        let row=`<tr><td class="nm">${hl(studentDisplayName(c.academy,s,nm))}</td>`;
         dates.forEach(d=>{
-          const rec=(store.homework[d]&&store.homework[d][k])?store.homework[d][k][s]:null;
-          const status=hwDayStatusFor(c, d, rec, k, s);
+          const rec=(store.homework[d]&&store.homework[d][kk])?store.homework[d][kk][s]:null;
+          const status=hwDayStatusFor(cc, d, rec, kk, s);
           if(status==='na'){ row+=`<td class="mk" style="cursor:default;color:#c8ccd6" title="이 날은 숙제없음으로 표시되어 계산에서 빠집니다">-</td>`; return; }
           applicable++;
-          const subjectNames=hwEffectiveSubjectNames(c,d,k,s);
+          const subjectNames=hwEffectiveSubjectNames(cc,d,kk,s);
           if(status==='done') doneCnt++;
           const symbol=status==='done'?'O':status==='partial'?'△':'X';
           // O(다 함)=출석색, △(일부만)=지각색, X(전혀 안 함)=결석색 — 기존 출결표 색상 그대로 재사용
           const clsName=status==='done'?'m출':status==='partial'?'m지':'m결';
           row+= subjectNames.length>1
             ? `<td class="mk ${clsName}" style="cursor:default" title="이 날은 과목이 여러 개라 [오늘 수업] 탭에서 과목별로 체크하거나, 위의 과목 탭을 눌러주세요 (${subjectNames.join(', ')})" data-multi="1">${symbol}</td>`
-            : `<td class="mk ${clsName}" data-d="${d}" data-k="${esc(k)}" data-s="${esc(s)}">${symbol}</td>`;
+            : `<td class="mk ${clsName}" data-d="${d}" data-k="${esc(kk)}" data-s="${esc(s)}">${symbol}</td>`;
         });
         row+=`<td class="tot">${doneCnt}/${applicable}</td></tr>`;
         h+=row;
