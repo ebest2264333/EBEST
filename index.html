@@ -2438,8 +2438,9 @@ window.addEventListener('popstate',()=>{
 /* ---------- 로그인 ---------- */
 // 원장(관리자 권한 전부) · 실장 — 둘 다 관리자급. 원장 계정으로 로그인하면 관리자처럼 쓸 수 있다.
 function isDirector(){ const lt=loginTeacher(); return !!(lt && lt.t.role==='원장'); }
-function isMgr(){ const lt=loginTeacher(); return !!(lt && (lt.t.role==='실장' || lt.t.role==='원장')); }
-function roleTitle(t){ return t&&t.role==='원장'?'원장님':t&&t.role==='실장'?'실장님':'선생님'; }
+function teacherIsMgr(t){ return !!(t && (t.role==='팀장' || t.role==='실장' || t.role==='원장' || t.admin)); } // 팀장·실장·원장은 무조건 관리자, 선생님은 '관리자 권한'을 따로 켠 경우만
+function isMgr(){ const lt=loginTeacher(); return !!(lt && teacherIsMgr(lt.t)); }
+function roleTitle(t){ return t&&t.role==='원장'?'원장님':t&&t.role==='실장'?'실장님':t&&t.role==='팀장'?'팀장님':'선생님'; }
 function isAdminRole(){ return store.login==='admin' || (MODE==='all'&&!store.login) || isMgr(); }
 function loginTeacher(){ // {a,i,t} 또는 null(관리자/미로그인)
   const L=store.login;
@@ -2856,7 +2857,7 @@ function renderOverview(){
   _ovAbsCands=[]; tc.forEach(c=>{ const host=mergeHostOf(c); const borrow=host && !daySubjectNames(c,wd).length; const src=borrow?host:c;
     // 수업(과목)마다 시간도 같이 — 조퇴할 수업을 고를 때 보여준다
     const keys=(borrow?attKeysWithOwner(host,ckey(c),wd):attKeysFor(c,wd)).map(x=>{ const sj=(src.subjects||[]).find(s=>subjOnDay(s,wd)&&(s.subject||'-')===x.subject&&s.time); return {...x, time:sj?sj.time:''}; });
-    activeStudentsForDate(c,today).forEach(s=>_ovAbsCands.push({c, s, k:ckey(c), keys, label:studentDisplayName(c.academy,s,c.name)})); });
+    activeStudentsForDate(c,today).forEach(s=>_ovAbsCands.push({c, s, k:ckey(c), keys, label:studentDisplayName(c.academy,s,c.name), kn:(()=>{ try{ const r=matchStudentByRosterName(c.academy,s,c.name); return r?(r.nameKo||'')+(r.nameEn||''):''; }catch(e){ return ''; } })()})); });
   const IN='padding:6px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.84rem';
   const absAddBox=`<div style="margin:4px 0 10px;padding:8px 10px;background:#fafbfd;border:1px solid var(--line);border-radius:8px">
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
@@ -3005,7 +3006,7 @@ function bindOverview(){
     const draw=()=>{
       const t=q.value.trim().toLowerCase().replace(/\s+/g,'');
       const pool=isPre()?preCands():_ovAbsCands.map(x=>({...x, cn:x.c.name, _o:x}));
-      hits=t?pool.filter(x=>(x.label+x.s).toLowerCase().replace(/\s+/g,'').includes(t)).slice(0,12):[];
+      hits=t?pool.filter(x=>(x.label+x.s+(x.kn||'')).toLowerCase().replace(/\s+/g,'').includes(t)).slice(0,12):[];
       const same=h=>pick && (isPre()?(h.id&&h.id===pick.id):(h._o&&h._o===pick._o));
       if(pick && !hits.some(same)) pick=null; else if(pick) pick=hits.find(same);
       if(!pick && hits.length===1) pick=hits[0];
@@ -10378,6 +10379,15 @@ function renderToday(list, partsOnly){
     if(lt){ let mp=null; try{ mp=mergedCounterpart(c); }catch(e){}
       if(teacherTeachesToday(c,lt,wd) || (mp && teacherTeachesToday(mp,lt,wd))){ myAbsKeys.add(ckey(c)); if(mp) myAbsKeys.add(ckey(mp)); } }
   });
+  // 오늘 수업 카드 목록(todayClasses)에서 빠지는 반 — 자기 과목이 없는 합반 짝 반, 오늘 단어시험만 있는 반 — 의 결석생도
+  // 위 「오늘 결석·지각」 카드와 똑같이 모아야 요약 복사에서 빠지지 않는다 (카드는 dayCls 기준이라 이런 반도 센다)
+  { const have=new Set(clsForAbsent.map(c=>ckey(c)));
+    classesFor(state.month).filter(c=>!c.examOnly && (state.ac==='all'||c.academy===state.ac) && !have.has(ckey(c)) && !isClosedDay(c.academy,state.date)
+      && (classMeets(c,wd) || (mergeHostOf(c) && classMeets(mergeHostOf(c),wd)))).forEach(c=>{
+      collectAbsent(c);
+      if(lt){ let mp=null; try{ mp=mergedCounterpart(c); }catch(e){}
+        if(teacherTeachesToday(c,lt,wd) || (mp && teacherTeachesToday(mp,lt,wd))){ myAbsKeys.add(ckey(c)); if(mp) myAbsKeys.add(ckey(mp)); } }
+    }); }
   const isMyAbs = x => partsOnly || !lt || myAbsKeys.has(x.k);
 
   const depts = ['초등', '중등', '고등', '기타'];
@@ -10452,17 +10462,18 @@ function renderToday(list, partsOnly){
   // 📋 결석·지각 요약 복사 — "[반] 이름 영어이름 - 사유" 형태로 한 번에 복사 (과제 문자까지 보낸 학생은 맨 아래 따로)
   const _nm=n=>String(n||'').replace(/\(([^)]*)\)\s*$/,' $1').trim();
   const _sumEntries=[
-    ...absentHwList.map(x=>({cn:x.className, nm:_nm(x.student), txt:((x.absReasonToday||'').trim()?`결석(${x.absReasonToday.trim()})`:'결석'), pre:!!x.preReg})),
-    ...earlyHwList.map(x=>({cn:x.className, nm:_nm(x.student), txt:'조퇴'+((x.absReasonToday||'').trim()?` (${x.absReasonToday.trim()})`:''), pre:false})),
-    ...lateHwList.map(x=>({cn:x.className, nm:_nm(x.student), txt:'지각'+((x.absReasonToday||'').trim()?` (${x.absReasonToday.trim()})`:''), pre:false}))
+    ...absentHwList.map(x=>({cn:x.className, ac:x.academy, nm:_nm(x.student), txt:((x.absReasonToday||'').trim()?`결석(${x.absReasonToday.trim()})`:'결석'), pre:false})),
+    ...earlyHwList.map(x=>({cn:x.className, ac:x.academy, nm:_nm(x.student), txt:'조퇴'+((x.absReasonToday||'').trim()?` (${x.absReasonToday.trim()})`:''), pre:false})),
+    ...lateHwList.map(x=>({cn:x.className, ac:x.academy, nm:_nm(x.student), txt:'지각'+((x.absReasonToday||'').trim()?` (${x.absReasonToday.trim()})`:''), pre:false}))
   ];
   const _clsOrder=[]; _sumEntries.forEach(e=>{ if(!_clsOrder.includes(e.cn)) _clsOrder.push(e.cn); });
-  const _PFX=['EC','RG','PJ','JM','JF','JB']; // 요약 복사 순서: EC - RG - PJ - JM - JF - JB - 고등부(그 외)
-  const _rank=cn=>{ const u=String(cn||'').trim().toUpperCase(); const i=_PFX.findIndex(p=>u.startsWith(p)); return i<0?_PFX.length:i; };
-  _sumEntries.sort((a,b)=>{ const d=_rank(a.cn)-_rank(b.cn); if(d) return d; if(a.cn!==b.cn) return String(a.cn).localeCompare(String(b.cn),'ko',{numeric:true}); return 0; });
+  // 요약 복사 순서: [반 정보]에서 지정한 반 순서대로 (학원이 여럿이면 학원 순서 먼저)
+  const _acs=academies(); const _ordMaps=wlOrderMaps();
+  const _rank=e=>{ const ai=_acs.indexOf(e.ac); const r=(_ordMaps[e.ac]||{})[e.cn]; return (ai<0?9:ai)*1e6+(r==null?1e5:r); };
+  _sumEntries.sort((a,b)=>{ const d=_rank(a)-_rank(b); if(d) return d; if(a.cn!==b.cn) return String(a.cn).localeCompare(String(b.cn),'ko',{numeric:true}); return 0; });
   const _fmtGroup=list=>{ let out=[], prev=null; list.forEach(e=>{ const tag=`[${e.cn}] `; out.push((e.cn===prev?' '.repeat(tag.length+2):tag)+`${e.nm} - ${e.txt}`); prev=e.cn; }); return out.join('\n'); };
   const _dm=String(state.date).split('-');
-  const _normal=_sumEntries.filter(e=>!e.pre), _preList=_sumEntries.filter(e=>e.pre);
+  const _normal=_sumEntries; // 결석 예정으로 미리 등록한 학생도 오늘 결석이면 같은 목록에 반 순서대로 넣는다
   // 특이사항은 그날 직접 적은 게 없으면 가장 최근 이전 날짜 것을 그대로 이어받는다(그날 일부러 비우면 비운 채로 유지)
   const _noteFor=d=>{ const m=store.absentNotes||{}; if(Object.prototype.hasOwnProperty.call(m,d)) return m[d]||''; const prev=Object.keys(m).filter(x=>x<d&&String(m[x]||'').trim()).sort().pop(); return prev?m[prev]:''; };
   // 학생 명단에 "결석 예정"으로 미리 등록해둔 학생(오늘 포함 앞으로 7일 안에 시작하거나 진행 중인 기간)은 특이사항에 자동으로 들어간다
@@ -10496,7 +10507,6 @@ function renderToday(list, partsOnly){
   const _noteText=_noteRaw?_noteRaw.split('\n').map(l=>l.trim()).filter(Boolean).map(l=>l.startsWith('*')?l:'*'+l).join('\n'):'';
   const _parts=[];
   if(_normal.length) _parts.push(_fmtGroup(_normal)+'\n\n*결석생 과제 안내 부탁드립니다');
-  if(_preList.length) _parts.push(_fmtGroup(_preList));
   if(_noteText) _parts.push(_noteText);
   const absentSummaryText=`<${+_dm[1]}월 ${+_dm[2]}일 결석생>\n\n`+_parts.join('\n\n');
   const absentNoteBox=`<div style="margin:0 0 10px"><div style="font-size:.76rem;font-weight:800;color:var(--sub);margin-bottom:4px">📝 특이사항 <span style="font-weight:400" title="요약 복사 맨 아래에 들어가요 · 한 줄에 하나">(요약 복사 맨 아래)</span></div><textarea class="absentNoteInput" data-date="${esc(state.date)}" rows="2" placeholder="예: RG1 남예령 Amy - 11월복귀예정 / 과제문자발송" style="width:100%;border:1.5px solid #f1f3f8;border-radius:8px;padding:6px 10px;font-family:inherit;box-sizing:border-box">${esc(_noteFor(state.date))}</textarea>${_preWarn.length?`<div style="margin-top:4px;font-size:.74rem;color:#c0392b;background:#fff1f0;border:1px solid #f3c6c1;border-radius:8px;padding:5px 9px">⚠ 오늘 결석 예정인데 자동 결석이 안 걸린 학생<br>${_preWarn.map(esc).join('<br>')}</div>`:''}${_autoPre.length?`<div style="margin-top:4px;font-size:.74rem;color:#7c3aed;background:#f6f0ff;border:1px solid #e3d6fb;border-radius:8px;padding:5px 9px">✈ 결석 예정 자동 포함 (학생 명단에서 등록, 복사 시 같이 들어가요)<br>${_autoPre.map(esc).join('<br>')}</div>`:''}</div>`;
@@ -11108,7 +11118,11 @@ function bindToday(){
   });
   // 📋 복사(결석생 숙제 패널) — 이 학생의 과목별 메모를 "오늘의 과제"와 같은 <날짜 과제> 형식으로 묶어서 복사만 한다(방은 안 연다)
   v.querySelectorAll('.absentNoteInput').forEach(t=>t.onchange=()=>{ store.absentNotes=store.absentNotes||{}; store.absentNotes[t.dataset.date]=t.value; save(); render(true); });
-  v.querySelectorAll('.absentSummaryCopy').forEach(btn=>btn.onclick=e=>{ e.preventDefault(); e.stopPropagation(); kakaoCopy(btn.dataset.text, '결석·지각 요약'); });
+  // 복사 직전에 서버에서 최신 출결을 한 번 받아와 다시 계산한다 — 다른 선생님이 방금 입력한 결석이 이 기기에 아직 안 왔을 수 있어서
+  v.querySelectorAll('.absentSummaryCopy').forEach(btn=>btn.onclick=async e=>{ e.preventDefault(); e.stopPropagation();
+    let txt=btn.dataset.text;
+    try{ if(syncOn()){ toast('최신 출결 확인 중…'); await pullShared(true,true); render(true); const nb=document.querySelector('.absentSummaryCopy'); if(nb) txt=nb.dataset.text; } }catch(err){}
+    kakaoCopy(txt, '결석·지각 요약'); });
   v.querySelectorAll('.hwkakaocopy').forEach(btn=>btn.onclick=()=>{
     const block=btn.closest('[data-hwblock]') || btn.closest('div').parentElement; // 이 학생 전체 블록(과목별 메모칸들을 담고 있음)
     const memoInputs=block?[...block.querySelectorAll('.hwkakaomemo')]:[];
@@ -13024,10 +13038,12 @@ function ysCompute(g){
   // total = 월 회차(한 달에 몇 회), months = 몇 개월치. 한 달 회차를 다 채우면 다음 달 1회차로 이어짐.
   if(!g||!g.start||!(+g.total>0)||!(g.days||[]).length) return null;
   const per=+g.total, nM=+g.months>0?+g.months:12; const days=new Set((g.days||[]).map(Number));
-  const cycles=[], skipped=[]; let cur=[]; let iso=g.start, guard=0; const sh=g.shifts||{}, done={};
+  const cycles=[], skipped=[]; let cur=[]; let iso=g.start, guard=0; const sh=g.shifts||{}, done={}; const fon=new Set(g.forceOn||[]), fof=new Set(g.forceOff||[]);
   while(cycles.length<nM && guard++<2500){
     if(!cur.length && sh[cycles.length] && !done[cycles.length]){ done[cycles.length]=1; if(sh[cycles.length]>iso) iso=sh[cycles.length]; }
-    if(days.has(ysDow(iso))){ const why=ysOffReason(iso); if(why) skipped.push({date:iso,reason:why}); else { cur.push(iso); if(cur.length===per){ cycles.push(cur); cur=[]; } } }
+    if(days.has(ysDow(iso))){ let why=ysOffReason(iso);
+      if(fof.has(iso)) why='휴강(직접 지정)'; else if(why && fon.has(iso)) why=''; // 날짜별로 직접 켠 공휴일 수업 / 끈 수업
+      if(why) skipped.push({date:iso,reason:why}); else { cur.push(iso); if(cur.length===per){ cycles.push(cur); cur=[]; } } }
     iso=ysAdd(iso,1);
   }
   const dates=[].concat(...cycles);
@@ -13057,7 +13073,8 @@ function ysMonthHTML(year,mi,marks){
       if(d<1||d>lastDay){ h+='<td class="ysx"></td>'; continue; }
       const iso=year+'-'+String(mi+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
       const off=ysOffReason(iso); const mk=marks[iso]||[]; const hc=ysHidden; const evs=eventsOn(iso).filter(ev=>!hc.has(ev.cat)); const tvs=hc.has('시간표')?[]:(store.ttVersions||[]).filter(x=>x.start&&(x.start===iso||x.end===iso));
-      h+=`<td data-ysiso="${iso}" class="${w===0?'su':w===6?'sa':''}${off?' off':''}${iso===todayIso?' today':''}"><div class="ysd">${d}${off?`<span class="ysh">${esc(off)}</span>`:''}</div>${mk.map(ysChip).join('')}${tvs.map(x=>`<div class="ysev" style="background:#6d28d9" title="시간표 버전 ${esc(x.name)}">🗂 ${esc(x.name)}${x.start===x.end?'':(x.start===iso?' 시작':' 끝')}${ttVerDaysTxt(x)}</div>`).join('')}${evs.map(ev=>`<div class="ysev" style="background:${catColor(ev.cat)}" title="[${esc(ev.cat)}] ${esc(ev.title)}">${esc(ev.title)}</div>`).join('')}</td>`;
+      const _gs=ysGroups(); const _on=_gs.filter(g=>(g.forceOn||[]).includes(iso)), _of=_gs.filter(g=>(g.forceOff||[]).includes(iso));
+      h+=`<td data-ysiso="${iso}" class="${w===0?'su':w===6?'sa':''}${off?' off':''}${iso===todayIso?' today':''}"><div class="ysd">${d}${off?`<span class="ysh">${esc(off)}</span>`:''}</div>${_on.length&&off?`<div class="ysh" style="color:#15803d;font-weight:800" title="${esc(_on.map(ysGroupLabel).join(', '))}">✔ 공휴일 수업 ${esc(_on.map(g=>g.dept).join('·'))}</div>`:''}${_of.length?`<div class="ysh" style="color:#b45309;font-weight:800" title="${esc(_of.map(ysGroupLabel).join(', '))}">✖ 휴강 ${esc(_of.map(g=>g.dept).join('·'))}</div>`:''}${mk.map(ysChip).join('')}${tvs.map(x=>`<div class="ysev" style="background:#6d28d9" title="시간표 버전 ${esc(x.name)}">🗂 ${esc(x.name)}${x.start===x.end?'':(x.start===iso?' 시작':' 끝')}${ttVerDaysTxt(x)}</div>`).join('')}${evs.map(ev=>`<div class="ysev" style="background:${catColor(ev.cat)}" title="[${esc(ev.cat)}] ${esc(ev.title)}">${esc(ev.title)}</div>`).join('')}</td>`;
     }
     h+='</tr>';
   }
@@ -13096,7 +13113,7 @@ function renderYearSched(printMode){
       <button class="chip ${state.ysView==='cal'?'on':''}" data-ysv="cal">📅 달력</button><button class="chip ${state.ysView==='table'?'on':''}" data-ysv="table">📋 표</button>
  <span class="sep"></span><span style="font-size:.76rem;color:var(--sub);font-weight:700">학원 일정 표시</span>${[...CAL_CATS,'시간표'].map(c=>`<button class="chip ${ysHiddenCats().includes(c)?'':'on'}" data-yscat="${esc(c)}" style="padding:3px 10px;font-size:.76rem;${ysHiddenCats().includes(c)?'':'background:'+catColor(c)+';border-color:'+catColor(c)+';color:#fff'}">${esc(c)}</button>`).join('')}
       ${admin?`<button class="btn small" id="ysSetBtn" style="margin-left:auto">⚙ 요일 묶음 · 회차 · 휴일 설정</button>`:''}
-      <span style="font-size:.74rem;color:var(--sub)${admin?'':';margin-left:auto'}">달력에는 각 묶음의 회차 <b>시작과 끝</b>만 표시 (관리자: ▶시작 칩을 끌어서 옮기면 그 달부터 다시 시작) · 빨간 날은 휴일(자동 제외)</span></div>`;
+      <span style="font-size:.74rem;color:var(--sub)${admin?'':';margin-left:auto'}">달력에는 각 묶음의 회차 <b>시작과 끝</b>만 표시 (관리자: ▶시작 칩을 끌어서 옮기면 그 달부터 다시 시작) · 빨간 날은 휴일(자동 제외) · 관리자: 날짜 칸을 누르면 공휴일에도 수업하는 반 / 그날 쉬는 반을 정할 수 있어요</span></div>`;
     if(admin && state.ysSet){
       const dayChk=(g)=>[1,2,3,4,5,6,0].map(d=>`<label><input type="checkbox" data-ysd="${d}" data-ysg="${esc(g.id)}" ${(g.days||[]).map(Number).includes(d)?'checked':''}>${YS_WD[d]}</label>`).join('');
       h+=`<div class="ysset"><b style="font-size:.9rem">부서 · 요일 묶음별 회차</b> <span style="font-size:.74rem;color:var(--sub)">시작일과 월 회차(한 달 수업 횟수)를 넣으면 휴일을 건너뛰며 월별 1~N회차가 자동으로 이어져요</span>
@@ -13143,8 +13160,24 @@ function bindYearSched(){
     td.addEventListener('drop',e=>{ e.preventDefault(); td.classList.remove('ysover');
       const t=(e.dataTransfer.getData('text/plain')||'').split('|'); if(t.length!==2) return;
       const y=ysEdit(); const g=y.groups.find(x=>x.id===t[0]); if(!g) return; const i=+t[1];
-      if(i===0){ g.start=td.dataset.ysiso; g.shifts={}; } else { g.shifts=g.shifts||{}; g.shifts[i]=td.dataset.ysiso; }
+      const di=td.dataset.ysiso;
+      if(i===0){ g.start=di; g.shifts={}; } else { g.shifts=g.shifts||{}; g.shifts[i]=di; }
+      // 공휴일·휴일 칸에 놓으면 그 날 수업하는 걸로 같이 켠다 (수업 요일이 아닌 날이면 건너뛰므로 그대로)
+      if(ysOffReason(di) && (g.days||[]).map(Number).includes(ysDow(di))){ g.forceOn=g.forceOn||[]; if(!g.forceOn.includes(di)) g.forceOn.push(di); g.forceOff=(g.forceOff||[]).filter(x=>x!==di); toast('공휴일에 시작 — 이 날 수업하는 걸로 설정했어요'); }
       ysTouch(); render(true); });
+    // 날짜 칸을 누르면: 그 날 수업하는 묶음을 켜고 끈다 (공휴일에도 수업하는 반 / 쉬는 날)
+    td.addEventListener('click',e=>{ if(e.target.closest('.yschip,.ysev')) return;
+      const di=td.dataset.ysiso, dw=ysDow(di), off=ysOffReason(di);
+      const gs=ysGroups().filter(g=>g.start&&+g.total>0&&(g.days||[]).map(Number).includes(dw));
+      if(!gs.length){ toast(ysFmt(di)+' — 이 요일에 수업하는 묶음이 없어요'); return; }
+      const isOn=g=>off ? (g.forceOn||[]).includes(di) : !(g.forceOff||[]).includes(di);
+      bkModal(`${ysFmt(di)} ${off?`<span style="color:#d64545;font-size:.8rem">${esc(off)}</span>`:''}`,
+        `<div style="font-size:.78rem;color:var(--sub)">${off?'이 날도 수업하는 묶음을 체크하세요. 체크하면 회차에 포함되고 다음 회차 날짜가 다시 계산돼요.':'이 날 쉬는 묶음은 체크를 해제하세요. 해제하면 회차에서 빠지고 뒤 날짜가 하루씩 밀려요.'}</div>`+
+        gs.map(g=>`<label style="display:flex;align-items:center;gap:8px;font-size:.88rem;font-weight:700;cursor:pointer"><input type="checkbox" data-ysmg="${esc(g.id)}" ${isOn(g)?'checked':''}> <span style="color:${ysColor(g)[0]}">${esc(ysGroupLabel(g))}</span> <span style="font-weight:400;color:var(--sub)">${off?'공휴일에도 수업':'수업함'}</span></label>`).join(''),
+        ov=>{ const y=ysEdit(); ov.querySelectorAll('[data-ysmg]').forEach(ck=>{ const g=y.groups.find(x=>x.id===ck.dataset.ysmg); if(!g) return;
+            g.forceOn=(g.forceOn||[]).filter(x=>x!==di); g.forceOff=(g.forceOff||[]).filter(x=>x!==di);
+            if(off && ck.checked) g.forceOn.push(di); if(!off && !ck.checked) g.forceOff.push(di); });
+          ysTouch(); render(true); }, '저장'); });
   });
   const gOf=id=>ysEdit().groups.find(g=>g.id===id);
   v.querySelectorAll('[data-ysf]').forEach(el=>el.onchange=()=>{ const g=gOf(el.dataset.ysg); if(!g) return; const f=el.dataset.ysf; g[f]=(f==='total'||f==='months')?(+el.value||0):el.value; ysTouch(); render(true); });
@@ -17895,8 +17928,9 @@ function renderSet(){
         ${ts.map((t,i)=>`<div class="trow">
           <input type="text" value="${esc(t.name)}" data-a="${a}" data-i="${i}" class="tname">
           <input type="password" value="${esc(t.pw||'')}" placeholder="비밀번호" data-a="${a}" data-i="${i}" class="tpw" style="width:110px;padding:8px 11px;border:1.5px solid var(--line);border-radius:9px;font-family:inherit">
-          <select class="trolesel" data-a="${a}" data-i="${i}" title="원장: 관리자 권한 전부 (학원당 한 명) · 실장: 관리자급 권한" style="border:1.5px solid ${t.role?'var(--pri)':'var(--line)'};background:${t.role?'var(--pri-bg)':'#fff'};color:${t.role?'var(--pri)':'var(--sub)'};border-radius:6px;padding:6px 8px;font-size:.78rem;font-weight:800;cursor:pointer;font-family:inherit">
-            <option value="" ${!t.role?'selected':''}>선생님</option><option value="실장" ${t.role==='실장'?'selected':''}>👑 실장</option><option value="원장" ${t.role==='원장'?'selected':''}>🎓 원장 (관리자)</option></select>
+          <select class="trolesel" data-a="${a}" data-i="${i}" title="원장: 관리자 권한 전부 (학원당 한 명) · 실장·팀장: 관리자 권한 · 선생님: 아래 '관리자 권한'을 켜면 관리자" style="border:1.5px solid ${t.role?'var(--pri)':'var(--line)'};background:${t.role?'var(--pri-bg)':'#fff'};color:${t.role?'var(--pri)':'var(--sub)'};border-radius:6px;padding:6px 8px;font-size:.78rem;font-weight:800;cursor:pointer;font-family:inherit">
+            <option value="" ${!t.role?'selected':''}>선생님</option><option value="팀장" ${t.role==='팀장'?'selected':''}>🧭 팀장</option><option value="실장" ${t.role==='실장'?'selected':''}>👑 실장</option><option value="원장" ${t.role==='원장'?'selected':''}>🎓 원장 (관리자)</option></select>
+          ${t.role?'<span style="font-size:.72rem;font-weight:800;color:var(--pri);white-space:nowrap" title="팀장·실장·원장은 자동으로 관리자예요">관리자</span>':`<label style="display:flex;align-items:center;gap:4px;font-size:.76rem;font-weight:800;color:var(--sub);white-space:nowrap;cursor:pointer" title="선생님 직책이어도 관리자 화면·설정을 쓰게 해요"><input type="checkbox" class="tadminchk" data-a="${a}" data-i="${i}" ${t.admin?'checked':''}>관리자 권한</label>`}
           <label class="tcolwrap" title="담당색 — 아무 색이나 고를 수 있어요 (이 선생님이 로그인하면 화면 주 색이 돼요)"><input type="color" class="tcolorpick" value="${esc(/^#[0-9a-f]{6}$/i.test(String(t.color||''))?t.color:'#2563eb')}" data-a="${a}" data-i="${i}"><span>담당색</span></label>
           <input type="text" value="${esc(t.ttCode||'')}" placeholder="시간표 코드" title="시간표 엑셀 괄호 안에 쓰는 축약코드 (예: MAT)" data-a="${a}" data-i="${i}" class="tttcode" style="width:84px;padding:8px 9px;border:1.5px solid var(--line);border-radius:9px;font-family:inherit;font-size:.8rem">
           <input type="color" value="${t.ttColor||'#cccccc'}" title="시간표 엑셀 셀 색상" data-a="${a}" data-i="${i}" class="tttcolor" style="width:34px;height:34px;padding:0;border:1.5px solid var(--line);border-radius:8px;cursor:pointer">
@@ -17909,7 +17943,7 @@ function renderSet(){
       h+=`<div class="setsec"><h3>${AC[a].label} 선생님</h3>
         <div class="desc">비밀번호·실장 지정·삭제는 관리자·실장만 가능합니다.</div>
         ${ts.map(t=>`<div class="trow">
-          <span style="font-weight:700">${esc(t.name)}${t.role==='원장'?' 🎓 원장':t.role==='실장'?' 👑':''}</span>
+          <span style="font-weight:700">${esc(t.name)}${t.role==='원장'?' 🎓 원장':t.role==='실장'?' 👑':t.role==='팀장'?' 🧭 팀장':t.admin?' · 관리자':''}</span>
           <span class="sw on" style="background:${t.color};pointer-events:none"></span>
         </div>`).join('')}
       </div>`;
@@ -18337,8 +18371,14 @@ function bindSet(){
     }
     // 내가 내 원장/실장 권한을 스스로 내리면 설정 화면에서 바로 막히므로 한 번 확인
     const lt=loginTeacher();
-    if(lt && lt.a===a && lt.i===i && !v2 && !confirm('본인 계정의 관리자 권한을 해제하면 설정을 더 이상 바꿀 수 없어요. 계속할까요?')){ render(true); return; }
+    if(lt && lt.a===a && lt.i===i && !v2 && !t.admin && !confirm('본인 계정의 관리자 권한을 해제하면 설정을 더 이상 바꿀 수 없어요. 계속할까요?')){ render(true); return; }
     t.role=v2; t.updatedAt=Date.now(); save(); render(true);
+  });
+  v.querySelectorAll('.tadminchk').forEach(ck=>ck.onchange=()=>{
+    if(!isAdminRole()) return;
+    const t=store.teachers[ck.dataset.a][ck.dataset.i]; const lt=loginTeacher();
+    if(lt && lt.a===ck.dataset.a && lt.i===Number(ck.dataset.i) && !ck.checked && !t.role && !confirm('본인 계정의 관리자 권한을 해제하면 설정을 더 이상 바꿀 수 없어요. 계속할까요?')){ render(true); return; }
+    t.admin=ck.checked; t.updatedAt=Date.now(); save(); render(true);
   });
   v.querySelectorAll('.trole').forEach(b=>b.onclick=()=>{
     if(!isAdminRole())return;
