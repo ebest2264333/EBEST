@@ -10538,6 +10538,7 @@ function renderToday(list, partsOnly){
     const shown=new Set(absentHwList.map(x=>x.academy+'|'+x.s));
     return (store.students||[]).filter(st=>!st._deleted && st.absFrom && (state.ac==='all'||st.academy===state.ac) && st.status!=='퇴원' && (st.absTo||st.absFrom)>=state.date && st.absFrom<=limS)
       .filter(st=>!shown.has(st.academy+'|'+st.nameKo))
+      .filter(st=>!_noteFor(state.date).includes(st.nameKo)) // 특이사항에 이미 직접 적은 학생은 중복 제외
       .sort((a,b)=>a.absFrom.localeCompare(b.absFrom)||String(a.className).localeCompare(String(b.className),'ko',{numeric:true}))
       .map(st=>{ const to=st.absTo||st.absFrom; const rng=to===st.absFrom?fm(st.absFrom):fm(st.absFrom)+'~'+fm(to); return (st.className?st.className+' ':'')+_nm(studentDisplayName(st.academy, st.nameKo, st.className))+' - '+rng+(st.absReason?' '+st.absReason:' 결석예정'); });
   })();
@@ -10557,7 +10558,7 @@ function renderToday(list, partsOnly){
     });
     return out;
   })();
-  const _noteRaw=[_noteFor(state.date).trim(), ..._autoPre].filter(Boolean).join('\n');
+  const _noteRaw=[_noteFor(state.date).trim(), ..._autoPreOff].filter(Boolean).join('\n'); // 결석 예정(앞으로 7일 안)은 복사 글 맨 아래 * 줄로만 들어간다(화면 상자는 없음)
   const _noteText=_noteRaw?_noteRaw.split('\n').map(l=>l.trim()).filter(Boolean).map(l=>l.startsWith('*')?l:'*'+l).join('\n'):'';
   const _parts=[];
   if(_normal.length) _parts.push(_fmtGroup(_normal)+'\n\n*결석생 과제 안내 부탁드립니다');
