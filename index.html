@@ -6572,6 +6572,9 @@ function bbData(){
     e.className=x.className; e.items.push(x);
   });
   const billed=(store.bookBilling||[]).filter(b=>!b._deleted);
+  Object.values(by).forEach(e=>{ // 같은 학생·같은 교재·같은 날짜로 두 번 이상 기록된 건은 두 번째부터 '중복'으로 표시
+    const seenD={}; e.items.slice().sort((a,b)=>(a.createdAt||0)-(b.createdAt||0)).forEach(x=>{ const dk=bkNorm(x.book)+'|'+String(x.date||''); x.__dup=!!seenD[dk]; seenD[dk]=true; });
+  });
   Object.values(by).forEach(e=>{
     const recs=billed.filter(b=>b.sk===e.sk); e.upTo=recs.reduce((m,b)=>Math.max(m,b.upTo||0),0); e.recs=recs.sort((a,b)=>(b.upTo||0)-(a.upTo||0));
     e.items.forEach(x=>{ x.__price=bbPrice(x); x.__billed=(x.createdAt||0)<=e.upTo; });
@@ -6593,10 +6596,12 @@ function renderBookBilling(){
   const noPrice=new Set(); rows.forEach(r=>r.e.items.forEach(x=>{ if(!x.__price) noPrice.add(x.book); }));
   if(noPrice.size) h+=`<div style="background:#fff7e6;border:1px solid #f5c77e;border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:.8rem">⚠ 단가가 없는 교재(금액 0원으로 계산됨): <b>${esc([...noPrice].slice(0,10).join(', '))}</b> — [📦 교재 > 재고]에서 같은 이름의 품목을 만들고 단가를 입력하세요.</div>`;
   const total=rows.reduce((n,r)=>n+r.unSum,0), mTotal=rows.reduce((n,r)=>n+r.moSum,0);
+  const dupN=data.reduce((n,e)=>n+e.items.filter(x=>x.__dup).length,0);
+  if(dupN) h+=`<div style="background:#fff7e6;border:1px solid #f5c77e;border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:.82rem;display:flex;gap:8px;align-items:center;flex-wrap:wrap">🔁 같은 날 같은 교재가 두 번 이상 기록된 <b>중복 ${dupN}건</b>이 있어요. <button class="btn small" data-bbdedup>🧹 중복 한꺼번에 정리</button><span style="color:var(--sub)">(각 줄의 ✕로 하나씩 지울 수도 있어요 · 같은 날 정말 두 권 줬다면 지우지 마세요)</span></div>`;
   h+=`<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px;font-size:.9rem"><span>미청구 합계 <b style="color:#dc2626">${fmtWon(total)}</b></span><span>${mLabel(month)} 배부 합계 <b>${fmtWon(mTotal)}</b></span>
     <span style="margin-left:auto;display:flex;gap:6px"><button class="btn small" data-bbselbtn>☑ 미청구 전체 선택</button><button class="btn small primary" data-bbdonesel>✔ 선택한 학생 청구 완료</button></span></div>`;
   h+=`<div style="overflow:auto;border:1px solid #c5ccd8;border-radius:6px"><table style="border-collapse:collapse;font-size:.86rem;min-width:100%;background:#fff"><thead><tr>${['<input type="checkbox" data-bbselall title="미청구 학생 전체 선택">','학생','반',mLabel(month)+' 배부 교재','이달 합계','미청구 교재','미청구 금액',''].map(t=>`<th style="${TH}">${t}</th>`).join('')}</tr></thead><tbody>`;
-  const line=x=>`<div style="white-space:nowrap">${esc(x.book)} <span style="color:var(--sub)">${x.__price?fmtWon(x.__price):'단가 없음'}</span> <span style="color:#8b93a7;font-size:.72rem">${esc(String(x.date||'').slice(5))}${x.__billed?' ✔청구':''}</span></div>`;
+  const line=x=>`<div style="white-space:nowrap">${esc(x.book)} <span style="color:var(--sub)">${x.__price?fmtWon(x.__price):'단가 없음'}</span> <span style="color:#8b93a7;font-size:.72rem">${esc(String(x.date||'').slice(5))}${x.__billed?' ✔청구':''}</span>${x.__dup?' <span style="background:#fff4e0;border:1px solid #f5c77e;color:#b45309;border-radius:5px;padding:0 5px;font-size:.68rem;font-weight:800" title="같은 날 같은 교재가 또 기록됐어요">중복</span>':''} <button type="button" data-bbrm="${esc(x.id)}" title="이 배부 내역 삭제(금액에서 빠져요)" style="border:none;background:none;color:#c0392b;cursor:pointer;font-size:.8rem;padding:0 3px">✕</button></div>`;
   rows.forEach(r=>{
     h+=`<tr><td style="${TD};text-align:center">${r.un.length?`<input type="checkbox" data-bbsel="${esc(r.e.sk)}">`:''}</td><td style="${TD};font-weight:700">${esc(r.e.name)}</td><td style="${TD}">${esc(r.e.className||'')}</td>
       <td style="${TD}">${r.mo.map(line).join('')||'<span style="color:#8b93a7">-</span>'}</td><td style="${TD};text-align:right">${r.moSum?fmtWon(r.moSum):'-'}</td>
@@ -6607,6 +6612,9 @@ function renderBookBilling(){
   return h+'</tbody></table></div>';
 }
 function bindBookBilling(v){
+  const rmLog=(ids)=>{ const set=new Set(ids); let n=0; (store.bookGiveLog||[]).forEach(x=>{ if(set.has(x.id)&&!x._deleted){ x._deleted=true; x.updatedAt=Date.now(); n++; } }); return n; };
+  v.querySelectorAll('[data-bbrm]').forEach(b=>b.onclick=()=>{ const x=(store.bookGiveLog||[]).find(y=>y.id===b.dataset.bbrm); if(!x) return; if(!confirm(`${x.stu} · ${x.book} (${String(x.date||'').slice(5)}) 배부 내역을 삭제할까요?\n청구 금액에서 빠지고, 교재 재고 자동 출고도 취소돼요.`)) return; rmLog([x.id]); save(); toast('삭제했어요'); bkRr(); });
+  const dd=v.querySelector('[data-bbdedup]'); if(dd) dd.onclick=()=>{ const ids=[]; bbData().forEach(e=>e.items.forEach(x=>{ if(x.__dup) ids.push(x.id); })); if(!ids.length||!confirm(`같은 날 같은 교재 중복 ${ids.length}건을 삭제할까요?\n(처음 기록은 남기고 두 번째부터 지워요)`)) return; const n=rmLog(ids); save(); toast(`중복 ${n}건을 정리했어요`); bkRr(); };
   v.querySelectorAll('[data-bbm]').forEach(b=>b.onclick=()=>{ state.bbMonth=shiftMonth(state.bbMonth||state.month,Number(b.dataset.bbm)); bkRr(); });
   const doBill=(sks)=>{
     const all=bbData(); const list=sks.map(k=>all.find(x=>x.sk===k)).filter(Boolean).map(e=>({e,un:e.items.filter(x=>!x.__billed)})).filter(r=>r.un.length);
@@ -7053,10 +7061,11 @@ function bgTableHTML(c, cEff, k, subs, wbOpts, tpOpts){
         extra:canSub?`<button class="bgmini" data-sbdel data-k="${esc(k)}" data-id="${esc(e.id)}" title="이 교재 칸 삭제">✕</button>`:''});
     });
   });
-  const selCol=(type,label,cur,opts)=>({key:cur?type+':'+cur:'', title:label, active:!!cur,
-    input:`<select class="givesel bgname" data-k="${esc(k)}" data-type="${type}" title="${esc(cur||'')}"><option value="">선택 안 함</option>${opts.map(o=>`<option value="${esc(o)}" ${cur===o?'selected':''}>${esc(o)}</option>`).join('')}</select>`, extra:''});
-  cols.push(selCol('wb','📖 단어장',store.giveSel[k].wordbook||'',wbOpts));
-  cols.push(selCol('tp','📝 시험지',store.giveSel[k].testpaper||'',tpOpts));
+  const selCol=(type,label,cur,opts,idx)=>({key:cur?type+':'+cur:'', title:label+(idx>0?' · 추가':''), active:!!cur,
+    input:`<select class="givesel bgname" data-k="${esc(k)}" data-type="${type}" data-idx="${idx}" title="${esc(cur||'')}"><option value="">선택 안 함</option>${opts.map(o=>`<option value="${esc(o)}" ${cur===o?'selected':''}>${esc(o)}</option>`).join('')}${cur&&!opts.includes(cur)?`<option value="${esc(cur)}" selected>${esc(cur)}</option>`:''}</select>`,
+    extra:canSub?(idx===0?`<button class="bgmini" data-gsadd="${esc(k)}|${type}" title="한 달에 단어장(시험지)이 여러 종류 나갈 때 — 하나 더 추가">＋</button>`:`<button class="bgmini" data-gsdel="${esc(k)}|${type}|${idx}" title="이 칸 삭제">✕</button>`):''});
+  { const gsx=store.giveSel[k];
+    [['wb','📖 단어장',[gsx.wordbook||''].concat(gsx.wbMore||[]),wbOpts],['tp','📝 시험지',[gsx.testpaper||''].concat(gsx.tpMore||[]),tpOpts]].forEach(([type,label,list,opts])=>{ list.forEach((cur,i)=>cols.push(selCol(type,label,cur,opts,i))); }); }
   const stus=cEff.students||[];
   const gs=cols.map(col=>col.active?bookGivenFor(k,col.key):null);
   const md=v=>{ const m=String(v||'').match(/^\d{4}-(\d{2})-(\d{2})/); return m?(+m[1])+'/'+(+m[2]):''; };
@@ -7087,14 +7096,16 @@ function logBookGiveToJournal(k, subjLabel, bookTitle, count, dateISO){
   const who=whoKey(lt);
   const a=k.split('|')[0]; const className=k.slice(a.length+1);
   const e=wlGet(who, dateISO||todayISO());
-  const detailPrefix=`${className} · ${subjLabel}`;
+  const wbLike=(subjLabel==='단어장'||subjLabel==='단어 시험지') && !!bookTitle; // 단어장·시험지는 한 달에 여러 종류가 나갈 수 있어 교재 이름까지 구분해 따로 기록한다
+  const detailPrefix=wbLike?`${className} · ${subjLabel}: ${bookTitle}`:`${className} · ${subjLabel}`;
+  const mPre=wbLike?detailPrefix+' (':detailPrefix;
   if(!count){ // 체크가 모두 풀리면 자동 기록도 지운다
-    const di=e.today.findIndex(x=>x.t==='교재 배부' && x.d && x.d.startsWith(detailPrefix));
+    const di=e.today.findIndex(x=>x.t==='교재 배부' && x.d && x.d.startsWith(mPre));
     if(di>=0){ e.today[di]={t:'',d:'',r:''}; e.updatedAt=Date.now(); }
     return;
   }
   const detail=`${detailPrefix}${bookTitle?': '+bookTitle:''} (${count}명)`;
-  const idx=e.today.findIndex(x=>x.t==='교재 배부' && x.d && x.d.startsWith(detailPrefix));
+  const idx=e.today.findIndex(x=>x.t==='교재 배부' && x.d && x.d.startsWith(mPre));
   if(idx>=0) e.today[idx]={t:'교재 배부', d:detail, r:'완료'};
   else{
     const emptyIdx=e.today.findIndex(x=>!x.t);
@@ -7108,9 +7119,13 @@ function bindBookGive(){
   v.querySelectorAll('.givesel').forEach(sel=>sel.onchange=()=>{
     const k=sel.dataset.k, type=sel.dataset.type;
     store.giveSel[k]=store.giveSel[k]||{};
-    store.giveSel[k][type==='wb'?'wordbook':'testpaper']=sel.value;
+    const idx=Number(sel.dataset.idx||0); const g0=store.giveSel[k];
+    if(idx===0) g0[type==='wb'?'wordbook':'testpaper']=sel.value;
+    else{ const f=type==='wb'?'wbMore':'tpMore'; const arr=[...(g0[f]||[])]; arr[idx-1]=sel.value; g0[f]=arr; }
     save(); render(true);
   });
+  v.querySelectorAll('[data-gsadd]').forEach(b=>b.onclick=()=>{ const _p=b.dataset.gsadd.split('|'); const type=_p.pop(), k=_p.join('|'); const g0=(store.giveSel[k]=store.giveSel[k]||{}); const f=type==='wb'?'wbMore':'tpMore'; g0[f]=[...(g0[f]||[]),'']; save(); render(true); });
+  v.querySelectorAll('[data-gsdel]').forEach(b=>b.onclick=()=>{ const _p=b.dataset.gsdel.split('|'); const i=_p.pop(), type=_p.pop(), k=_p.join('|'); const g0=(store.giveSel[k]=store.giveSel[k]||{}); const f=type==='wb'?'wbMore':'tpMore'; const arr=[...(g0[f]||[])]; arr.splice(Number(i)-1,1); g0[f]=arr; save(); render(true); });
   const splitKS=str=>{ const a=str.indexOf('|'), b=str.indexOf('|',a+1); return {k:str.slice(0,b), subj:str.slice(b+1)}; };
   const clsOf=k=>{ const c=classesFor(state.month).find(x=>ckey(x)===k); return c?effStudentsForGive(c):[]; };
   const bgDateVal=()=>{ const d=v.querySelector('#bgDate'); return (d&&d.value)||state.bgDate||todayISO(); };
@@ -13613,7 +13628,8 @@ function autoJae(a,m){
 function statChanges(a,m){
   const out={nw:[],out:[],hold:[],back:[]}; const seen={nw:new Set(),out:new Set(),hold:new Set(),back:new Set()};
   const nameOf=st=>st.nameKo+(st.nameEn?'('+st.nameEn+')':'');
-  const add=(k,id,label)=>{ const key=id||label; if(seen[k].has(key)) return; seen[k].add(key); out[k].push(label); };
+  const keys={nw:[],out:[],hold:[],back:[]};
+  const add=(k,id,label)=>{ const key=id||label; if(seen[k].has(key)) return; seen[k].add(key); out[k].push(label); keys[k].push(key); };
   (store.newStudents||[]).filter(n=>!n._deleted && n.academy===a && String(n.createdAt||'').slice(0,7)===m).forEach(n=>{ const st=nsStudentOf(n); add('nw', n.studentId, st?nameOf(st):n.name); });
   (store.dropouts||[]).filter(d=>!d._deleted && d.academy===a && d.kind==='out' && String(d.createdAt||'').slice(0,7)===m).forEach(d=>add('out', d.studentId, d.name));
   (store.students||[]).filter(st=>st.academy===a && !st._deleted).forEach(st=>{
@@ -13621,6 +13637,8 @@ function statChanges(a,m){
       if(e.s==='퇴원') add('out', st.id, nameOf(st)); else if(e.s==='휴원') add('hold', st.id, nameOf(st)); else if(e.s==='재원') add('back', st.id, nameOf(st));
     });
   });
+  // 같은 달에 휴원했다가 퇴원한 학생은 퇴원에만 (휴원·복귀 칸에서 뺀다)
+  ['hold','back'].forEach(k=>{ out[k]=out[k].filter((_,i)=>!seen.out.has(keys[k][i])); });
   return out;
 }
 function enrRows(a){
