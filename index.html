@@ -3183,12 +3183,13 @@ function openClassOrder(){
   const save1=(list)=>{ store.classOrder[a]=list.slice(); store.fieldStamps=store.fieldStamps||{}; save(); paint(); render(true); };
   function paint(){
     const list=classOrderEffective(a); const custom=Array.isArray((store.classOrder||{})[a]);
+    const _oldL=ov.querySelector('[data-olist]'); const _keepTop=_oldL?_oldL.scrollTop:0;
     ov.innerHTML=`<div style="background:#fff;border-radius:14px;max-width:420px;width:100%;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.3)">
       <div style="padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b style="flex:1">↕ 반 순서 수정</b>
         ${acs.length>1?`<select data-oa style="padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}
         <button class="btn small" data-oclose>닫기</button></div>
-      <div style="padding:8px 16px;font-size:.76rem;color:var(--sub)">▲▼로 옮기면 바로 저장돼요. 반·교재 탭과 시간표(전체 시간표 포함)에 같은 순서로 적용돼요. ${custom?'<b style="color:#7c3aed">지정한 순서 사용 중</b>':'지금은 기본 순서(초→중→고)예요.'}</div>
-      <div style="overflow:auto;padding:0 16px 8px">${list.map((n,i)=>`<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid #eef0f5"><span style="width:26px;color:#8b93a7;font-size:.74rem;text-align:right">${i+1}</span><span style="flex:1;font-weight:700;font-size:.88rem">${esc(n)}</span>
+      <div style="padding:8px 16px;font-size:.76rem;color:var(--sub)">▲▼ 버튼이나 ⠿ 를 끌어서 옮기면 바로 저장돼요. 반·교재 탭과 시간표(전체 시간표 포함)에 같은 순서로 적용돼요. ${custom?'<b style="color:#7c3aed">지정한 순서 사용 중</b>':'지금은 기본 순서(초→중→고)예요.'}</div>
+      <div data-olist style="overflow:auto;padding:0 16px 8px">${list.map((n,i)=>`<div data-orow="${i}" draggable="true" style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid #eef0f5;background:#fff"><span title="끌어서 순서 변경" style="cursor:grab;color:#a5adc0;font-size:1rem;padding:0 2px;user-select:none">⠿</span><span style="width:26px;color:#8b93a7;font-size:.74rem;text-align:right">${i+1}</span><span style="flex:1;font-weight:700;font-size:.88rem">${esc(n)}</span>
         <button class="btn small" data-oup="${i}" ${i===0?'disabled':''}>▲</button><button class="btn small" data-odn="${i}" ${i===list.length-1?'disabled':''}>▼</button>
         <button class="btn small" data-otop="${i}" ${i===0?'disabled':''} title="맨 위로">⤒</button></div>`).join('')||'<div style="padding:16px;color:#8b93a7;font-size:.84rem">반이 없습니다.</div>'}</div>
       <div style="padding:10px 16px;border-top:1px solid var(--line);display:flex;gap:8px"><button class="btn small" data-oreset ${custom?'':'disabled'} style="color:#c0392b;border-color:#e7b3ab">기본 순서로 되돌리기</button></div></div>`;
@@ -3199,6 +3200,18 @@ function openClassOrder(){
     ov.querySelectorAll('[data-oup]').forEach(b=>b.onclick=()=>mv(+b.dataset.oup,+b.dataset.oup-1));
     ov.querySelectorAll('[data-odn]').forEach(b=>b.onclick=()=>mv(+b.dataset.odn,+b.dataset.odn+1));
     ov.querySelectorAll('[data-otop]').forEach(b=>b.onclick=()=>mv(+b.dataset.otop,0));
+    const lst=ov.querySelector('[data-olist]'); if(lst){
+      lst.scrollTop=_keepTop;
+      let from=-1; const clr=()=>lst.querySelectorAll('[data-orow]').forEach(r=>{ r.style.boxShadow=''; r.style.opacity=''; });
+      lst.querySelectorAll('[data-orow]').forEach(r=>{
+        r.addEventListener('dragstart',e=>{ from=+r.dataset.orow; try{ e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain',String(from)); }catch(_){} setTimeout(()=>{ r.style.opacity='.4'; },0); });
+        r.addEventListener('dragend',clr);
+        r.addEventListener('dragover',e=>{ if(from<0) return; e.preventDefault(); const to=+r.dataset.orow; clr(); const rr=lst.querySelector('[data-orow="'+from+'"]'); if(rr) rr.style.opacity='.4'; r.style.boxShadow=to>from?'inset 0 -3px 0 #7c3aed':'inset 0 3px 0 #7c3aed'; });
+        r.addEventListener('drop',e=>{ e.preventDefault(); const to=+r.dataset.orow; const f=from; from=-1; clr(); if(f>=0 && f!==to) mv(f,to); });
+      });
+      // 자동 스크롤(긴 목록에서 끌 때 가장자리)
+      lst.addEventListener('dragover',e=>{ const b=lst.getBoundingClientRect(); if(e.clientY<b.top+30) lst.scrollTop-=12; else if(e.clientY>b.bottom-30) lst.scrollTop+=12; });
+    }
     ov.querySelector('[data-oreset]').onclick=()=>{ if(!confirm('이 학원의 반 순서를 기본으로 되돌릴까요?')) return; delete store.classOrder[a]; save(); paint(); render(true); };
   }
   paint();
@@ -10517,7 +10530,8 @@ function renderToday(list, partsOnly){
   const _noteFor=d=>{ const m=store.absentNotes||{}; if(Object.prototype.hasOwnProperty.call(m,d)) return m[d]||''; const prev=Object.keys(m).filter(x=>x<d&&String(m[x]||'').trim()).sort().pop(); return prev?m[prev]:''; };
   // 학생 명단에 "결석 예정"으로 미리 등록해둔 학생(오늘 포함 앞으로 7일 안에 시작하거나 진행 중인 기간)은 특이사항에 자동으로 들어간다
   // (오늘 이미 결석 목록에 올라와 있는 학생은 위쪽에 따로 나오므로 중복해서 넣지 않는다)
-  const _autoPre=(()=>{
+  const _autoPre=[]; // 미리 등록한 결석 예정은 그날 수업이 있을 때만 위 결석 목록에 자동으로 올라온다 — 앞으로 7일 미리보기(보라색 상자·복사 특이사항)는 쓰지 않는다
+  const _autoPreOff=(()=>{
     const lim=new Date(state.date+'T00:00:00'); lim.setDate(lim.getDate()+7);
     const limS=lim.getFullYear()+'-'+String(lim.getMonth()+1).padStart(2,'0')+'-'+String(lim.getDate()).padStart(2,'0');
     const fm=d=>{const q=String(d).split('-');return +q[1]+'/'+(+q[2]);};
