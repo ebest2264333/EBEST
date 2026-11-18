@@ -10388,6 +10388,22 @@ function renderToday(list, partsOnly){
       if(lt){ let mp=null; try{ mp=mergedCounterpart(c); }catch(e){}
         if(teacherTeachesToday(c,lt,wd) || (mp && teacherTeachesToday(mp,lt,wd))){ myAbsKeys.add(ckey(c)); if(mp) myAbsKeys.add(ckey(mp)); } }
     }); }
+  // 안전망: 위 「오늘 결석·지각」 카드(출결 기록을 직접 읽는 쪽)에는 있는데 이 목록에 안 잡힌 학생은 여기서 그대로 보충한다
+  // — 카드와 요약 복사의 명단이 어떤 이유로든 달라지지 않게 같은 기준(attStatusAgg)으로 한 번 더 확인
+  { const seenAny=new Set([...absentHwList,...lateHwList,...earlyHwList].map(x=>x.k+'|'+x.s));
+    classesFor(state.month).filter(c=>!c.examOnly && (state.ac==='all'||c.academy===state.ac) && !isClosedDay(c.academy,state.date)
+      && (classMeets(c,wd) || (mergeHostOf(c) && classMeets(mergeHostOf(c),wd)))).forEach(c=>{
+      const k=ckey(c);
+      activeStudentsForDate(c,state.date).forEach(sname=>{
+        if(seenAny.has(k+'|'+sname)) return;
+        const st2=attStatusAgg(c,wd,sname,at); if(st2!=='결' && st2!=='지' && st2!=='조퇴') return;
+        seenAny.add(k+'|'+sname);
+        const hrec=((hw[k]||{})[sname])||{};
+        const base={dept:c.dept||'기타', className:c.name, academy:c.academy, student:studentDisplayName(c.academy,sname,c.name), k, s:sname, absReasonToday:hrec.absReasonToday||''};
+        if(st2==='지') lateHwList.push(base); else if(st2==='조퇴') earlyHwList.push(base);
+        else { const _r=matchStudentByRosterName(c.academy,sname,c.name);
+          absentHwList.push({...base, kakaoOpenChatUrl:c.kakaoOpenChatUrl||'', assignK:k, preReg:!!(_r&&_r.absFrom&&state.date>=_r.absFrom&&state.date<=(_r.absTo||_r.absFrom)), subjects:[{subj:null,kakaoSent:!!hrec.hwKakaoSent}]}); }
+      }); }); }
   const isMyAbs = x => partsOnly || !lt || myAbsKeys.has(x.k);
 
   const depts = ['초등', '중등', '고등', '기타'];
@@ -10568,7 +10584,9 @@ function renderToday(list, partsOnly){
     const cStudents=activeStudentsForDate(c, state.date); // 퇴원생은 오늘 기록에서 제외 (반 배정 취소)
     // "출석 X/Y"는 실제로 출석한 인원이 아니라, 출/지/결/조 중 뭐든 출결 체크가 "된" 인원 수를 보여준다
     // (출결 체크를 다 마쳤는지 확인하는 용도라서, 지각·결석·조퇴도 체크된 걸로 쳐야 한다)
-    const present=cStudents.filter(s=>!!attStatusAgg(c,wd,s,at)).length;
+    // 로그인한 선생님은 "내 수업(내가 맡은 과목) 시간"의 출결이 체크됐는지만 센다 — 앞 시간 다른 선생님 수업의 출결이 체크됐다고 내 수업까지 체크된 걸로 세지 않는다
+    const _myAttKeys=(lt && mySubjSet)?(()=>{ const f=attKeysFor(c,wd).filter(x=>x.subject==null||mySubjSet.has(x.subject)); return f.length?f:null; })():null;
+    const present=cStudents.filter(s=>_myAttKeys?_myAttKeys.every(({key})=>!!((at[key]||{})[s])):!!attStatusAgg(c,wd,s,at)).length;
     // 'na'(그날 확인할 숙제 자체가 없음 — 숙제없음 표시 또는 IBT 등 자습 과목 기본값)는 체크할 게 없으니 완료로 쳐준다
     const hwdone=cStudents.filter(s=>{const st=hwDayStatusFor(c, state.date, hw[k]&&hw[k][s], k, s); return st==='done'||st==='na';}).length;
     const assignRec=(hw[k]||{})['_assign']||{};
