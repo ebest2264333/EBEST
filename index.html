@@ -2878,7 +2878,7 @@ function renderOverview(){
       const pre=(store.students||[]).filter(st=>!st._deleted && st.absFrom && st.status!=='퇴원' && acs.includes(st.academy) && (st.absTo||st.absFrom)>=today).sort((x,y)=>x.absFrom.localeCompare(y.absFrom));
       if(!pre.length) return '';
       const fm=d=>{ const q=String(d).split('-'); return +q[1]+'/'+(+q[2]); };
-      return `<div style="margin-top:8px;display:flex;flex-direction:column;gap:3px"><div style="font-size:.74rem;font-weight:800;color:var(--sub)">✈ 등록된 결석 예정 ${pre.length}명</div>${pre.map(st=>`<div style="font-size:.78rem;display:flex;gap:6px;align-items:center;flex-wrap:wrap"><b>${esc(studentDisplayName(st.academy,st.nameKo,st.className))}</b><span style="color:var(--sub)">${esc(st.className||'')}</span><span>${fm(st.absFrom)}${(st.absTo&&st.absTo!==st.absFrom)?'~'+fm(st.absTo):''}${st.absReason?' · '+esc(st.absReason):''}</span><button class="btn small" data-rsabsdone="${st.id}">취소</button></div>`).join('')}</div>`; })()}</div>`;
+      return `<details data-ovfold="ovPre" ${(state.fold||{}).ovPre===true?'open':''} style="margin-top:8px"><summary style="cursor:pointer;font-size:.74rem;font-weight:800;color:var(--sub);list-style:none">✈ 등록된 결석 예정 ${pre.length}명 <span style="font-weight:400">(눌러서 펼치기·접기)</span></summary><div style="display:flex;flex-direction:column;gap:3px;margin-top:4px">${pre.map(st=>`<div style="font-size:.78rem;display:flex;gap:6px;align-items:center;flex-wrap:wrap"><b>${esc(studentDisplayName(st.academy,st.nameKo,st.className))}</b><span style="color:var(--sub)">${esc(st.className||'')}</span><span>${fm(st.absFrom)}${(st.absTo&&st.absTo!==st.absFrom)?'~'+fm(st.absTo):''}${st.absReason?' · '+esc(st.absReason):''}</span><button class="btn small" data-rsabsdone="${st.id}">취소</button></div>`).join('')}</div></details>`; })()}</div>`;
   const absRowsF=tAtt.rows.filter(r=>absDeptOk(r.c.dept));
   const absCard=(ex)=>`<div class="hcard absunified" id="ovAbsCard"><div class="hh"><h2>🚨 오늘 결석 · 지각 학생</h2>${absDeptSelHTML()}<span class="hsub2">${tAtt.rows.length?`결석 ${absRowsF.filter(r=>r.a==='결').length} · 지각 ${absRowsF.filter(r=>r.a==='지').length}${absRowsF.some(r=>r.a==='조퇴')?` · 조퇴 ${absRowsF.filter(r=>r.a==='조퇴').length}`:''}`:''}</span></div>
     <div style="display:flex;gap:10px;align-items:flex-start;margin:4px 0 6px"><div class="ovnote" style="flex:1;min-width:0">${ex&&ex.absExtras?ex.absExtras:''}</div><div style="flex:none;display:flex;flex-direction:column;gap:6px;align-items:flex-end;padding-top:20px">${ex&&ex.absCopy?ex.absCopy:''}<button class="hlink todogo" data-tab="attend">출결 (월별) 보기</button></div></div>
@@ -2985,6 +2985,8 @@ function bindOverview(){
   v.querySelectorAll('.todogo').forEach(b=>b.onclick=()=>{ if(b.dataset.rk) state.rkind=b.dataset.rk; if(b.dataset.bsub) state.bsub=b.dataset.bsub; goTab(b.dataset.tab); });
   // 전체 현황에서는 결석생 칸이 같은 카드 안에 있으니, 탭을 옮기지 않고 그 칸을 펼쳐서 보여준다
   v.querySelectorAll('[data-ovgo]').forEach(b=>b.onclick=()=>{ const oc=document.getElementById('ovAbsCard'); if(oc){ oc.scrollIntoView({behavior:'smooth',block:'start'}); const mi=[...oc.querySelectorAll('.absreasoninput')].find(i=>!i.value); if(mi) mi.focus(); return; } const el=document.getElementById('absentTodayDetails'); if(el){ el.open=true; state.absentSectionOpen=true; el.scrollIntoView({behavior:'smooth',block:'start'}); } else goToAbsentToday(); });
+  // 등록된 결석 예정 목록 접기·펼치기 — 다른 칸(결석생 과제 등)과 따로, 마지막 상태를 기억
+  v.querySelectorAll('details[data-ovfold]').forEach(d=>d.addEventListener('toggle',()=>{ state.fold=state.fold||{}; state.fold[d.dataset.ovfold]=d.open; try{ localStorage.setItem('ebest_fold',JSON.stringify(state.fold)); }catch(e){} }));
   // ✏ 이름 검색 → 결석/지각 + 사유 → 추가
   const q=v.querySelector('#ovAbsQ'), res=v.querySelector('#ovAbsRes'), go=v.querySelector('#ovAbsGo');
   if(q && res && go){
@@ -3010,13 +3012,18 @@ function bindOverview(){
       return out; };
     const draw=()=>{
       const t=q.value.trim().toLowerCase().replace(/\s+/g,'');
-      const pool=isPre()?preCands():_ovAbsCands.map(x=>({...x, cn:x.c.name, _o:x}));
+      // 결석·지각·조퇴도 오늘 수업이 없는 학생까지 검색에 나오게 한다 (그런 학생은 고르면 결석 예정 등록으로 안내)
+      const pool=isPre()?preCands():(()=>{ const today=_ovAbsCands.map(x=>({...x, cn:x.c.name, _o:x}));
+        const rid=o=>{ try{ const st=matchStudentByRosterName(o.c.academy, o.s, o.c.name); return st?st.id:null; }catch(e){ return null; } };
+        const have=new Set(today.map(rid).filter(Boolean));
+        const others=preCands().filter(x=>!(x.st&&have.has(x.st.id))).map(x=>({...x, off:true}));
+        return today.concat(others); })();
       hits=t?pool.filter(x=>(x.label+x.s+(x.kn||'')).toLowerCase().replace(/\s+/g,'').includes(t)).slice(0,12):[];
-      const same=h=>pick && (isPre()?(h.id&&h.id===pick.id):(h._o&&h._o===pick._o));
+      const same=h=>pick && ((h.id&&h.id===pick.id) || (h._o&&h._o===pick._o));
       if(pick && !hits.some(same)) pick=null; else if(pick) pick=hits.find(same);
       if(!pick && hits.length===1) pick=hits[0];
-      res.innerHTML=t&&!hits.length?`<span style="font-size:.78rem;color:var(--sub)">${isPre()?'재원생 중에':'오늘 수업 있는 반에'} 그 이름의 학생이 없어요</span>`
-        :hits.map((x,i)=>`<button type="button" class="chip ${x===pick?'on':''}" data-ovabsi="${i}">${esc(x.label)} <span style="opacity:.7;font-size:.74rem">[${esc(x.cn||'반 없음')}]</span></button>`).join('');
+      res.innerHTML=t&&!hits.length?`<span style="font-size:.78rem;color:var(--sub)">재원생 중에 그 이름의 학생이 없어요</span>`
+        :hits.map((x,i)=>`<button type="button" class="chip ${x===pick?'on':''}" data-ovabsi="${i}">${esc(x.label)} <span style="opacity:.7;font-size:.74rem">[${esc(x.cn||'반 없음')}${x.off?' · 오늘 수업 없음':''}]</span></button>`).join('');
       res.querySelectorAll('[data-ovabsi]').forEach(b=>b.onclick=()=>{ pick=hits[+b.dataset.ovabsi]; eIdx=null; draw(); });
       // 조퇴: 고른 학생의 오늘 수업 목록 — 어느 수업부터 조퇴인지 누른다
       const keys=(tSel.value==='조퇴' && pick && pick._o)?pick._o.keys:[];
@@ -3033,6 +3040,8 @@ function bindOverview(){
     go.onclick=()=>{
       if(!pick){ toast(hits.length?'목록에서 학생을 골라주세요':'학생 이름을 검색하세요'); return; }
       const type=tSel.value, reason=v.querySelector('#ovAbsR').value.trim();
+      // 오늘 수업이 없는 학생을 골랐는데 결석·지각·조퇴라면 → 결석 예정 입력으로 바꿔서 날짜를 고르게 한다
+      if(pick.off && type!=='예정'){ tSel.value='예정'; dWrap.style.display='inline-flex'; toast(`${pick.label}은(는) 오늘 수업이 없어요 — 결석 예정으로 날짜를 골라 등록해 주세요`); draw(); return; }
       if(type==='예정'){ // 학생 명단의 결석 예정에 저장 — 그 기간 수업은 자동 결석 처리됨
         const f=dF.value, to=dT.value&&dT.value>=dF.value?dT.value:dF.value;
         if(!f){ toast('시작 날짜를 골라주세요'); return; }
@@ -5090,6 +5099,9 @@ function classNameInMonth(s, month){
   if(s.className){
     const own=monthClasses.find(c=>c.name===s.className && (c.students||[]).some(sname=>rosterNameMatchesStudent(sname, s.nameKo, s.nameEn)));
     if(own) return own.name;
+    // 학생 명단에는 합반 표기("JB1,2")로 적혀 있고 실제 반 이름은 JB1·JB2로 나뉜 경우 — 같은 반으로 보고 그 반 명단에서 찾는다 (동명이인이 엉뚱한 반으로 묶이지 않게)
+    const own2=monthClasses.find(c=>classNameCompatible(s.className, c.name) && (c.students||[]).some(sname=>rosterNameMatchesStudent(sname, s.nameKo, s.nameEn)));
+    if(own2) return own2.name;
   }
   // 원래 반에서 못 찾으면(반을 옮긴 경우) 이름으로 다른 반들을 뒤진다 — 이때는 동명이인이 있으면 정확하지 않을 수 있다.
   const cls=monthClasses.find(c=>(c.students||[]).some(sname=>rosterNameMatchesStudent(sname, s.nameKo, s.nameEn)));
@@ -10516,7 +10528,8 @@ function renderToday(list, partsOnly){
       .map(st=>{ const to=st.absTo||st.absFrom; const rng=to===st.absFrom?fm(st.absFrom):fm(st.absFrom)+'~'+fm(to); return (st.className?st.className+' ':'')+_nm(studentDisplayName(st.academy, st.nameKo, st.className))+' - '+rng+(st.absReason?' '+st.absReason:' 결석예정'); });
   })();
   // 🔎 오늘이 결석 예정 기간인데 결석으로 안 잡힌 학생 — 왜 안 잡혔는지 이유를 같이 보여준다
-  const _preWarn=(()=>{
+  const _preWarn=[]; // 「결석 예정인데 자동 결석이 안 걸린 학생」 알림은 보여주지 않는다 (아래 계산은 그대로 두되 화면에는 안 씀)
+  const _preWarnOff=(()=>{
     const out=[]; const shown=new Set(absentHwList.map(x=>x.academy+'|'+x.s));
     const regs=classesFor(state.month).filter(c=>!c.examOnly);
     (store.students||[]).filter(st=>!st._deleted && st.absFrom && st.status!=='퇴원' && (state.ac==='all'||st.academy===state.ac) && st.absFrom<=state.date && state.date<=(st.absTo||st.absFrom)).forEach(st=>{
