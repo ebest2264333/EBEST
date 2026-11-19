@@ -4800,8 +4800,17 @@ function renderTimetableGrid(list){
         }
         subs.forEach(s=>{ const r=parseRange(s.time); entries.push({className:c.name, subject:s.subject, teacher:s.teacher||'', room:s.room||'', start:r[0], end:r[1], isWordTest:isWordTestSubject(s), ref:s, own:ownC}); });
       });
-      if(!entries.length) return '';
-      const classNames=[...new Set(entries.map(e=>e.className))].sort((x,y)=>{
+      // 수정모드에서 수업이 하나도 없는 요일(예: 토요일 하루 보강)은 빈 표를 보여줘서 칸을 눌러 새 수업을 넣을 수 있게 한다
+      let blank=false; let slotPairs=[];
+      if(!entries.length){
+        if(!edit) return '';
+        blank=true; cls.forEach(c=>{ deptOf[c.name]=c.dept||''; idOf[c.name]=c._id; objOf[c.name]=c; });
+        const seenSl=new Set(); cls.forEach(c=>(c.subjects||[]).forEach(sb=>{ const r=sb.time&&parseRange(sb.time); if(r){ const k=r[0]+'|'+r[1]; if(!seenSl.has(k)){ seenSl.add(k); slotPairs.push([r[0],r[1]]); } } }));
+        slotPairs.sort((x,y)=>x[0]-y[0]||x[1]-y[1]);
+        slotPairs=slotPairs.filter((p,i)=>i===0||!(Math.abs(p[0]-slotPairs[i-1][0])<1e-6)); // 시작 시각이 같은 건 하나만
+        if(!slotPairs.length) slotPairs=[[10,10+2/3]];
+      }
+      const classNames=[...(blank?new Set(Object.keys(objOf)):new Set(entries.map(e=>e.className)))].sort((x,y)=>{
         const oc=classOrderCmp(a,x,y); if(oc) return oc;
         const rx=DEPT_SORT_ORDER[deptOf[x]]!=null?DEPT_SORT_ORDER[deptOf[x]]:99, ry=DEPT_SORT_ORDER[deptOf[y]]!=null?DEPT_SORT_ORDER[deptOf[y]]:99;
         if(rx!==ry) return rx-ry;
@@ -4812,6 +4821,7 @@ function renderTimetableGrid(list){
       });
       const bounds=new Set(); entries.forEach(e=>{ bounds.add(e.start); bounds.add(e.end); });
       const sorted=[...bounds].sort((x,y)=>x-y);
+      const pairs=blank?slotPairs:sorted.slice(0,-1).map((v,i)=>[v,sorted[i+1]]);
       const isPartner=(x,y)=>{ const cx=objOf[x], cy=objOf[y]; if(!cx||!cy) return false; const m=mergedCounterpart(cx); return !!(m && m.name===cy.name); };
       // 합반으로 나란히 놓인 반들은 맨 위 반 이름 칸도 하나로 합친다 — JM1+JM2 → "JM1,2" · 안화3B+안화3B(2) → "안화3B"
       const grpOf={}; const groups=[];
@@ -4819,11 +4829,11 @@ function renderTimetableGrid(list){
       groups.forEach(g=>g.forEach(nm=>{ grpOf[nm]=g.length; }));
       const groupLabel=g=>{ if(g.length<2) return g[0]; const base=g.map(n=>String(n).replace(/\(\d+\)\s*$/,'').trim()); if(base.every(b=>b===base[0])) return base[0]; return g.slice(1).reduce((acc,n)=>combinedMergedName({name:acc}, {name:n}), g[0]); };
       let rows='';
-      for(let i=0;i<sorted.length-1;i++){
-        const s0=sorted[i], s1=sorted[i+1];
+      for(let i=0;i<pairs.length;i++){
+        const s0=pairs[i][0], s1=pairs[i][1];
         const hits=entries.filter(e=>e.start<=s0+1e-6 && e.end>=s1-1e-6);
         const tm=`<td class="tm">${fmtH(s0)}~${fmtH(s1)}</td>`;
-        if(!hits.length){ rows+=`<tr>${tm}<td class="rc" colspan="${groups.length}">RECESS</td></tr>`; continue; }
+        if(!hits.length && !blank){ rows+=`<tr>${tm}<td class="rc" colspan="${groups.length}">RECESS</td></tr>`; continue; }
         const isWt=hits.some(e=>e.isWordTest);
         // 합반으로 묶인 반(예: JM1·JM2)은 한 반처럼 가로 한 칸으로 합쳐 보여준다. 같은 시간에 과목·담당이 서로 다르면 한 칸 안에 위아래로 나눠 보여준다
         const sameHit=(h1,h2)=>{ if(!h1||!h2) return false; const q1=paint(h1), q2=paint(h2); return q1.txt===q2.txt && q1.bg===q2.bg; }; // 화면에 똑같이 보이면 같은 칸으로 본다 (단어시험은 강의실·담당 약자만 같으면 합침)
@@ -4844,10 +4854,10 @@ function renderTimetableGrid(list){
         });
         rows+=`<tr>${tm}${tds}</tr>`;
       }
-      return `<div class="ttgday"><span class="dn">${day}요일</span><div class="ttgsc"><table class="ttgt" style="width:min(100%, ${92+groups.length*130}px)"><thead><tr><th>시간</th>${groups.map(g=>`<th>${esc(groupLabel(g))}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div></div>`;
+      return `<div class="ttgday"><span class="dn">${day}요일</span>${blank?'<span style="margin-left:10px;font-size:.78rem;color:#6d28d9;font-weight:700">이 요일엔 아직 수업이 없어요 — 칸을 눌러 새 수업을 넣으세요 (시간은 저장 창에서 바꿀 수 있어요)</span>':''}<div class="ttgsc"><table class="ttgt" style="width:min(100%, ${92+groups.length*130}px)"><thead><tr><th>시간</th>${groups.map(g=>`<th>${esc(groupLabel(g))}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div></div>`;
     }).join('');
     const legend=(store.teachers[a]||[]).map(t=>{ const hex=t.ttColor||ttgDefaultTt(a,t).color; const code=t.ttCode||ttgDefaultTt(a,t).code||''; return `<span style="background:${hex||'#eee'};color:${hex&&ttgIsDarkColor(hex)?'#fff':'#000'}">${esc(t.name)}${code?' · '+esc(code):''}</span>`; }).join('');
-    return `<div class="ttgw">${acs.length>1||MODE==='all'?`<h3>${bdg(a)} ${AC[a].label}</h3>`:''}<div class="ttgleg"><span style="background:#d9d9d9">단어시험</span>${legend}</div>${edit?ttgTeacherPanel(a,cls):''}${dayBlocks||'<div class="empty">이 요일에 시간이 입력된 수업이 없습니다.</div>'}</div>`;
+    return `<div class="ttgw">${acs.length>1||MODE==='all'?`<h3>${bdg(a)} ${AC[a].label}</h3>`:''}<div class="ttgleg"><span style="background:#d9d9d9">단어시험</span>${legend}</div>${edit?ttgTeacherPanel(a,cls):''}${dayBlocks||`<div class="empty">이 요일에 시간이 입력된 수업이 없습니다.${admin&&!edit&&gd!=='all'?'<br><span style="font-size:.84rem">위쪽 <b>✎ 수정모드</b>를 누르면 빈 표가 나와서 칸을 눌러 수업을 넣을 수 있어요 (토요일 하루 보강 등).</span>':''}</div>`}</div>`;
   }).join('');
   return css+chips+parts;
 }
