@@ -32,7 +32,7 @@ button{margin-top:10px;border:0;background:var(--acc);color:#fff;border-radius:1
 <body><div class="wrap" id="app"><div class="msg">불러오는 중…</div></div>
 <script>
 // 학원 화폐 통장 — 학생이 QR을 찍으면 열리는 화면(읽기 전용). 학원 관리 화면이 서버에 올려둔 wallet/<코드> 한 칸만 읽는다.
-var VER='v1113d'; // 화면 버전 — 맨 아래에 작게 표시 (새 파일이 열렸는지 확인용)
+var VER='v1119a'; // 화면 버전 — 맨 아래에 작게 표시 (새 파일이 열렸는지 확인용)
 var DB='https://ebest-b41ce-default-rtdb.asia-southeast1.firebasedatabase.app';
 var T=(new URLSearchParams(location.search).get('t')||'').trim();
 var app=document.getElementById('app');
@@ -128,6 +128,16 @@ function jar(lv,unit){
     '<path d="'+body+'" fill="none" stroke="#fff" stroke-width="3" opacity=".9"/><path d="M50 52 V150" stroke="#fff" stroke-width="5" stroke-linecap="round" opacity=".35"/>'+ticks+dust+stars+'</svg>';
 }
 
+function hwSafe(){ try{
+  var h=DATA&&DATA.hw; if(!h||!h.items||!h.items.length) return '';
+  return '<div class="list" style="margin-top:14px"><h2 style="margin:0 0 6px">📚 다음 수업 숙제 <span style="font-weight:400;color:var(--sub);font-size:.76rem">'+esc(h.cn||'')+'</span></h2>'+
+    h.items.map(function(x){
+      var body=x.none?'<span style="color:var(--sub)">숙제 없어요 🎉</span>':
+        (x.t?'<div style="white-space:pre-wrap;word-break:break-word">'+esc(x.t)+'</div>':'')+
+        (x.i?'<div style="margin-top:3px;white-space:pre-wrap;word-break:break-word"><b style="color:var(--acc)">나만의 숙제</b> '+esc(x.i)+'</div>':'');
+      return '<div class="row" style="align-items:flex-start"><span class="d" style="min-width:58px;font-weight:700;color:var(--acc)">'+esc(x.due)+'</span><span class="r" style="font-size:.9rem">'+(x.s?'<b>'+esc(x.s)+'</b><br>':'')+body+'</span></div>';
+    }).join('')+'</div>';
+}catch(e){ return ''; } }
 function ttSafe(){ try{ return ttHtml(); }catch(e){ return '<div class="list" style="margin-top:14px"><div class="empty">시간표를 표시하지 못했어요. <span style="font-size:.7rem">('+esc(e&&e.message||e)+')</span></div></div>'; } }
 function ttHtml(){
   var t=DATA&&DATA.tt; if(!t) return '<div class="list" style="margin-top:14px"><h2 style="margin:0 0 6px">📅 시간표</h2><div class="empty">시간표를 아직 받아오지 못했어요.<br>선생님께 다시 올려달라고 해주세요.</div></div>';
@@ -167,7 +177,7 @@ function draw(){
     var upd=''; try{ upd=new Date(d.upd).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}); }catch(e){}
     show('<div class="hello">'+(d.e?'<b class="en">'+esc(d.e)+'</b> <span class="ko">'+esc(d.n)+'</span>':'<b class="en">'+esc(d.n)+'</b>')+'</div>'+
       '<div class="bal balwrap"><div><div class="l">현재 잔액</div><div class="n">'+sym(d)+' '+fmt(d.bal)+'<small>'+esc(d.u||'')+'</small></div></div>'+
-      '<div class="jar">'+jarHtml(level(Number(d.bal),AVG),d.u)+'</div></div><div id="stf"></div>'+ttSafe()+
+      '<div class="jar">'+jarHtml(level(Number(d.bal),AVG),d.u)+'</div></div><div id="stf"></div>'+hwSafe()+ttSafe()+
       '<div class="list"><h2>통장 내역 <span style="font-weight:400;color:var(--sub);font-size:.8rem">(최신순 · '+ALL.length+'건)</span></h2>'+
       (recs.length?recs.map(function(x){ var inn=x.t==='in';
         return '<div class="row"><span class="d">'+md(x.d)+'</span><span class="r">'+esc(x.r||'')+'</span><span class="a '+(inn?'in':'out')+'">'+(inn?'+':'−')+fmt(x.a)+'</span></div>'; }).join(''):'<div class="empty">아직 내역이 없어요.</div>')+
