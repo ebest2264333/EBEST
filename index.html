@@ -2892,7 +2892,7 @@ function renderOverview(){
       const rin=`<input type="text" class="absreasoninput" data-k="${esc(k)}" data-s="${esc(r.s)}" placeholder="${lab} 사유${r.a==='결'?'':' (선택)'}" value="${esc(reason)}" style="width:100%;box-sizing:border-box;border:1.5px solid ${miss?'var(--pri)':'var(--line)'};border-radius:7px;padding:4px 8px;font-family:inherit;font-size:.78rem">`;
       return `<div class="ovabsrow ${cell?'two':''}">
         <div class="ovabswho"><span class="opill ${r.a==='결'?'no':'na'}">${lab}</span><b>${esc(studentDisplayName(r.c.academy,r.s,r.c.name))}</b><span title="${esc(r.c.name)}${teaOf(r.c)?' · '+esc(teaOf(r.c)):''}">${esc(r.c.name)}${teaOf(r.c)?' · '+esc(teaOf(r.c)):''}</span></div>
-        ${rin}${cell}</div>`; }).join('')}</div>`:(tAtt.rows.length?'<div class="hempty">이 부서에는 오늘 결석·지각 학생이 없어요.</div>':'<div class="hempty">오늘 결석·지각으로 체크된 학생이 없어요.</div>')}
+        <div style="display:flex;gap:5px;align-items:center;min-width:0"><div style="flex:1;min-width:0">${rin}</div><button type="button" class="btn small" data-ovabscancel data-k="${esc(k)}" data-s="${esc(r.s)}" title="잘못 입력한 ${lab} 기록 취소" style="flex:none;padding:3px 8px">취소</button></div>${cell}</div>`; }).join('')}</div>`:(tAtt.rows.length?'<div class="hempty">이 부서에는 오늘 결석·지각 학생이 없어요.</div>':'<div class="hempty">오늘 결석·지각으로 체크된 학생이 없어요.</div>')}
     ${ex&&ex.absent?ex.absent:''}
     </div>`;
   // 처리할 일
@@ -2991,6 +2991,27 @@ function bindOverview(){
   // 등록된 결석 예정 목록 접기·펼치기 — 다른 칸(결석생 과제 등)과 따로, 마지막 상태를 기억
   v.querySelectorAll('details[data-ovfold]').forEach(d=>d.addEventListener('toggle',()=>{ state.fold=state.fold||{}; state.fold[d.dataset.ovfold]=d.open; try{ localStorage.setItem('ebest_fold',JSON.stringify(state.fold)); }catch(e){} }));
   // ✏ 이름 검색 → 결석/지각 + 사유 → 추가
+  // 오늘 결석·지각·조퇴 줄의 [취소] — 잘못 입력한 오늘 기록을 지운다 (그 학생이 오늘 다른 반에도 있으면 같이, 결석 예정/지각 예정이 오늘을 포함하면 그것도 정리)
+  v.querySelectorAll('[data-ovabscancel]').forEach(b=>b.onclick=e=>{
+    e.stopPropagation();
+    const k=b.dataset.k, s=b.dataset.s; const me=_ovAbsCands.find(o=>o.k===k&&o.s===s); if(!me) return;
+    const td=todayISO();
+    let st=null; try{ st=matchStudentByRosterName(me.c.academy, me.s, me.c.name); }catch(_){}
+    const preToday=st && st.absFrom && td>=st.absFrom && td<=(st.absTo||st.absFrom);
+    const lateToday=st && st.lateDate===td;
+    if(!confirm(`${me.label} 학생의 오늘 결석·지각·조퇴 기록을 취소할까요?`+(preToday?`\n(등록된 결석 예정 ${st.absFrom}${(st.absTo||st.absFrom)!==st.absFrom?' ~ '+st.absTo:''}도 오늘부터는 빠져요)`:''))) return;
+    const rid=o=>{ try{ const x=matchStudentByRosterName(o.c.academy, o.s, o.c.name); return x?x.id:null; }catch(_){ return null; } };
+    const myId=rid(me); const at=atFor(td); const hwT=store.homework[td]||{};
+    _ovAbsCands.filter(o=>o===me || (myId && rid(o)===myId)).forEach(o=>{
+      o.keys.forEach(({key})=>{ const m=(at[key]||{})[o.s]; if(m==='결'||m==='지'||m==='조퇴'){ delete at[key][o.s]; } });
+      const h=(hwT[o.k]||{})[o.s]; if(h && h.absReasonToday){ delete h.absReasonToday; h.updatedAt=Date.now(); }
+    });
+    if(st){
+      if(preToday){ if(st.absFrom>=td){ st.absFrom=''; st.absTo=''; st.absReason=''; } else { st.absTo=addDaysISO(td,-1); } st.updatedAt=Date.now(); }
+      if(lateToday){ st.lateDate=''; st.lateTime=''; st.lateReason=''; st.updatedAt=Date.now(); }
+    }
+    save(); render(true); toast(`${me.label} — 오늘 기록을 취소했어요`);
+  });
   const q=v.querySelector('#ovAbsQ'), res=v.querySelector('#ovAbsRes'), go=v.querySelector('#ovAbsGo');
   if(q && res && go){
     let pick=null, hits=[], eIdx=null; // eIdx: 조퇴 시작 수업 순번
