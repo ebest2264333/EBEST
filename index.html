@@ -15168,7 +15168,7 @@ async function eaUploadPaper(d, file, onProgress){
 }
 function eaAiPrompt(d){
   const catList=(eaDept(d)==='고등'?EA_DEFAULT_CATEGORIES_HS:EA_DEFAULT_CATEGORIES).join(', ');
-  return `당신은 한국 영어학원의 내신 분석 전문가입니다. 첨부된 학교 영어 시험지를 읽고, 아래 JSON 형식으로만 답하세요 (설명·마크다운·코드펜스 금지).
+  return `${d.textbook?`[이 학교 교과서: ${String(d.textbook).slice(0,300)} — 시험 지문이 교과서에서 나왔는지 판단하는 데 참고하세요]\n`:''}당신은 한국 영어학원의 내신 분석 전문가입니다. 첨부된 학교 영어 시험지를 읽고, 아래 JSON 형식으로만 답하세요 (설명·마크다운·코드펜스 금지).
 {
   "school": "학교명(알 수 없으면 빈 문자열)",
   "grade": "학년(예: 1학년)",
@@ -15281,7 +15281,7 @@ function eaAiReportHTML(entry){
 }
 function eaBlankEntry(){
   return {
-    id:eaNewId('ea'), _isNew:true, academy:academies()[0], dept:'중등', school:'', grade:'', examTitle:'', examRange:'', examDate:'', prepStart:'', prepEnd:'',
+    id:eaNewId('ea'), _isNew:true, academy:academies()[0], dept:'중등', school:'', grade:'', examTitle:'', examRange:'', textbook:'', examDate:'', prepStart:'', prepEnd:'',
     teacherLecture:'', teacherIBT:'', targetScore:100, note:'',
     categories: EA_DEFAULT_CATEGORIES.map(name=>({name, count:0, questions:[]})),
     students: [], // [{id, name}]
@@ -15498,7 +15498,8 @@ function eaTrendPromptV2(d, entries, docCount, part){
 - 분석표(sections의 표 포함)는 내용·구조·열·행·숫자·판정값·근거를 지금 방식 그대로 유지하세요. 표 칸의 분석 내용을 줄이거나 빼거나 바꾸지 말고, 어려운 어휘·약어·전문용어만 쉬운 말로 바꿔 쓰세요(의미와 정보량은 그대로).
 - 막연한 표현("다소", "일정 부분", "유의미")은 숫자나 문항 번호로 바꿔 쓰세요.
 - 시사점(teaching)은 "~연습이 필요합니다/~지도하는 것이 좋습니다"처럼 수업에서 바로 할 일로 쓰세요.`;
-  const tail=`${d.books?'\n[교과서·부교재 정보 — 출처별 배점 분류의 기준으로 사용]\n'+String(d.books).slice(0,3000)+'\n위 교과서 범위에서 나온 지문은 "교과서", 부교재 범위에서 나온 지문은 "부교재"로 분류하고, 두 곳 어디에도 없으면 외부 지문 등 다른 출처로 분류하세요.':''}${d.instr?'\n추가 요청: '+d.instr:''}\n${entText?'\n[학원이 입력한 시험 분석]\n'+entText.slice(0,40000):''}`;
+  const _tbk=[...new Set(((typeof entries!=='undefined'&&entries)||[]).map(e=>String(e.textbook||'').trim()).filter(Boolean))].join(' / '); const _books=[d.books,_tbk?'교과서(내신 분석 등록): '+_tbk:''].filter(Boolean).join('\n');
+  const tail=`${_books?'\n[교과서·부교재 정보 — 출처별 배점 분류의 기준으로 사용]\n'+String(_books).slice(0,3000)+'\n위 교과서 범위에서 나온 지문은 "교과서", 부교재 범위에서 나온 지문은 "부교재"로 분류하고, 두 곳 어디에도 없으면 외부 지문 등 다른 출처로 분류하세요.':''}${d.instr?'\n추가 요청: '+d.instr:''}\n${entText?'\n[학원이 입력한 시험 분석]\n'+entText.slice(0,40000):''}`;
   if(part==='questions') return head+`
 이번 시험의 "문항별 분석표"만 만드세요. 모든 문항(선택형·서술형/논술형 전부)을 빠짐없이, 시험지 번호 순서대로 포함합니다. 아래 형식의 JSON 배열 한 개로만 답하세요(설명·마크다운·코드펜스 금지). 각 항목은 문자열 8개의 배열입니다.
 [["번호","파트","배점","난도","변형","유형","출처","해설·정답"], ...]
@@ -16092,6 +16093,7 @@ function renderEaForm(){
       ${field('학년','eaGrade',d.grade,'text')}
       ${field('시험명','eaTitle',d.examTitle)}
       ${field('시험범위','eaRange',d.examRange)}
+      ${field('교과서 (출판사·과 범위)','eaTextbook',d.textbook)}
       ${field('시험일','eaDate',d.examDate,'date')}
       ${field('준비기간 시작','eaPrepStart',d.prepStart,'date')}
       ${field('준비기간 끝','eaPrepEnd',d.prepEnd,'date')}
@@ -16267,7 +16269,7 @@ function eaReportBody(entry, opts){
   <div style="border:1.5px solid var(--line);border-top:none;border-radius:0 0 14px 14px;padding:18px 22px;background:#fff">`;
   if(includeAnalysis){
   h+=`<div style="display:flex;flex-direction:column;margin-bottom:18px;background:${ac.tint||'#f4f6fb'};border-radius:10px;padding:4px 14px;page-break-inside:avoid;break-inside:avoid">
-      ${[['시험범위',entry.examRange],['시험일',entry.examDate],['준비기간', (entry.prepStart||entry.prepEnd)?(entry.prepStart||'')+' ~ '+(entry.prepEnd||''):''],['담당(Lecture)',entry.teacherLecture],['담당(IBT)',entry.teacherIBT]]
+      ${[['시험범위',entry.examRange],['교과서',entry.textbook],['시험일',entry.examDate],['준비기간', (entry.prepStart||entry.prepEnd)?(entry.prepStart||'')+' ~ '+(entry.prepEnd||''):''],['담당(Lecture)',entry.teacherLecture],['담당(IBT)',entry.teacherIBT]]
         .filter(([,v])=>v).map(([l,v],i,arr)=>`<div style="display:flex;align-items:baseline;gap:10px;padding:10px 0;${i<arr.length-1?'border-bottom:1px solid rgba(0,0,0,.06)':''}">
           <div style="flex:0 0 110px;font-size:.74rem;color:var(--sub);font-weight:700">${esc(l)}</div>
           <div style="font-size:.92rem;font-weight:800">${esc(v)}</div>
@@ -16777,7 +16779,7 @@ function bindEaForm(){
     d.dept=newDept;
     render(true);
   });
-  upd('eaSchool','school'); upd('eaGrade','grade'); upd('eaTitle','examTitle'); upd('eaRange','examRange');
+  upd('eaSchool','school'); upd('eaGrade','grade'); upd('eaTitle','examTitle'); upd('eaRange','examRange'); upd('eaTextbook','textbook');
   upd('eaDate','examDate'); upd('eaPrepStart','prepStart'); upd('eaPrepEnd','prepEnd');
   upd('eaTeacherLecture','teacherLecture'); upd('eaTeacherIBT','teacherIBT');
   const noteEl=byId('eaNote');
