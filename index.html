@@ -6438,7 +6438,7 @@ function bkCalc(it,nm){
   const inn=logs.filter(x=>x.type==='in').reduce((n,x)=>n+(Number(x.qty)||0),0);
   const man=logs.filter(x=>x.type==='out').reduce((n,x)=>n+(Number(x.qty)||0),0);
   const auto=bkAutoOuts(it).length;
-  const stock=inn-man-auto; const min=Number(it.min)||0;
+  const stock=inn-man-auto; const min=(it.cat==='단어장'||it.cat==='시험책')?(Number(it.min)||0):0; // 몇 권 미만 주문 권장은 단어장·시험책만 — 나머지 교재는 다음달 필요 권수 부족일 때만 주문 권장
   const orders=bkPending(it.id); const pend=orders.reduce((n,o)=>n+(Number(o.qty)||0),0);
   const need=(nm||bkNeedMap())[it.academy+'|'+bkNorm(it.name)]||0; const lack=Math.max(0,need-stock-pend);
   const late=orders.some(o=>o.eta && o.eta<todayISO());
@@ -6923,7 +6923,7 @@ function bindBookStock(v){
     const it=find(b.dataset.bked); if(!it) return;
     bkModal('품목 수정',`<label>품목명<input id="bkN" style="${BK_INP}" value="${esc(it.name)}"></label>
       <label>분류<select id="bkC" style="${BK_INP}">${catOpts(it.cat)}</select></label>${bkSubField(it.cat,it.sub)}
-      <label>주문 권장 기준 (권 미만, 0 = 알림 없음)<input id="bkM" type="number" min="0" value="${Number(it.min)||0}" style="${BK_INP}"></label>
+      <label>주문 권장 기준 (권 미만, 0 = 알림 없음 · 단어장·시험책만 적용, 나머지 교재는 필요 권수 기준)<input id="bkM" type="number" min="0" value="${Number(it.min)||0}" style="${BK_INP}"></label>
       <label>단가 (원, 교재비 청구에 사용)<input id="bkP" type="number" min="0" value="${Number(it.price)||0}" style="${BK_INP}"></label>
       <label>배부 자동 출고 시작일<input id="bkB" type="date" value="${esc(it.base||'')}" style="${BK_INP}"></label>
       <button class="btn small" id="bkDel" style="color:#dc2626;align-self:flex-start">🗑 이 품목 삭제</button>`,ov=>{
@@ -9547,12 +9547,17 @@ function timeOfDay(c, wd){
 }
 function parseRange(s){
   if(!s) return null;
+  const am=/오전|\bam\b/i.test(String(s)); // "오전 9:00~9:40"처럼 오전이라고 적으면 그대로 오전
   s=String(s).replace(/\s/g,'');
   const m=s.match(/(\d{1,2})[:시]?(\d{2})?분?[-~](\d{1,2})[:시]?(\d{2})?분?/);
   if(!m) return null;
   let h1=+m[1]+(+(m[2]||0))/60, h2=+m[3]+(+(m[4]||0))/60;
+  if(am || +m[1]===10 || +m[1]===11){ // 오전 수업(토요일 10:00 등) — 10·11시 시작은 오전으로 본다(밤 10시 수업은 없음). 끝나는 시각이 시작보다 작게 적히면(예: 10:00~1:00) 그 끝은 오후
+    if(h2<=h1 && +m[3]>=1 && +m[3]<=11) h2+=12;
+  } else {
   if(m[1]<=11 && +m[1]>=1) h1+=12;      // 학원 오후 수업 가정
   if(m[3]<=11 && +m[3]>=1) h2+=12;
+  }
   if(h2<=h1) h2=h1+0.5;
   return [h1,h2];
 }
@@ -11349,6 +11354,26 @@ function bindToday(){
     const k=inp.dataset.k, s=inp.dataset.s, hw2=hwFor(state.date);
     hw2[k]=hw2[k]||{}; hw2[k][s]=hw2[k][s]||{};
     hw2[k][s].absReasonToday=inp.value;
+    // 사유를 적으면 그 학생은 오늘 "전체 결석" — 한 수업만 결석 체크했거나 아직 아무 체크도 안 했어도 오늘 모든 수업을 결석으로 채운다
+    // (지각·조퇴만 체크된 학생은 사유가 선택 사항이라 그대로 둔다)
+    try{
+      if(inp.value.trim()){
+        const d0=state.date, wd0=wdOf(d0), at0=atFor(d0);
+        const mine=((_ovAbsCands||[]).find(o=>o.k===k&&o.s===s&&d0===todayISO()));
+        let targets=[];
+        if(mine){
+          const rid=o=>{ try{ const x=matchStudentByRosterName(o.c.academy,o.s,o.c.name); return x?x.id:null; }catch(_){ return null; } };
+          const myId=rid(mine); targets=_ovAbsCands.filter(o=>o===mine||(myId&&rid(o)===myId)).map(o=>({k:o.k,s:o.s,keys:o.keys}));
+        } else {
+          const c=classesFor(state.month).find(x=>ckey(x)===k); if(c) targets=[{k,s,keys:attKeysFor(c,wd0)}];
+        }
+        const marks=targets.flatMap(o=>o.keys.map(x=>(at0[x.key]||{})[o.s]||''));
+        const onlyLateEarly=marks.some(m=>m==='지'||m==='조퇴') && !marks.some(m=>m==='결');
+        if(!onlyLateEarly){
+          targets.forEach(o=>o.keys.forEach(({key})=>{ at0[key]=at0[key]||{}; if(at0[key][o.s]!=='결') at0[key][o.s]='결'; }));
+        }
+      }
+    }catch(e){ console.warn('absreason→결석',e); }
     save(); render(true);
   });
   v.querySelectorAll('.hwkakaochk').forEach(cb=>cb.onchange=()=>{
