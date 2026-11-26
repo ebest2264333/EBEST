@@ -8808,8 +8808,10 @@ function renderDropoutMine(a,i){
     ${st&&st.note?`<div style="font-size:.76rem;color:var(--ink);background:#f6f7f9;border:1px solid var(--line);border-radius:6px;padding:5px 8px;margin-bottom:5px">📝 특이사항: ${esc(st.note)}</div>`:''}
     ${dpSignHistoryBlock(d)}
     ${dpHistoryBlock(d)}`;
-    if(d.kind==='out') return `<div class="myclass" style="display:block">${head}${dpStagesBlock(d,false)}${dpExcludeBlock(d)}</div>`;
-    return `<div class="myclass" style="display:block">
+    const fk='dpm_'+d.id; const fo=(state.fold||{})[fk]; const isOpen=(fo===undefined)?true:fo===true; // 학생별 접기 — 사용자가 정한 상태를 입력·저장 후에도 그대로 유지
+    const sum=`<summary style="cursor:pointer;font-weight:800;font-size:.92rem;padding:2px 0">${esc(d.name)} ${dpKindBadge(d)} <span style="font-weight:400;font-size:.76rem;color:var(--sub)">${esc(d.className||'')}${d.kind!=='out'&&n.done?' · ✔ 완료':''}</span></summary>`;
+    if(d.kind==='out') return `<details class="myclass" data-fold="${fk}" ${isOpen?'open':''} style="display:block">${sum}${head}${dpStagesBlock(d,false)}${dpExcludeBlock(d)}</details>`;
+    return `<details class="myclass" data-fold="${fk}" ${isOpen?'open':''} style="display:block">${sum}
     ${head}
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
       <span style="font-size:.78rem;font-weight:800;color:var(--ink)">내 담당: ${esc(r.label)}</span>
@@ -8818,9 +8820,9 @@ function renderDropoutMine(a,i){
     </div>
     <textarea data-dpmemo="${d.id}" data-dpwho="${esc(who)}" placeholder="${esc(r.label)} 내용 메모…" style="width:100%;min-height:50px;border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:.83rem">${esc(n.memo||'')}</textarea>
     ${dpExcludeBlock(d)}
-  </div>`; }).join('');
+  </details>`; }).join('');
   const dueN=dpDueItems(a,i).length;
-  return `<details class="mypanel" id="dpMinePanel" data-fold="dpMine" ${(state.fold.dpMine===true||dueN)?'open':''} style="border-top-color:var(--pri)"><summary style="cursor:pointer;font-weight:800;font-size:1.05rem;margin-bottom:8px">🚪 퇴원생 상담·연락 (${mine.length}명)${dueN?` <span style="font-size:.8rem;color:#7c3aed">· 지금 연락할 학생 ${dueN}건</span>`:''}</summary>${rows}</details>`;
+  return `<details class="mypanel" id="dpMinePanel" data-fold="dpMine" ${(state.fold.dpMine===undefined?!!dueN:state.fold.dpMine===true)?'open':''} style="border-top-color:var(--pri)"><summary style="cursor:pointer;font-weight:800;font-size:1.05rem;margin-bottom:8px">🚪 퇴원생 상담·연락 (${mine.length}명)${dueN?` <span style="font-size:.8rem;color:#7c3aed">· 지금 연락할 학생 ${dueN}건</span>`:''}</summary>${rows}</details>`;
 }
 
 /* ---------- 💻 컴퓨터 자리 배치표 (초·중등 전체 · 같은 학년/같은 반 옆·앞뒤 금지) ---------- */
