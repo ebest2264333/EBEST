@@ -1064,6 +1064,7 @@ if(store.monthOverride===undefined) store.monthOverride=''; // 관리자가 강�
 if(!store.timeedit) store.timeedit={};
 if(!store.enrollment) store.enrollment={};
 if(!store.newStudents) store.newStudents=[];
+if(!store.naesinGroups) store.naesinGroups=[]; // 내신 묶음 {id,academy,school,grade,section,teacher,book,progress,note,months:['2026-12'],studentIds:[],_deleted,updatedAt}
 if(!store.dropouts) store.dropouts=[];
 if(!store.compSeats) store.compSeats={};
 if(!store.classOrder) store.classOrder={};
@@ -2218,6 +2219,7 @@ function activeStudentsForDate(c, dateStr){
   // 휴원 중인 학생은 휴원이 시작된 날부터 출석부·숙제 체크 명단에서 뺀다 (그 전 날짜 기록은 그대로 남는다)
   const ds=String(dateStr||'');
   list=list.filter(n=>{ const st=matchStudentByRosterName(c.academy,n,c.name); if(st && st.startDate && ds && ds<st.startDate) return false; // 등원 시작일 전에는 명단에서 제외
+    if(st && st.endDate && ds && ds.slice(0,7)>String(st.endDate).slice(0,7)) return false; // 퇴원 예정일이 있는 달이 지나면 명단에서 제외
     if(!st||st.status!=='휴원') return true;
     if(st.returnDate && ds && ds>=st.returnDate) return true; // 복귀 예정일부터는 자동으로 다시 출석 명단에 포함
     const hs=(st.sl||[]).filter(e=>e&&e.s==='휴원'); const e=hs.length?hs[hs.length-1]:null;
@@ -2849,7 +2851,7 @@ function renderOverview(){
   // 수업이 끝났는데 출석 체크가 다 안 된 반
   const unchk=tc.filter(c=>{ const r=parseRange(timeOfDay(c,wd)); if(!r||r[1]>nowH) return false; const st=activeStudentsForDate(c,today); return st.length && st.some(s=>!attStatusAgg(c,wd,s,at)); });
   // 상담 대기
-  ensureNewStudentsOnStart();
+  ensureNewStudentsOnStart(); ensureWithdrawalsDue();
   let nsOpen=0, dpOpen=0, dpNoRole=0;
   try{ (store.newStudents||[]).forEach(ns=>{ if(ns._deleted||!consultFresh(ns)||!acs.includes(ns.academy)) return; const ts=subjectTeachersForClass(ns.academy, ns.className)||[]; if(!ts.length || ts.some(i=>{ const n=nsNote(ns,ns.academy+'|'+i); return !(n&&n.done); })) nsOpen++; }); }catch(e){}
   try{ (store.dropouts||[]).forEach(d=>{ if(d._deleted||d.excluded||!dpVisible(d)||!acs.includes(d.academy)) return; const rs=dpRoles(d); if(!rs.length){ dpNoRole++; dpOpen++; return; }
@@ -5477,6 +5479,7 @@ function studentCard(s, admin){
       </select>${('status' in pending)?`<input type="date" value="${esc(pending.statusDate||todayISO())}" data-rsfield-stage="${s.id}|statusDate" title="상태가 바뀌는(바뀐) 날짜" style="padding:6px 8px;border:1.5px solid #f0c987;border-radius:8px;font-family:inherit">`:''}${pendingNote('status')}
       ${dispStatus!=='재원'?`<input type="text" value="${esc(dispStatusReason)}" placeholder="${esc(dispStatus)} 사유" data-rsfield-stage="${s.id}|statusReason" style="flex:1;min-width:140px;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">`:''}
       ${dispStatus==='휴원'?`<label style="font-size:.78rem;font-weight:700;color:var(--sub);display:flex;align-items:center;gap:5px">복귀 예정일 <input type="date" value="${esc(('returnDate' in pending)?pending.returnDate:(s.returnDate||''))}" data-rsfield-stage="${s.id}|returnDate" title="복귀 날짜가 확정되면 적어두세요 — 일주일 전부터 '복귀 확인 연락' 대상으로 떠요" style="padding:6px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit"></label>`:''}
+      ${dispStatus==='재원'?`<label style="font-size:.78rem;font-weight:700;color:var(--sub);display:flex;align-items:center;gap:5px" title="퇴원 징후·퇴원이 확정된 학생의 마지막 수업일을 적어두세요 — 그 달까지는 명단에 있고, 다음 달이 되면 명단에서 자동으로 빠지면서 퇴원 처리 + 퇴원생 연락이 자동으로 등록돼요">퇴원 예정일 <input type="date" value="${esc(s.endDate||'')}" data-rsfield="${s.id}|endDate" style="padding:6px 8px;border:1.5px solid ${s.endDate?'#e0a000':'var(--line)'};border-radius:8px;font-family:inherit"></label>`:''}
       ${dispStatus!=='퇴원'?`<label style="font-size:.78rem;font-weight:700;color:var(--sub);display:flex;align-items:center;gap:5px" title="다음달부터 등원하는 신입·재등록 학생이면 첫 등원일을 적어두세요 — 그 전에는 이번 달 출석·숙제·상담 명단에 안 나오고, 그 달 반 명단에 자동으로 들어가요">등원 시작일 <input type="date" value="${esc(s.startDate||'')}" data-rsfield="${s.id}|startDate" style="padding:6px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit"></label>`:''}
     </div>
     ${stuStatusHist(s).length?`<div style="margin-bottom:8px;padding:8px 10px;border:1px dashed var(--line);border-radius:8px"><div style="font-size:.78rem;font-weight:700;color:var(--sub);margin-bottom:4px">📅 상태 변경 이력 <span style="font-weight:400">(날짜를 고치면 그 달 통계에 잡혀요)</span></div>
@@ -8232,8 +8235,25 @@ function nsJoinedThisMonth(c, sname){
 // 퇴원한 학생은 상담 명단에서 뺀다 — 단, 이번 달에 이미 상담 기록(완료 체크·내용)이 있으면 기록 보존을 위해 남긴다
 // 퇴원생은 반 담당 선생님 상담 대상이 아니다(데스크 선생님이 퇴원생 연락으로 따로 관리) → 반 상담 명단에서 항상 뺀다
 function consultRoster(c){ const useStart=hasStartDates(); return (c.students||[]).filter(sname=>{ if(nsJoinedThisMonth(c,sname) || isWithdrawnRosterName(c.academy,sname,c.name)) return false;
-  if(useStart){ const st=matchStudentByRosterName(c.academy,sname,c.name); if(st && st.startDate && String(st.startDate).slice(0,7)>state.month) return false; } // 다음 달부터 등원하는 학생은 이번 달 일반 상담 명단에 안 뜸
+  if(useStart){ const st=matchStudentByRosterName(c.academy,sname,c.name); if(st && ((st.startDate && String(st.startDate).slice(0,7)>state.month) || (st.endDate && String(st.endDate).slice(0,7)<state.month))) return false; } // 다음 달부터 등원하는 학생은 이번 달 일반 상담 명단에 안 뜸
   return true; }); }
+// 퇴원 예정일이 지난 달의 학생은 다음 달이 되면 자동으로 퇴원 처리하고 퇴원생 연락(상담)을 등록한다 — 퇴원일은 예정일로 남긴다
+function ensureWithdrawalsDue(){
+  try{
+    const tm=todayISO().slice(0,7); let ch=false;
+    store.students.forEach(st=>{
+      if(!st||st._deleted||!st.endDate||(st.status||'재원')!=='재원'||String(st.endDate).slice(0,7)>=tm) return;
+      const outClass=classNameInMonth(st,shiftMonth(tm,-1))||st.className||'';
+      st.sl=st.sl||[]; st.sl.push({m:String(st.endDate).slice(0,7), s:'퇴원', d:st.endDate});
+      st.status='퇴원'; st.updatedAt=Date.now();
+      try{ removeStudentFromActiveRosters(st.academy, st.nameKo, st.nameEn, st); }catch(e){}
+      st.className='';
+      const ex=ensureDropoutOnWithdraw(st, outClass); if(ex){ ex.outDate=st.endDate; ex.updatedAt=Date.now(); }
+      ch=true;
+    });
+    if(ch) save(); return ch;
+  }catch(e){ return false; }
+}
 // 등원 시작일이 이번 달인 학생은 신입생 상담에 자동 등록한다(이미 등록돼 있거나 삭제했던 학생은 건드리지 않음)
 function ensureNewStudentsOnStart(){
   try{
@@ -8870,7 +8890,7 @@ function csTouch(d){ d.updatedAt=Date.now(); save(); }
 function csMonth(a){ try{ const d=(store.compSeats||{})[csKey(a||state.csA)]; return (d&&d.baseMonth==='next')?shiftMonth(state.month,1):state.month; }catch(e){ return state.month; } }
 // 그 기준 달에 등원하는 학생인지 — 재원(등원 시작일이 그 달 이후면 제외) / 휴원 중이어도 복귀 예정일이 그 달 안이면 포함
 function csActiveIn(st,a){ const m=csMonth(a||st.academy); const s=st.status||'재원';
-  if(s==='재원') return !st.startDate || String(st.startDate).slice(0,7)<=m;
+  if(s==='재원') return (!st.startDate || String(st.startDate).slice(0,7)<=m) && (!st.endDate || String(st.endDate).slice(0,7)>=m);
   if(s==='휴원'){ if(!st.returnDate || String(st.returnDate).slice(0,7)>m) return false; return m!==state.month || String(st.returnDate)<=todayISO(); } // 다음 달 기준이면 복귀 예정일이 그 달 안인 휴원생도 포함, 이번 달 기준이면 이미 복귀일이 지난 학생만
   return false; }
 function csLevelOf(st){
@@ -9446,7 +9466,7 @@ function renderMyConsult(list){
 }
 
 function renderConsult(list){
-  ensureNewStudentsOnStart();
+  ensureNewStudentsOnStart(); ensureWithdrawalsDue();
   // 반 명단에 이름이 남아 있어도 퇴원생·이번 달 신입생(신입생 상담으로 따로 진행)만 있으면 상담할 학생이 0명이라
   // 반 카드만 뜨고 입력 칸은 안 나오는 문제가 있었다 → 실제 상담 대상(consultRoster)이 있는 반만 보여준다
   list=list.filter(c=>c.students && c.students.length>0 && consultRoster(c).length>0);
@@ -10203,13 +10223,13 @@ function activeStudents(c){
   const useStart=hasStartDates(); const vm=state.month||'';
   return (c.students||[]).filter(sname=>{
     if(isWithdrawnRosterName(c.academy, sname, c.name)) return false;
-    if(useStart){ const st=matchStudentByRosterName(c.academy, sname, c.name); if(st && st.startDate && String(st.startDate).slice(0,7)>vm) return false; } // 다음달부터 등원하는 학생은 이번 달 명단에서는 숨김
+    if(useStart){ const st=matchStudentByRosterName(c.academy, sname, c.name); if(st && st.startDate && String(st.startDate).slice(0,7)>vm) return false; if(st && st.endDate && String(st.endDate).slice(0,7)<vm) return false; } // 다음달부터 등원하는 학생은 이번 달 명단에서는 숨김 · 퇴원 예정일이 지난 달이면 빠짐
     return true;
   });
 }
 // 등원 시작일이 적힌 학생이 하나라도 있는지(저장할 때마다 새로 계산)
 let __startDatesCache={seq:-1,v:false};
-function hasStartDates(){ const seq=window.__saveSeq||0; if(__startDatesCache.seq!==seq){ __startDatesCache={seq,v:(store.students||[]).some(s=>s&&!s._deleted&&s.startDate)}; } return __startDatesCache.v; }
+function hasStartDates(){ const seq=window.__saveSeq||0; if(__startDatesCache.seq!==seq){ __startDatesCache={seq,v:(store.students||[]).some(s=>s&&!s._deleted&&(s.startDate||s.endDate))}; } return __startDatesCache.v; }
 // 학생 한 명을 그 달(month)의 자기 반 명단에 넣어둔다 — 다음달 등원(신입·복귀) 학생이 다음달 반 명단·교재 필요 권수·자리표 후보에 잡히게 한다
 function stuPlaceInMonth(s, month){
   if(!s || !s.className || !month) return false;
@@ -12854,6 +12874,35 @@ function hgMoveGroupTo(a, targetMonth, key, targetKey){
   keys.splice(from,1); keys.splice(to,0,key);
   g.groupOrder=keys; g.updatedAt=Date.now(); save(); return true;
 }
+// ===== 내신 묶음 — 학교+학년(+A/B반)별로 한 번만 적는다. 학생은 원래 반에 그대로 있고, 인수인계표·연간 교재표에는 그 달만 반영된다 =====
+function nsgList(a,m){ return (store.naesinGroups||[]).filter(g=>!g._deleted && g.academy===a && (g.months||[]).includes(m)); }
+function nsgName(g){ const sc=String(g.school||'').trim(), gr=String(g.grade||'').trim(); const base=(sc&&gr&&sc.slice(-1)===gr[0])?sc+gr.slice(1):sc+gr; return (base||'새 묶음')+' 내신'+(g.section?' '+g.section:''); }
+const nsgNk=x=>norm(x).replace(/[^0-9a-z가-힣]/g,'');
+function nsgClassNames(a,m){ const set=new Set(); nsgList(a,m).forEach(g=>(g.studentIds||[]).forEach(id=>{ const st=store.students.find(x=>x.id===id&&!x._deleted); if(!st) return; const cn=classNameInMonth(st,m)||st.className; if(cn) set.add(nsgNk(cn)); })); return set; }
+function nsgCandidates(a,g){ const sch=norm(g.school||''); const sel=new Set(g.studentIds||[]);
+  return store.students.filter(st=>{ if(st._deleted||st.academy!==a) return false; if(sel.has(st.id)) return true; if((st.status||'재원')!=='재원') return false;
+    if(sch){ const ss=norm(st.school||''); if(!ss || !(ss.includes(sch)||sch.includes(ss))) return false; }
+    if(g.grade && gradeTag(st.grade,st)!==g.grade) return false; return true; }).sort((x,y)=>String(x.nameKo).localeCompare(String(y.nameKo),'ko')); }
+function nsgHTML(a,m){
+  const gs=nsgList(a,m); const inp=(g,f,ph,w)=>`<input data-nsg="${g.id}|${f}" value="${esc(g[f]||'')}" placeholder="${ph}" style="width:${w}px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem">`;
+  const cards=gs.map(g=>{ const sel=new Set(g.studentIds||[]); const cands=nsgCandidates(a,g);
+    return `<div style="border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-top:8px;background:#fff">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><b style="min-width:120px">${esc(nsgName(g))}</b>
+        ${inp(g,'school','학교(예: 인화중)',110)}${inp(g,'grade','학년(예: 중3)',70)}${inp(g,'section','반(A/B)',64)}${inp(g,'teacher','담당',80)}${inp(g,'book','교재',150)}${inp(g,'progress','진도',100)}
+        <button class="btn small" data-nsgnext="${g.id}" title="다음 달에도 같은 묶음을 쓸 때">다음 달에도</button><button class="btn small" data-nsgdel="${g.id}">이 달에서 빼기</button></div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:6px;font-size:.8rem">${cands.length?cands.map(st=>`<label style="cursor:pointer;white-space:nowrap"><input type="checkbox" data-nsgst="${g.id}|${st.id}" ${sel.has(st.id)?'checked':''}> ${esc(st.nameKo)}<span style="color:var(--sub)"> ${esc(classNameInMonth(st,m)||st.className||'')}</span></label>`).join(''):'<span style="color:var(--sub)">학교·학년을 적으면 맞는 학생이 여기 뜹니다</span>'}</div>
+      ${g.note!==undefined||true?`<div style="margin-top:6px">${inp(g,'note','메모(시험 범위 등)',420)}</div>`:''}</div>`; }).join('');
+  return `<details class="setsec" data-fold="hgNsg" ${(state.fold||{}).hgNsg===false?'':'open'} style="margin-bottom:10px"><summary style="cursor:pointer;font-weight:800">📝 ${mLabel(m)} 내신 묶음 <span style="font-weight:400;font-size:.76rem;color:var(--sub)">(${gs.length}개 · 학교+학년(+반)별로 한 번만 적어요 · 학생은 원래 반에 그대로 · 이 달만 표시돼요)</span></summary>${cards}<div style="margin-top:8px"><button class="btn small" id="nsgAdd">➕ 내신 묶음 추가</button></div></details>`;
+}
+function nsgBind(v,a,m){
+  const ch=()=>{ save(); render(true); };
+  const find=id=>(store.naesinGroups||[]).find(g=>g.id===id);
+  const add=v.querySelector('#nsgAdd'); if(add) add.onclick=()=>{ store.naesinGroups.push({id:genClassId(),academy:a,school:'',grade:'',section:'',teacher:'',book:'',progress:'',note:'',months:[m],studentIds:[],updatedAt:Date.now()}); ch(); };
+  v.querySelectorAll('[data-nsg]').forEach(i=>i.onchange=()=>{ const [id,f]=i.dataset.nsg.split('|'); const g=find(id); if(!g) return; g[f]=i.value.trim(); g.updatedAt=Date.now(); ch(); });
+  v.querySelectorAll('[data-nsgst]').forEach(i=>i.onchange=()=>{ const [id,sid]=i.dataset.nsgst.split('|'); const g=find(id); if(!g) return; const set=new Set(g.studentIds||[]); if(i.checked) set.add(sid); else set.delete(sid); g.studentIds=[...set]; g.updatedAt=Date.now(); ch(); });
+  v.querySelectorAll('[data-nsgnext]').forEach(b=>b.onclick=()=>{ const g=find(b.dataset.nsgnext); if(!g) return; const nm=shiftMonth(m,1); if(!(g.months||[]).includes(nm)) g.months.push(nm); g.updatedAt=Date.now(); alert(mLabel(nm)+'에도 같은 묶음을 쓰도록 했어요.'); ch(); });
+  v.querySelectorAll('[data-nsgdel]').forEach(b=>b.onclick=()=>{ const g=find(b.dataset.nsgdel); if(!g) return; g.months=(g.months||[]).filter(x=>x!==m); if(!g.months.length) g._deleted=true; g.updatedAt=Date.now(); ch(); });
+}
 function renderHandoverGrid(){
   state.hgMonth=state.hgMonth||shiftMonth(effectiveCurrentMonth(),1); // 기본값: 다음 달 인수인계표(이번 달에 다음 달 걸 작성하는 게 보통이므로) — 강제 지정된 달이 있으면 그 달 기준 다음 달
   const targetMonth=state.hgMonth, prevMonth=shiftMonth(targetMonth,-1);
@@ -12927,6 +12976,7 @@ function renderHandoverGrid(){
     h+=`<div class="empty">${prevLabel}에 등록된 반·과목 자료가 없어 표를 만들 수 없습니다. [반 · 교재]에서 ${prevLabel} 자료를 먼저 입력해주세요.</div>`;
     return h;
   }
+  h+=nsgHTML(a,targetMonth);
   // 같은 반(prevClass) 묶음끼리 반명 칸을 세로로 합쳐서 보여준다 (원본 인수인계표 양식처럼)
   // 반(그룹) 순서는 기본적으로 초등 → 중등 → 고등, 각 부서 안에서는 반 이름에 들어있는 숫자(학년/급수) 오름차순이지만,
   // 선생님이 ▲▼ 버튼으로 직접 옮긴 순서(g.groupOrder)가 있으면 그 순서가 우선한다 (저장된 rows 순서 자체는 안 건드림)
@@ -13203,6 +13253,7 @@ function bindHandoverGrid(){
   v.querySelectorAll('.hgmb').forEach(b=>b.onclick=e=>{ e.stopPropagation(); const pn=b.nextElementSibling; const open=pn.style.display==='flex'; v.querySelectorAll('.hgmp').forEach(x=>x.style.display='none'); pn.style.display=open?'none':'flex'; });
   v.querySelectorAll('.hgmp').forEach(pn=>pn.addEventListener('click',e=>{ if(e.target.closest('button.btn') && !e.target.closest('#hgColsBtn')) pn.style.display='none'; }));
   if(!window.__hgMenuBound){ window.__hgMenuBound=true; document.addEventListener('click',e=>{ if(e.target.closest('.hgm')) return; document.querySelectorAll('.hgmp').forEach(x=>x.style.display='none'); }); }
+  nsgBind(v,a,state.hgMonth||shiftMonth(effectiveCurrentMonth(),1));
   const cb=v.querySelector('#hgColsBtn'), cm=v.querySelector('#hgColsMenu');
   if(cb&&cm){ cb.onclick=e=>{ e.stopPropagation(); cm.style.display=cm.style.display==='none'?'block':'none'; }; cm.onclick=e=>e.stopPropagation();
     document.addEventListener('click', ()=>{ if(cm.isConnected) cm.style.display='none'; }, {once:true}); }
@@ -13288,7 +13339,7 @@ function yearlyPivot(a){
   const rows={}, order=[];
   ms.forEach(m=>{
     (dataFor(a,m)||[]).forEach(c=>{
-      const nsMark=(c.subjects||[]).some(x=>/내신/.test(String(x.subject||''))); // 내신 기간이면 그 반의 첫 과목 줄에 '내신'만 표시(엑셀 연간표와 같은 방식)
+      const nsMark=nsgClassNames(a,m).has(nsgNk(c.name)) || (c.subjects||[]).some(x=>/내신/.test(String(x.subject||''))); // 내신 기간이면 그 반의 첫 과목 줄에 '내신'만 표시(엑셀 연간표와 같은 방식)
       const nsFirst=(c.subjects||[]).find(x=>(x.subject||x.book) && !/내신/.test(String(x.subject||'')) && !isHandoverExcludedSubj(x.subject)); // IBT·단어시험 같은 줄 말고 첫 교재 과목 줄
       let nsDone=false;
       (c.subjects||[]).forEach(s=>{
