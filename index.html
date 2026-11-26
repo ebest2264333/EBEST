@@ -2217,7 +2217,9 @@ function activeStudentsForDate(c, dateStr){
   mvs.forEach(x=>{ if(x.to===c.name) list=list.filter(n=>n!==x.name); if(x.from===c.name && !list.includes(x.name)) list=list.concat([x.name]); });
   // 휴원 중인 학생은 휴원이 시작된 날부터 출석부·숙제 체크 명단에서 뺀다 (그 전 날짜 기록은 그대로 남는다)
   const ds=String(dateStr||'');
-  list=list.filter(n=>{ const st=matchStudentByRosterName(c.academy,n,c.name); if(!st||st.status!=='휴원') return true;
+  list=list.filter(n=>{ const st=matchStudentByRosterName(c.academy,n,c.name); if(st && st.startDate && ds && ds<st.startDate) return false; // 등원 시작일 전에는 명단에서 제외
+    if(!st||st.status!=='휴원') return true;
+    if(st.returnDate && ds && ds>=st.returnDate) return true; // 복귀 예정일부터는 자동으로 다시 출석 명단에 포함
     const hs=(st.sl||[]).filter(e=>e&&e.s==='휴원'); const e=hs.length?hs[hs.length-1]:null;
     const from=e?(e.d||((e.m||'')?e.m+'-01':'')):''; return !!(from && ds && ds<from); });
   return list;
@@ -2809,7 +2811,24 @@ function renderOverview(){
     dayCls(d).forEach(c=>activeStudentsForDate(c,d).forEach(s=>{ tot++; const a=attStatusAgg(c,w,s,at); if(!a) return; chk++;
       if(a==='결'){ abs++; rows.push({c,s,a}); } else if(a==='지'){ late++; rows.push({c,s,a}); } else if(a==='조퇴') rows.push({c,s,a}); }));
     return {tot,chk,abs,late,rows,rate:chk?Math.round((chk-abs)/chk*100):null}; };
-  const tc=dayCls(today); const at=store.attend[today]||{}, hw=store.homework[today]||{};
+  const tc=dayCls(today);
+  // 학생 명단에 등록해 둔 결석 예정·지각 예정이 오늘을 포함하면, 수업일지 탭을 안 열어도 홈(전체 현황)에서 바로 결석·지각으로 보이게 자동 입력해 둔다
+  try{ let ch=false; const atT=atFor(today), hwT=hwFor(today);
+    const runAbs=(cl,mp)=>{
+      const allKeys=(mp && !daySubjectNames(cl, wd).length) ? attKeysWithOwner(mp, ckey(cl), wd) : attKeysFor(cl, wd); const k=ckey(cl);
+      activeStudentsForDate(cl, today).forEach(sname=>{
+        const st=matchStudentByRosterName(cl.academy, sname, cl.name); if(!st || st.status==='퇴원') return;
+        if(st.lateDate===today){ const f0=allKeys[0]; if(f0){ atT[f0.key]=atT[f0.key]||{}; if(!atT[f0.key][sname]){ atT[f0.key][sname]='지'; ch=true; } }
+          const lr=[st.lateTime?st.lateTime+' 도착':'', st.lateReason||''].filter(Boolean).join(' · ');
+          if(lr){ hwT[k]=hwT[k]||{}; hwT[k][sname]=hwT[k][sname]||{}; if(!hwT[k][sname].absReasonToday){ hwT[k][sname].absReasonToday=lr; ch=true; } } }
+        if(!st.absFrom) return; const to=st.absTo||st.absFrom; if(!(today>=st.absFrom && today<=to)) return;
+        allKeys.forEach(({key})=>{ atT[key]=atT[key]||{}; if(!atT[key][sname]){ atT[key][sname]='결'; ch=true; } });
+        if(st.absReason){ hwT[k]=hwT[k]||{}; hwT[k][sname]=hwT[k][sname]||{}; if(!hwT[k][sname].absReasonToday){ hwT[k][sname].absReasonToday=st.absReason; ch=true; } }
+      }); };
+    tc.forEach(c=>{ runAbs(c); const partner=mergedCounterpart(c); if(partner && (classMeets(partner, wd) || !(partner.subjects||[]).some(x=>subjOnDay(x,wd))) && partner.students && partner.students.length) runAbs(partner, c); });
+    if(ch) save();
+  }catch(e){ console.warn('auto absence(home)',e); }
+  const at=store.attend[today]||{}, hw=store.homework[today]||{};
   const tAtt=dayAtt(today);
   // 선생님별 오늘 현황
   const wk0=weekOf(today)[0];
@@ -5129,6 +5148,8 @@ function updateStudentField(id, field, value){
     if(value && !s.alertDate){ s.alertDate=todayISO(); s.alertDateEnd=todayISO(); } // 날짜를 안 정하면 오늘 하루만 노출
     if(!value){ s.alertDate=''; s.alertDateEnd=''; } // 공지 지우면 노출 기간도 같이 초기화
   }
+  if((field==='startDate'||field==='returnDate') && value){ // 다음달 등원(신입·복귀) — 그 달 반 명단에 미리 넣어둔다
+    const mm=String(value).slice(0,7); if(stuPlaceInMonth(s,mm)) toast(`${s.nameKo} — ${mm.slice(5)}월 ${s.className} 명단에 넣어뒀어요`); else if(!s.className) toast('반을 먼저 정하면 그 달 반 명단에도 넣어둘게요'); }
   if(field==='absFrom' && value && !s.absTo) s.absTo=value; // 끝나는 날짜를 안 적으면 하루만 결석으로 처리
   save(); render(true);
 }
@@ -5436,6 +5457,7 @@ function studentCard(s, admin){
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
       <input type="text" value="${esc(s.nameKo)}" placeholder="한글이름" data-rsfield="${s.id}|nameKo" style="width:110px;font-weight:800;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
       <input type="text" value="${esc(s.nameEn||'')}" placeholder="영어이름" data-rsfield="${s.id}|nameEn" style="width:110px;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
+      ${s.startDate?(()=>{ const fut=s.startDate>todayISO(); return `<span title="등원 시작일 ${esc(s.startDate)}" style="font-size:.72rem;font-weight:800;padding:3px 8px;border-radius:999px;background:${fut?'#fff4d6':'#eef1f8'};color:${fut?'#9a6a00':'var(--sub)'};white-space:nowrap">${fut?'🗓 등원 예정 ':'등원 시작 '}${esc(s.startDate.slice(5).replace('-','/'))}</span>`; })():''}
       <span style="display:inline-flex;align-items:center;gap:4px">
         <select data-rsfield-stage="${s.id}|className" title="반 — 이번 달 반 목록에서 고르기" style="min-width:110px;padding:7px 9px;border:1.5px solid ${('className' in pending)?'#f0c987':'var(--line)'};border-radius:8px;font-family:inherit;background:#fff">
           <option value="" ${dispClassName?'':'selected'}>반 선택 (미배정)</option>
@@ -5454,6 +5476,7 @@ function studentCard(s, admin){
       </select>${('status' in pending)?`<input type="date" value="${esc(pending.statusDate||todayISO())}" data-rsfield-stage="${s.id}|statusDate" title="상태가 바뀌는(바뀐) 날짜" style="padding:6px 8px;border:1.5px solid #f0c987;border-radius:8px;font-family:inherit">`:''}${pendingNote('status')}
       ${dispStatus!=='재원'?`<input type="text" value="${esc(dispStatusReason)}" placeholder="${esc(dispStatus)} 사유" data-rsfield-stage="${s.id}|statusReason" style="flex:1;min-width:140px;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">`:''}
       ${dispStatus==='휴원'?`<label style="font-size:.78rem;font-weight:700;color:var(--sub);display:flex;align-items:center;gap:5px">복귀 예정일 <input type="date" value="${esc(('returnDate' in pending)?pending.returnDate:(s.returnDate||''))}" data-rsfield-stage="${s.id}|returnDate" title="복귀 날짜가 확정되면 적어두세요 — 일주일 전부터 '복귀 확인 연락' 대상으로 떠요" style="padding:6px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit"></label>`:''}
+      ${dispStatus!=='퇴원'?`<label style="font-size:.78rem;font-weight:700;color:var(--sub);display:flex;align-items:center;gap:5px" title="다음달부터 등원하는 신입·재등록 학생이면 첫 등원일을 적어두세요 — 그 전에는 이번 달 출석·숙제·상담 명단에 안 나오고, 그 달 반 명단에 자동으로 들어가요">등원 시작일 <input type="date" value="${esc(s.startDate||'')}" data-rsfield="${s.id}|startDate" style="padding:6px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit"></label>`:''}
     </div>
     ${stuStatusHist(s).length?`<div style="margin-bottom:8px;padding:8px 10px;border:1px dashed var(--line);border-radius:8px"><div style="font-size:.78rem;font-weight:700;color:var(--sub);margin-bottom:4px">📅 상태 변경 이력 <span style="font-weight:400">(날짜를 고치면 그 달 통계에 잡혀요)</span></div>
       ${stuStatusHist(s).map(e=>`<div style="display:flex;gap:6px;align-items:center;margin-top:4px">${e.i>=0?`<input type="date" value="${esc(e.d)}" data-sldate="${s.id}|${e.i}" style="padding:4px 7px;border:1.5px solid var(--line);border-radius:7px;font-family:inherit;font-size:.82rem">`:`<span style="font-size:.82rem;min-width:118px">${esc(e.d)}</span>`}<b style="font-size:.84rem;color:${e.s==='퇴원'?'#c0392b':e.s==='휴원'?'#b45309':'#0e9f6e'}">${esc(e.s)}</b>${e.i>=0?`<b data-sldel="${s.id}|${e.i}" title="이 이력 지우기" style="cursor:pointer;color:#c0392b;margin-left:2px">×</b>`:''}</div>`).join('')}</div>`:''}
@@ -7658,6 +7681,20 @@ function renderWordRange(list){
   if(state.wrMode==='make'||state.wrMode==='manage') return wordModeBarHTML()+'<div id="wmRoot"></div>';
   return wordModeBarHTML()+renderWordRange0(list);
 }
+// 단어 범위 표를 엑셀처럼 — 단어시험만 보는 반의 칸은 범위·맞은 개수를 작은 입력칸으로 바로 고친다
+function wrIsExcelCell(s){ try{ const cls=classOfStudent(s, state.month); if(!cls) return false; return classWordTestOn(cls) && !classMockExamOn(cls) && !classNsWordOn(cls); }catch(e){ return false; } }
+function wrxCell(s, d){
+  const rec=store.wordTests.find(x=>x.studentId===s.id && x.date===d)||null;
+  const prev=rec?null:prevWordTestFor(s.id, d);
+  const base=rec||(prev?{wordbook:prev.wordbook||'',lang:prev.lang||''}:{});
+  if(rec && rec.absent) return `<label style="font-size:.72rem;color:#6b7280;font-weight:800;white-space:nowrap" title="누르면 미응시 해제"><input type="checkbox" data-wtabsent="${s.id}|${d}" checked> 미응시</label>`;
+  const IN='box-sizing:border-box;width:100%;padding:3px 5px;border:1px solid var(--line);border-radius:4px;font-family:inherit;font-size:.78rem;background:#fff';
+  const rng=`<input class="wrx" data-f="range" type="text" data-wtfield="${s.id}|${d}|range" value="${esc(base.range||'')}" placeholder="범위" style="${IN}">`;
+  let sc=wtScoreInput(s,d,{...base,range:base.range||''},'',false,'');
+  sc=sc.replace(/<input /g,'<input class="wrx" ').replace(/data-wtfield="([^"|]*\|[^"|]*\|([^"]*))"/g,'data-wtfield="$1" data-f="$2"').replace(/width:78px;/g,'width:100%;').replace(/padding:5px 8px;/g,'padding:3px 5px;').replace(/<span style="font-size:\.7rem;color:var\(--sub\)">\([^<]*<\/span>/g,'');
+  const wbTxt=[wbShort(base.wordbook),String(base.wordbook||'').includes('내신')?'':base.lang].filter(Boolean).join(' ');
+  return `<div style="display:flex;flex-direction:column;gap:2px">${rng}${sc}<div style="display:flex;align-items:center;gap:4px;font-size:.66rem;color:var(--sub)"><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(wbTxt)}">${esc(wbTxt||'단어장 없음')}</span><button type="button" data-wrfull="${s.id}|${d}" title="단어장·유형·재시험 등 자세히 바꾸기" style="border:0;background:none;cursor:pointer;padding:0 2px">⚙</button><button type="button" data-wrabs="${s.id}|${d}" title="이 날 미응시" style="border:0;background:none;cursor:pointer;padding:0 2px;color:#9ca3af">✕</button></div></div>`;
+}
 function renderWordRange0(list){
   let h=`<div class="todaybar"><span class="wd">${mLabel(state.month)} 단어 범위</span>
     <span style="font-size:.76rem;color:var(--sub)">반별로 그날 시험 본 단어장·유형·범위를 한눈에 확인합니다. 결석 처리된 날은 자동으로 "미응시"로 표시됩니다.</span></div>`;
@@ -7710,8 +7747,10 @@ function renderWordRange0(list){
         // 관리자거나, 그 날짜(요일 기준) 이 반의 단어시험 담당으로 지정된 선생님이면서 "반 전체 수정"이 켜져 있으면 그 칸을 편집칸으로 보여준다.
         const canEdit = !!stRec && (admin || (lt && wordDutyForDay(c, wdOf(d))===lt.t.id));
         const isOpen = classEditOpen && canEdit;
-        const cellHtml = isOpen ? `<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:flex-start">${wtFieldsFor(stRec, d)}</div>` : cell;
-        row+=`<td style="min-width:${isOpen?170:56}px">${cellHtml}</td>`;
+        // 단어시험만 보는 반은 엑셀처럼 한 줄 칸(범위·맞은 개수)에 바로 입력 — Enter/↑↓는 아래·위 칸, Tab은 오른쪽 칸. 단어장·유형 변경이나 모의고사·내신단어 반은 ⚙로 자세한 칸을 연다
+        const xl = isOpen && wrIsExcelCell(stRec) && !(state.wrFull&&state.wrFull[stRec.id+'|'+d]);
+        const cellHtml = isOpen ? (xl ? wrxCell(stRec, d) : `<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:flex-start">${wtFieldsFor(stRec, d)}</div>`) : cell;
+        row+=`<td style="min-width:${isOpen?(xl?96:170):56}px;${xl?'padding:3px 4px;vertical-align:top':''}">${cellHtml}</td>`;
       });
       row+='</tr>';
       h+=row;
@@ -7734,9 +7773,29 @@ function bindWordRange(){
   });
   v.querySelectorAll('[data-wrcloseclass]').forEach(b=>b.onclick=(e)=>{
     e.preventDefault(); e.stopPropagation();
-    state.wrEditClass=null;
+    state.wrEditClass=null; state.wrFull=null;
     render(true);
   });
+  // 엑셀식 칸: Enter·↓ 아래 칸 / ↑ 위 칸 / Tab·Shift+Tab 옆 칸으로 이동하고, 값을 고치면 저장 후 포커스를 그대로 이어 준다
+  v.querySelectorAll('[data-wrfull]').forEach(b=>b.onclick=()=>{ state.wrFull=state.wrFull||{}; state.wrFull[b.dataset.wrfull]=true; render(true); });
+  v.querySelectorAll('[data-wrabs]').forEach(b=>b.onclick=()=>{ const [sid,date]=b.dataset.wrabs.split('|'); const s=store.students.find(x=>x.id===sid); if(s) upsertWordTest(sid,s.academy,date,'absent',true); });
+  const wrNav=(el,dir)=>{
+    const td=el.closest('td'), tr=td.parentElement, f=el.dataset.f; let target=null;
+    if(dir==='down'||dir==='up'){ let row=dir==='down'?tr.nextElementSibling:tr.previousElementSibling;
+      while(row){ const c=row.cells[td.cellIndex]; const x=c&&c.querySelector('input.wrx[data-f="'+f+'"]'); if(x){ target=x; break; } row=dir==='down'?row.nextElementSibling:row.previousElementSibling; } }
+    else { const all=[...el.closest('table').querySelectorAll('input.wrx')]; target=all[all.indexOf(el)+(dir==='next'?1:-1)]; }
+    if(!target) return;
+    if(el.value!==el.defaultValue){ state.wrFocus=target.dataset.wtfield; el.blur(); } else { target.focus(); if(target.select) target.select(); }
+  };
+  v.querySelectorAll('input.wrx').forEach(el=>{
+    el.addEventListener('keydown',e=>{
+      if(e.key==='Enter'||e.key==='ArrowDown'){ e.preventDefault(); wrNav(el,'down'); }
+      else if(e.key==='ArrowUp'){ e.preventDefault(); wrNav(el,'up'); }
+      else if(e.key==='Tab'){ e.preventDefault(); wrNav(el,e.shiftKey?'prev':'next'); }
+    });
+    el.addEventListener('focus',()=>{ if(el.select) setTimeout(()=>{ try{ el.select(); }catch(_){} },0); });
+  });
+  if(state.wrFocus){ const key=state.wrFocus; state.wrFocus=null; const t=[...v.querySelectorAll('input.wrx')].find(x=>x.dataset.wtfield===key); if(t){ t.focus(); } }
   // 수정 칸 자체(단어장·유형·범위·점수·미응시 등)는 [단어시험] 탭과 똑같은 입력칸을 그대로 재사용하므로,
   // 저장 핸들러도 그대로 재사용한다(각 입력칸에 날짜가 이미 박혀 있어서 날짜가 여러 개 섞여 있어도 문제없다).
   bindWordTest();
@@ -7764,7 +7823,7 @@ function hwTargetsFor(c,k,d,subj){
   const out=[];
   (c.students||[]).forEach(st=>{
     if(subj){
-      const selfExcl=isNoHwSubj(subj)&&!prevIndivHwText(c,k,st,subj,d,true);
+      const selfExcl=isNoHwSubj(subj)&&!prevIndivHwText(c,k,st,subj,d,true)&&!prevClassHwText(c,k,subj,d);
       const blankExcl=!isNoHwSubj(subj) && hwBlankPrev(c,k,subj,d,st,true) && !(((((store.homework[d]||{})[k])||{})[st])||{}).doneSubjects?.[subj];
       if(!subjectMeetsOnDate(c,subj,d)||noHwMapFor(k,d)[noHwStoreKey(subj)]||selfExcl||blankExcl) return;
       out.push({st,subs:[subj],multi:true});
@@ -7831,7 +7890,7 @@ function renderHwRange(list){
         let row=`<tr><td class="nm">${hl(studentDisplayName(c.academy,s,nm))}</td>`;
         dates.forEach(d=>{
           // IBT·L/C는 기본 숙제없음 취급 — 지난 수업 때 이 학생에게 개별 숙제를 적어준 경우에만 체크 대상에 포함
-          const selfStudyExcluded = isNoHwSubj(subj) && !prevIndivHwText(cc, kk, s, subj, d, true);
+          const selfStudyExcluded = isNoHwSubj(subj) && !prevIndivHwText(cc, kk, s, subj, d, true) && !prevClassHwText(cc, kk, subj, d);
           if(!subjectMeetsOnDate(cc, subj, d) || noHwMapFor(kk, d)[noHwStoreKey(subj)] || selfStudyExcluded){ row+=`<td class="mk" style="cursor:default;color:#c8ccd6">-</td>`; return; }
           applicable++;
           const rec=(store.homework[d]&&store.homework[d][kk])?store.homework[d][kk][s]:null;
@@ -8789,15 +8848,22 @@ function csPrevInfo(a){
 }
 function csEditing(){ return csCanEdit() && !!state.csUnlock; }
 function csTouch(d){ d.updatedAt=Date.now(); save(); }
+// 자리표 기간마다 "이번 달 기준 / 다음 달 기준"을 고를 수 있다 — 다음 달 기준이면 다음 달 시간표(어학실 수업)·반 명단으로 배치 대상을 구성한다
+function csMonth(a){ try{ const d=(store.compSeats||{})[csKey(a||state.csA)]; return (d&&d.baseMonth==='next')?shiftMonth(state.month,1):state.month; }catch(e){ return state.month; } }
+// 그 기준 달에 등원하는 학생인지 — 재원(등원 시작일이 그 달 이후면 제외) / 휴원 중이어도 복귀 예정일이 그 달 안이면 포함
+function csActiveIn(st,a){ const m=csMonth(a||st.academy); const s=st.status||'재원';
+  if(s==='재원') return !st.startDate || String(st.startDate).slice(0,7)<=m;
+  if(s==='휴원'){ if(!st.returnDate || String(st.returnDate).slice(0,7)>m) return false; return m!==state.month || String(st.returnDate)<=todayISO(); } // 다음 달 기준이면 복귀 예정일이 그 달 안인 휴원생도 포함, 이번 달 기준이면 이미 복귀일이 지난 학생만
+  return false; }
 function csLevelOf(st){
   const g=gradeTag(st.grade, st); const m=g.match(/^[초중고]/); if(m) return m[0];
-  const cn=classNameInMonth(st,state.month)||st.className||'';
-  const cv=csNameVariants(cn); const c=classesFor(state.month).find(x=>x.academy===st.academy && x.name===cn) || classesFor(state.month).find(x=>x.academy===st.academy && csNameVariants(x.name).some(v=>cv.includes(v)));
+  const _m=csMonth(st.academy); const cn=classNameInMonth(st,_m)||st.className||'';
+  const cv=csNameVariants(cn); const c=classesFor(_m).find(x=>x.academy===st.academy && x.name===cn) || classesFor(_m).find(x=>x.academy===st.academy && csNameVariants(x.name).some(v=>cv.includes(v)));
   if(c && c.dept==='초등') return '초'; if(c && c.dept==='중등') return '중';
   return '';
 }
 function csGradeKey(st){ const g=gradeTag(st.grade, st); return /^[초중고]\d/.test(g)?g:''; }
-function csClassOf(st){ return classNameInMonth(st,state.month)||st.className||''; }
+function csClassOf(st){ return classNameInMonth(st,csMonth(st.academy))||st.className||''; }
 // 컴퓨터를 쓰는 수업은 강의실이 '어학실'인 수업뿐 — 시간표(과목표)에 어학실 수업이 있는 반의 학생만 대상이 된다
 // 합반 이름의 여러 표기를 같은 반으로 본다: "안화3B(2)" → "안화3B", "JM1,2" → "JM1","JM2"
 function csNameVariants(n){
@@ -8810,7 +8876,7 @@ function csNameVariants(n){
 function csLabClassNames(a){
   const set=new Set();
   const isLab=c=>(c.subjects||[]).some(x=>String(x.room||'').includes('어학실') || isLabSubject(x.subject));
-  classesFor(state.month).forEach(c=>{
+  classesFor(csMonth(a)).forEach(c=>{
     if(c.academy!==a || c._deleted) return;
     if(isLab(c)){ csNameVariants(c.name).forEach(x=>set.add(x)); }
     // 합반(같이 수업하는 두 반): 한쪽에만 수업 시간이 적혀 있어도 상대 반 학생까지 같이 대상이 된다
@@ -8820,7 +8886,7 @@ function csLabClassNames(a){
 }
 function csCandidates(a){
   const order={'초':0,'중':1}; const lab=csLabClassNames(a);
-  return store.students.filter(st=>st.academy===a && !st._deleted && (st.status||'재원')==='재원' && order[csLevelOf(st)]!=null && csNameVariants(csClassOf(st)).some(x=>lab.has(x)))
+  return store.students.filter(st=>st.academy===a && !st._deleted && csActiveIn(st,a) && order[csLevelOf(st)]!=null && csNameVariants(csClassOf(st)).some(x=>lab.has(x)))
     .sort((x,y)=>{ const gx=csGradeKey(x), gy=csGradeKey(y); return (order[csLevelOf(x)]-order[csLevelOf(y)]) || gx.localeCompare(gy,'ko') || csClassOf(x).localeCompare(csClassOf(y),'ko') || x.nameKo.localeCompare(y.nameKo,'ko'); });
 }
 function csNeighbors(d, i){
@@ -8837,7 +8903,7 @@ function csNeighbors(d, i){
 // 학생이 어학실을 쓰는 시간대(요일+시간). 시간이 안 겹치는 학생끼리는 같은 학년·같은 반이어도 옆자리에 앉을 수 있고, 같은 자리(같은 컴퓨터)를 나눠 써도 된다
 let csClsCache=null;
 function csSlots(st){
-  if(!csClsCache) csClsCache={list:classesFor(state.month), slots:{}};
+  if(!csClsCache) csClsCache={list:classesFor(csMonth(st.academy)), slots:{}};
   const ck=st.id; if(csClsCache.slots[ck]) return csClsCache.slots[ck];
   const cn=csClassOf(st); const cv=csNameVariants(cn); const c=csClsCache.list.find(x=>x.academy===st.academy && x.name===cn) || csClsCache.list.find(x=>x.academy===st.academy && csNameVariants(x.name).some(v=>cv.includes(v)));
   let out=[];
@@ -9091,6 +9157,7 @@ function renderSeat(){
     <h3>💻 컴퓨터 자리 배치표 <span style="font-size:.64rem;font-weight:400;color:#aab">(버전 v1106-n · 선생님 자리 칸 포함)</span> ${acs.length>1?`<select data-csa style="margin-left:8px;padding:4px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${acs.map(x=>`<option value="${x}" ${x===a?'selected':''}>${AC[x].label}</option>`).join('')}</select>`:''}</h3>
     <div class="desc">학원 전체 <b>초·중등 재원생 중 강의실이 '어학실'인 수업을 듣는 학생</b>(${cand.length}명, 어학실 수업이 있는 반 ${csLabClassNames(a).size}개)을 자리 ${seatCount}개에 자동으로 배치합니다. <b>같은 학년끼리</b>, <b>같은 반끼리</b>는 옆·앞뒤 자리에 앉지 않게 짜고, 학년·반은 학생 명단과 시간표(반)를 그대로 따릅니다. <b>어학실 이용 시간이 겹치지 않는 학생</b>은 같은 학년·같은 반이어도 옆자리에 앉을 수 있고, 한 자리(컴퓨터)를 시간대별로 나눠 써도 돼요(자리 칸 안에 학생이 여러 명 보여요). 수동으로는 학생을 눌러 고른 뒤 자리나 다른 학생을 누르면 옮기거나 서로 바꿔요. 빨간 테두리(⚠)는 규칙에 걸린 곳입니다.</div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:10px 0 0;font-size:.84rem"><b>📅 기간</b>
+      ${can?`<select data-csbase title="이 자리표를 어느 달 시간표·반 명단 기준으로 짤지" style="padding:5px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit"><option value="" ${d.baseMonth==='next'?'':'selected'}>${esc(mLabel(state.month))} 기준</option><option value="next" ${d.baseMonth==='next'?'selected':''}>${esc(mLabel(shiftMonth(state.month,1)))} 기준 (다음 달)</option></select>`:(d.baseMonth==='next'?`<span style="font-size:.78rem;font-weight:700;color:#7c3aed">${esc(mLabel(shiftMonth(state.month,1)))} 기준</span>`:'')}
       <select data-csperiod style="padding:5px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${periods.map(x=>`<option value="${esc(x[0])}" ${x[0]===pkey?'selected':''}>${esc(x[1])}</option>`).join('')}</select>
       ${can?`<button class="btn small" data-csperadd>+ 기간 추가</button>${pkey!==a?'<button class="btn small" data-csperren>이름 변경</button><button class="btn small" data-csperdel style="color:#c0392b;border-color:#e7b3ab">삭제</button>':''}`:''}
       <span style="font-size:.74rem;color:var(--sub)">시간표가 바뀌는 달·주마다 기간을 만들어 따로 저장해요 (예: 11월 1-2주 / 11월 3-4주)</span>
@@ -9134,6 +9201,7 @@ function bindSeat(){
   const v=document.getElementById('view'); const a=state.csA; const d=csGet(a);
   const q=(sel,fn)=>v.querySelectorAll(sel).forEach(fn);
   q('[data-csa]',el=>el.onchange=()=>{ state.csA=el.value; state.csSel=null; render(true); });
+  q('[data-csbase]',el=>el.onchange=()=>{ const dd=csGet(a); dd.baseMonth=el.value; csClsCache=null; csTouch(dd); render(true); });
   q('[data-csperiod]',el=>el.onchange=()=>{ state.csP=state.csP||{}; state.csP[a]=el.value; state.csSel=null; render(true); });
   q('[data-csdet]',el=>el.addEventListener('toggle',()=>{ state.csDetOpen=el.open; }));
   q('[data-csavoid]',el=>el.onchange=()=>{ d.avoidOff=!el.checked; csTouch(d); csRender(); });
@@ -9254,7 +9322,8 @@ function renderConsultRequestAdmin(){
         <button class="btn small" data-cradd="${a}">+ 요청 추가</button></div>`;
       }).join('')}
     </div>
-    ${rows||'<div style="font-size:.8rem;color:#8b93a7">등록된 상담 요청이 없습니다.</div>'}
+    ${rows?(()=>{ const pend=store.consultRequests.filter(r=>!r._deleted&&!r.done).length, all=store.consultRequests.filter(r=>!r._deleted).length;
+      return `<details data-crfold="admin" ${pend?'open':''}><summary style="cursor:pointer;font-size:.8rem;font-weight:800;color:var(--sub);margin-bottom:4px">요청 목록 ${all}건 · 대기 ${pend}건 <span style="font-weight:400">(눌러서 접기·펼치기)</span></summary>${rows}</details>`; })():'<div style="font-size:.8rem;color:#8b93a7">등록된 상담 요청이 없습니다.</div>'}
   </div>`;
 }
 function renderNewStudentAdmin(){
@@ -9348,7 +9417,8 @@ function renderMyConsult(list){
       <textarea class="cmemo" data-k="${esc(k)}" ${viewingOthers?'disabled':''} style="width:100%;min-height:50px;border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:.83rem" placeholder="상담 내용 메모… (명단 자료가 없는 반)">${esc(mCmemo()[k]||'')}</textarea></div>`; }
   });
   const myReqsHtml=renderConsultRequestsMine(a,i,true);
-  const myReqsPanel=(myReqsHtml&&!viewingOthers)?`<div class="mypanel" style="border-top-color:var(--pri)"><h2>💬 개별 상담 요청</h2>${myReqsHtml}</div>`:'';
+  const _crPend=store.consultRequests.filter(r=>!r._deleted&&r.teacherA===a&&r.teacherI===i&&!r.done).length;
+  const myReqsPanel=(myReqsHtml&&!viewingOthers)?`<div class="mypanel" style="border-top-color:var(--pri)"><details data-crfold="mine" ${_crPend?'open':''}><summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px"><h2 style="margin:0">💬 개별 상담 요청</h2><span style="font-size:.76rem;color:var(--sub)">${_crPend?`대기 ${_crPend}건`:'모두 완료'} · 눌러서 접기·펼치기</span></summary><div style="margin-top:8px">${myReqsHtml}</div></details></div>`:'';
   return teacherCards(list)+(isMe&&isAdminRole()?csRow([renderConsultRequestAdmin(),renderNewStudentAdmin(),renderDropoutAdmin()]):'')+csRow([myReqsPanel].concat(viewingOthers?[]:[renderNewStudentMine(a,i),renderDropoutMine(a,i)]))+`<div class="mypanel" style="border-top-color:${t.color}">
     <h2><span class="tdot" style="background:${t.color}"></span>${esc(t.name)} 선생님 — ${mLabel(state.month)} 상담
       ${viewingOthers?'<span style="font-size:.76rem;color:var(--sub);font-weight:700">(다른 선생님 상담 기록 · 조회 전용)</span>':''}
@@ -9631,6 +9701,14 @@ function assignTextOn(k, dateISO, subj, onlySubject){
   if(onlySubject){ const t=items.map(raw=>{ const x=String(raw||'').trim(); if(!x) return ''; const m=x.match(/^\[([^\]]+)\]\s*(.*)$/); return m?m[2].trim():x; }).filter(Boolean); if(t.length) return t.join(' / '); }
   return '';
 }
+// 지난 수업 때 그 과목에 "반 전체 숙제"(오늘의 과제 항목·시간표 숙제 칸)가 적혀 있으면 그 글을 돌려준다 — IBT·L/C·모의고사 같은 기본 숙제없음 과목도 숙제가 적힌 날은 숙제 있는 날로 보기 위함
+function prevClassHwText(c, k, sn, dateISO){
+  const prev=prevHwSourceDate(c, sn, dateISO); if(!prev) return '';
+  const only=hwDaySubjectNames(c, prev).length<=1;
+  let tx=assignTextOn(k, prev, sn, only);
+  if(!tx){ const pw=wdOf(prev); const x=(c.subjects||[]).find(y=>y.subject===sn && subjOnDay(y,pw) && String(y.hw||'').trim()); if(x) tx=String(x.hw).trim(); }
+  return tx||'';
+}
 function hwBlankPrev(c, k, sn, dateISO, s, multi){
   const prev=prevHwSourceDate(c, sn, dateISO); if(!prev) return false;
   const now=Date.now(); const seq=window.__saveSeq||0;
@@ -9657,6 +9735,7 @@ function hwEffectiveSubjectNames(c, dateISO, k, s, hrec){
       if(!marked) return false;
     }
     if(isNoHwSubj(sn)){
+      if(prevClassHwText(c, k||ckey(c), sn, dateISO)) return true; // 반 전체 숙제가 적혀 있으면 IBT·L/C도 숙제 있는 날
       if(!s) return false;
       return !!prevIndivHwText(c, k||ckey(c), s, sn, dateISO, multi);
     }
@@ -10102,7 +10181,22 @@ function isWithdrawnRosterName(academy, sname, className){
 }
 function activeStudents(c){
   // 반 배정에서 퇴원생을 제외한 "현재 활성" 학생 명단 — 반 카드 자체의 c.students 배열은 그대로 두고(과거 기록 보존), 화면 표시만 걸러준다
-  return (c.students||[]).filter(sname=>!isWithdrawnRosterName(c.academy, sname, c.name));
+  const useStart=hasStartDates(); const vm=state.month||'';
+  return (c.students||[]).filter(sname=>{
+    if(isWithdrawnRosterName(c.academy, sname, c.name)) return false;
+    if(useStart){ const st=matchStudentByRosterName(c.academy, sname, c.name); if(st && st.startDate && String(st.startDate).slice(0,7)>vm) return false; } // 다음달부터 등원하는 학생은 이번 달 명단에서는 숨김
+    return true;
+  });
+}
+// 등원 시작일이 적힌 학생이 하나라도 있는지(저장할 때마다 새로 계산)
+let __startDatesCache={seq:-1,v:false};
+function hasStartDates(){ const seq=window.__saveSeq||0; if(__startDatesCache.seq!==seq){ __startDatesCache={seq,v:(store.students||[]).some(s=>s&&!s._deleted&&s.startDate)}; } return __startDatesCache.v; }
+// 학생 한 명을 그 달(month)의 자기 반 명단에 넣어둔다 — 다음달 등원(신입·복귀) 학생이 다음달 반 명단·교재 필요 권수·자리표 후보에 잡히게 한다
+function stuPlaceInMonth(s, month){
+  if(!s || !s.className || !month) return false;
+  const arr=editArr(s.academy, month); const c=arr.find(x=>!x._deleted && !x.examOnly && x.name===s.className); if(!c) return false;
+  c.students=c.students||[]; if(c.students.includes(s.nameKo)) return true;
+  c.students.push(s.nameKo); c.count=c.students.length; c.updatedAt=Date.now(); return true;
 }
 // 이 반에서 "내가"(lt) 오늘 실제로 담당한 과목들 중 가장 이른 시작 시간을 구한다 (반 전체 시간이 아니라 내 과목 시간 기준)
 // — 담당 과목 표기가 아예 없는 반이면(누구 담당인지 안 적혀있으면) 그 반 전체를 내 것으로 보고 계산하고, lt가 없으면(관리자 등) 그냥 반 전체 시간을 쓴다
@@ -10969,7 +11063,7 @@ function renderToday(list, partsOnly){
         const indivInput=`<input type="text" class="indivhw-sub" data-k="${esc(ownerK)}" data-s="${esc(s)}" data-subj="${esc(subject)}" placeholder="개별 숙제 (선택)" value="${esc(curIndiv)}" title="여기 적어두면 다음 ${esc(subject)} 수업 때 이 학생 칸에 수정 불가능한 텍스트로 표시됩니다" style="width:110px;border:1px solid var(--line);border-radius:6px;padding:3px 7px;font-family:inherit;font-size:.7rem;background:#fbfcfe">`;
         if(dayNoHw[noHwStoreKey(subject)]) return `<span class="hwlab hwsub" style="color:#b45309;font-size:.68rem;font-weight:800">${esc(subject)} 숙제없음</span>${indivInput}${prevBadge}`;
         // IBT·L/C(자습식 수업)는 기본적으로 숙제가 없는 걸로 치고, 지난 수업 때 개별 숙제를 적어준 경우에만 체크 대상이 된다
-        if(isNoHwSubj(subject) && !prevIndiv) return `<span class="hwlab hwsub" style="color:var(--sub);font-size:.68rem;font-weight:700">${esc(subject)} ${isSelfStudySubj(subject)?'자습 · ':''}숙제없음</span>${indivInput}${prevBadge}`;
+        if(isNoHwSubj(subject) && !prevIndiv && !prevClassHwText(c, ownerK, subject, state.date)) return `<span class="hwlab hwsub" style="color:var(--sub);font-size:.68rem;font-weight:700">${esc(subject)} ${isSelfStudySubj(subject)?'자습 · ':''}숙제없음</span>${indivInput}${prevBadge}`;
         return `<span style="display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap">
           ${hwMarkSelectHTML('hwchk-sub', ownerK, s, subject, hwMarkOf(hrec, subject), subject)}
           ${indivInput}
@@ -11001,7 +11095,7 @@ function renderToday(list, partsOnly){
     const soleSubjTag = (ownerAttKeys[0]&&ownerAttKeys[0].subject)||'';
     const solePrevIndiv=prevIndivHwText(c, ownerK, s, soleSubjTag, state.date, false);
     // IBT·L/C(자습식 수업)는 기본적으로 숙제가 없는 걸로 치고, 지난 수업 때 개별 숙제를 적어준 경우에만 체크 대상이 된다
-    let soleSelfStudyNoHw = isNoHwSubj(soleSubjTag) && !solePrevIndiv;
+    let soleSelfStudyNoHw = isNoHwSubj(soleSubjTag) && !solePrevIndiv && !prevClassHwText(c, ownerK, soleSubjTag, state.date);
     // 그날 수업이 단어시험뿐인 반(숙제 과목이 하나도 없는 반)도 기본 숙제없음
     try{ if(!soleSelfStudyNoHw && hwDayStatusFor(c, state.date, hrec, k, s)==='na') soleSelfStudyNoHw=true; }catch(e){}
     const soleNoHw = !!noHwMapFor(k, state.date)[noHwStoreKey(soleSubjTag)] || soleSelfStudyNoHw;
@@ -12703,7 +12797,14 @@ function hgApplyGroupOrder(g, defaultGroups){
   if(!order || !order.length) return defaultGroups;
   const byKey={}; defaultGroups.forEach(gr=>{ byKey[gr.key]=gr; });
   const used=new Set(); const ordered=[];
-  order.forEach(k=>{ if(byKey[k] && !used.has(k)){ ordered.push(byKey[k]); used.add(k); } });
+  const mem=k=>String(k).split(' + ').map(x=>x.trim()).filter(Boolean);
+  // 반을 합치거나 다시 나누면 그룹 이름이 바뀌어 저장된 순서에 없게 된다 — 그냥 맨 뒤에 붙이지 말고, 합쳐지기 전(또는 나뉘기 전) 그 반이 있던 자리에 넣는다
+  order.forEach(k=>{
+    if(byKey[k] && !used.has(k)){ ordered.push(byKey[k]); used.add(k); return; }
+    if(byKey[k]) return;
+    const ms=mem(k);
+    defaultGroups.forEach(gr=>{ if(used.has(gr.key) || order.includes(gr.key)) return; if(mem(gr.key).some(x=>ms.includes(x))){ ordered.push(gr); used.add(gr.key); } });
+  });
   defaultGroups.forEach(gr=>{ if(!used.has(gr.key)){ ordered.push(gr); used.add(gr.key); } });
   return ordered;
 }
@@ -12757,24 +12858,31 @@ function renderHandoverGrid(){
   const regenTitle=hgLt
     ? `${esc(hgLt.t.name)} 선생님이 ${prevLabel}에 담당했던 반·과목만 최신 자료로 새로 채웁니다. 다른 선생님이 적어두신 내용은 그대로 유지돼요.`
     : `${prevLabel} 반·과목 최신 자료로 표를 통째로 다시 만듭니다 (직접 입력한 내용은 모두 사라집니다)`;
-  let h=`<div class="todaybar" style="margin-bottom:10px">
+  let h=`<div class="todaybar hgbar" style="margin-bottom:10px;position:sticky;top:0;z-index:50;background:var(--card,#fff);padding:8px 10px;border:1px solid var(--line);border-radius:10px;box-shadow:0 2px 10px rgba(23,27,46,.10)">
     <button class="btn small" id="hgPrev">◀ 이전 달</button>
     <select id="hgMonthSel" style="padding:6px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-weight:700">
       ${monthOptions().map(m=>`<option value="${m}" ${targetMonth===m?'selected':''}>${mLabel(m)} 인수인계표</option>`).join('')}
     </select>
     <button class="btn small" id="hgNext">다음 달 ▶</button>
+    <span class="hgm" style="position:relative;display:inline-block"><button type="button" class="btn small hgmb">🔄 표 다시 채우기 ▾</button><div class="hgmp" style="display:none;position:absolute;left:0;top:112%;z-index:70;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(23,27,46,.16);padding:8px 10px;min-width:200px;display:none;flex-direction:column;gap:6px">
     <button class="btn small" id="hgRegen" title="${regenTitle}">${regenLabel}</button>
+    </div></span>
+    <button class="btn small" id="hgMergeBtn" title="같은 반 안에서 체크하면: 체크된 항목만 골라서 합칠 수 있어요(예: 담당만 체크하면 담당 칸만 하나로 합쳐지고 과목명·교재·진도는 그대로 유지) · 서로 다른 반에서 체크하면: 없어진 반을 다른 반으로 흡수하듯, 반 전체를 하나로 묶어서 보여줍니다">🔗 체크한 과목 행 합치기</button>
+    <span class="hgm" style="position:relative;display:inline-block"><button type="button" class="btn small hgmb">☑ 합칠 항목 ▾</button><div class="hgmp" style="display:none;position:absolute;left:0;top:112%;z-index:70;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(23,27,46,.16);padding:8px 10px;min-width:200px;display:none;flex-direction:column;gap:6px">
+      <div style="font-size:.74rem;color:var(--sub);margin-bottom:2px">합치기를 누를 때 어떤 칸을 하나로 합칠지 고르세요</div>
     <span style="display:flex;align-items:center;gap:7px;font-size:.72rem;color:#5a6478;border:1px solid var(--line);border-radius:8px;padding:5px 9px">합칠 항목:
       <label style="display:flex;align-items:center;gap:2px;cursor:pointer;white-space:nowrap"><input type="checkbox" id="hgMergeFldSubject" checked>과목명</label>
       <label style="display:flex;align-items:center;gap:2px;cursor:pointer;white-space:nowrap"><input type="checkbox" id="hgMergeFldTeacher" checked>담당</label>
       <label style="display:flex;align-items:center;gap:2px;cursor:pointer;white-space:nowrap"><input type="checkbox" id="hgMergeFldBook" checked>교재</label>
       <label style="display:flex;align-items:center;gap:2px;cursor:pointer;white-space:nowrap"><input type="checkbox" id="hgMergeFldProgress" checked>진도</label>
     </span>
-    <button class="btn small" id="hgMergeBtn" title="같은 반 안에서 체크하면: 체크된 항목만 골라서 합칠 수 있어요(예: 담당만 체크하면 담당 칸만 하나로 합쳐지고 과목명·교재·진도는 그대로 유지) · 서로 다른 반에서 체크하면: 없어진 반을 다른 반으로 흡수하듯, 반 전체를 하나로 묶어서 보여줍니다">🔗 체크한 과목 행 합치기</button>
+    </div></span>
     <button class="btn small" id="hgAddClassBtn" title="지난달엔 없던 반을 새로 만들거나, 이미 추가한 반에 과목을 한 줄 더 추가할 때 사용">➕ 새 반(과목) 추가</button>
+    <span class="hgm" style="position:relative;display:inline-block"><button type="button" class="btn small hgmb">👁 보기 ▾</button><div class="hgmp" style="display:none;position:absolute;left:0;top:112%;z-index:70;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(23,27,46,.16);padding:8px 10px;min-width:200px;display:none;flex-direction:column;gap:6px">
     <span style="position:relative;display:inline-block"><button class="btn small" id="hgColsBtn" title="안 쓰는 칸을 숨기거나 다시 보이게 해요 (내 화면에만 적용)">👁 칸 숨기기${hgHidden().length?` (${hgHidden().length})`:''}</button>
       <div id="hgColsMenu" style="display:none;position:absolute;left:0;top:110%;z-index:60;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(23,27,46,.14);padding:8px 10px;min-width:170px">${HG_HIDE_GROUPS.map(([id,label])=>`<label style="display:flex;align-items:center;gap:6px;padding:4px 2px;font-size:.82rem;cursor:pointer;white-space:nowrap"><input type="checkbox" data-hghide="${id}" ${hgHidden().includes(id)?'':'checked'}> ${label}</label>`).join('')}<div style="font-size:.7rem;color:var(--sub);margin-top:4px">체크를 풀면 그 칸이 숨겨져요</div></div></span>
     <button class="btn small" id="hgResetView" title="끌어서 바꾼 칸 너비와 숨긴 칸을 처음 상태로 되돌려요 (내 화면에만 적용)">↺ 칸 원래대로</button>
+    </div></span>
     <span style="font-size:.76rem;color:#8b93a7;margin-left:auto">모든 선생님이 같이 보고 같이 수정하는 표입니다 · 선생님별로 구분되지 않습니다 · 칸 경계를 드래그하면 너비를 조절할 수 있어요 · 너비·숨긴 칸은 내 화면에만 적용</span>
   </div>`;
   if(!rows.length){
@@ -13053,6 +13161,10 @@ function bindHandoverGrid(){
     save(); render(true);
   });
   // 칸 너비 드래그 조절 — 이 브라우저(내 화면)에만 저장됨, 다른 선생님 화면엔 영향 없음
+  // 엑셀 메뉴처럼 — 상단 메뉴 단추를 누르면 아래로 펼쳐지고, 바깥을 누르거나 안의 단추를 누르면 닫힌다
+  v.querySelectorAll('.hgmb').forEach(b=>b.onclick=e=>{ e.stopPropagation(); const pn=b.nextElementSibling; const open=pn.style.display==='flex'; v.querySelectorAll('.hgmp').forEach(x=>x.style.display='none'); pn.style.display=open?'none':'flex'; });
+  v.querySelectorAll('.hgmp').forEach(pn=>pn.addEventListener('click',e=>{ if(e.target.closest('button.btn') && !e.target.closest('#hgColsBtn')) pn.style.display='none'; }));
+  if(!window.__hgMenuBound){ window.__hgMenuBound=true; document.addEventListener('click',e=>{ if(e.target.closest('.hgm')) return; document.querySelectorAll('.hgmp').forEach(x=>x.style.display='none'); }); }
   const cb=v.querySelector('#hgColsBtn'), cm=v.querySelector('#hgColsMenu');
   if(cb&&cm){ cb.onclick=e=>{ e.stopPropagation(); cm.style.display=cm.style.display==='none'?'block':'none'; }; cm.onclick=e=>e.stopPropagation();
     document.addEventListener('click', ()=>{ if(cm.isConnected) cm.style.display='none'; }, {once:true}); }
@@ -19564,7 +19676,7 @@ function wlHomework(s){
       const indiv=String((multi?(rec.indivHwBySubject&&rec.indivHwBySubject[sn]):rec.indivHw)||'').trim();
       const noHw=!!noHwMapFor(k,due)[noHwStoreKey(sn)];
       const selfStudy=sn&&isNoHwSubj(sn);
-      if(selfStudy && !indiv) return;
+      if(selfStudy && !indiv && !text) return;
       if(noHw && !indiv) { items.push({s:sn,due:md(due),none:1}); return; }
       if(!text && !indiv){ items.push({s:sn,due:md(due),none:1}); return; }
       const it={s:sn,due:md(due)}; if(text) it.t=text; if(indiv) it.i=indiv; items.push(it);
