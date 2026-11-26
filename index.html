@@ -12595,10 +12595,19 @@ function genHandoverRows(academy, targetMonth){
   // 지난달 교재는 [반·교재] 탭의 반 카드에 적힌 교재명이 아니라, 지난달 인수인계표에서 그 반 담당 선생님이 직접 적어넣은
   // "그 달 교재" 값을 우선으로 가져온다 — 실제로는 [반·교재] 카드의 교재 칸을 안 쓰고 인수인계표에만 적어두는 경우가 많기 때문
   const prevGridDoc=(store.handoverGrid[academy]||{})[prevMonth];
+  const isNs=x=>/내신/.test(String(x||'')); // 내신 과목(예: "인화중3_내신") — 그 달에만 있는 줄이라 다음 달 표로 이어받지 않는다
   prevClasses.forEach(pc=>{
     const tc=targetClasses.find(x=>x.prev && norm(x.prev)===norm(pc.name)) || targetClasses.find(x=>norm(x.name)===norm(pc.name));
     const seenSubj=new Set(); // 같은 반 안에 똑같은 과목명이 여러 줄 있으면 한 줄만 남긴다
-    (pc.subjects||[]).forEach(s=>{
+    // 지난달에 내신 과목이 끼어 있던 반은, 내신 줄은 빼고 원래 과목(내신 직전 달 자료)을 이어받는다
+    let subjList=(pc.subjects||[]).filter(x=>!isNs(x.subject)).map(x=>[x,pc]);
+    if((pc.subjects||[]).some(x=>isNs(x.subject))){
+      for(let k=2;k<=4;k++){ const om=shiftMonth(targetMonth,-k); const oc=editArr(academy, om).find(c=>!c._deleted && !c.examOnly && norm(c.name)===norm(pc.name)); if(!oc) continue;
+        const have=new Set(subjList.map(([x])=>norm(x.subject)));
+        (oc.subjects||[]).forEach(x=>{ if(!isNs(x.subject) && x.subject && !have.has(norm(x.subject))){ subjList.push([x,oc]); have.add(norm(x.subject)); } });
+        break; }
+    }
+    subjList.forEach(([s])=>{
       if(!s.subject && !s.book && !s.teacher) return; // 빈 과목행은 건너뜀
       if(isHandoverExcludedSubj(s.subject)) return; // IBT·단어시험처럼 인수인계 대상이 아닌 과목은 제외
       const subjKey=norm(s.subject);
@@ -12622,6 +12631,13 @@ function genHandoverRows(academy, targetMonth){
         mergeGroup: null, // 여러 과목 행을 체크해서 "합치기" 하면 같은 값이 들어감(그 행들이 세로로 하나의 묶음이 됨)
         mergeFields: null // 그 묶음 중 실제로 하나로 합쳐 보여줄 항목(과목명·담당·교재·진도 중 고른 것)만 담는 배열
       });
+    });
+    // 이번 달(내신 기간)에 새로 생긴 내신 과목은 지난달 짝이 없어도 줄을 만들어 준다
+    if(tc) (tc.subjects||[]).forEach(ts=>{
+      if(!isNs(ts.subject)) return;
+      if(rows.some(r=>norm(r.prevClass)===norm(pc.name) && norm(r.targetSubject)===norm(ts.subject))) return;
+      rows.push({ id: genStudentId(), prevClass: pc.name, targetClass: tc.name, subject:'', targetSubject: ts.subject||'', matchKey:'내신:'+norm(ts.subject),
+        prevTeacher:'', targetTeacher: ts.teacher||'', prevBook:'', book: ts.book||'', lastHw:'N/A', progress:'', note: ts.note||'', targetProgress:'', mergeGroup:null, mergeFields:null });
     });
   });
   return rows;
@@ -12866,11 +12882,12 @@ function renderHandoverGrid(){
       ${monthOptions().map(m=>`<option value="${m}" ${targetMonth===m?'selected':''}>${mLabel(m)} 인수인계표</option>`).join('')}
     </select>
     <button class="btn small" id="hgNext">다음 달 ▶</button>
-    <span class="hgm" style="position:relative;display:inline-block"><button type="button" class="btn small hgmb">🔄 표 다시 채우기 ▾</button><div class="hgmp" style="display:none;position:absolute;left:0;top:112%;z-index:70;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(23,27,46,.16);padding:8px 10px;min-width:200px;display:none;flex-direction:column;gap:6px">
+    <span class="hgm" style="position:relative;display:inline-block"><button type="button" class="btn small hgmb">📁 파일 ▾</button><div class="hgmp" style="display:none;position:absolute;left:0;top:112%;z-index:70;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(23,27,46,.16);padding:8px 10px;min-width:200px;display:none;flex-direction:column;gap:6px">
     <button class="btn small" id="hgRegen" title="${regenTitle}">${regenLabel}</button>
     </div></span>
-    <button class="btn small" id="hgMergeBtn" title="같은 반 안에서 체크하면: 체크된 항목만 골라서 합칠 수 있어요(예: 담당만 체크하면 담당 칸만 하나로 합쳐지고 과목명·교재·진도는 그대로 유지) · 서로 다른 반에서 체크하면: 없어진 반을 다른 반으로 흡수하듯, 반 전체를 하나로 묶어서 보여줍니다">🔗 체크한 과목 행 합치기</button>
-    <span class="hgm" style="position:relative;display:inline-block"><button type="button" class="btn small hgmb">☑ 합칠 항목 ▾</button><div class="hgmp" style="display:none;position:absolute;left:0;top:112%;z-index:70;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(23,27,46,.16);padding:8px 10px;min-width:200px;display:none;flex-direction:column;gap:6px">
+    <span class="hgm" style="position:relative;display:inline-block"><button type="button" class="btn small hgmb">🏠 홈 ▾</button><div class="hgmp" style="display:none;position:absolute;left:0;top:112%;z-index:70;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(23,27,46,.16);padding:8px 10px;min-width:200px;display:none;flex-direction:column;gap:6px">
+    <button class="btn small" id="hgMergeBtn" title="같은 반 안에서 체크하면: 체크된 항목만 골라서 합칠 수 있어요(예: 담당만 체크하면 담당 칸만 하나로 합쳐지고 과목명·교재·진도는 그대로 유지) · 서로 다른 반에서 체크하면: 없어진 반을 다른 반으로 흡수하듯, 반 전체를 하나로 묶어서 보여줍니다">🔗 셀 병합 — 체크한 과목 행 합치기</button>
+
       <div style="font-size:.74rem;color:var(--sub);margin-bottom:2px">합치기를 누를 때 어떤 칸을 하나로 합칠지 고르세요</div>
     <span style="display:flex;align-items:center;gap:7px;font-size:.72rem;color:#5a6478;border:1px solid var(--line);border-radius:8px;padding:5px 9px">합칠 항목:
       <label style="display:flex;align-items:center;gap:2px;cursor:pointer;white-space:nowrap"><input type="checkbox" id="hgMergeFldSubject" checked>과목명</label>
@@ -12879,7 +12896,9 @@ function renderHandoverGrid(){
       <label style="display:flex;align-items:center;gap:2px;cursor:pointer;white-space:nowrap"><input type="checkbox" id="hgMergeFldProgress" checked>진도</label>
     </span>
     </div></span>
+    <span class="hgm" style="position:relative;display:inline-block"><button type="button" class="btn small hgmb">➕ 삽입 ▾</button><div class="hgmp" style="display:none;position:absolute;left:0;top:112%;z-index:70;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(23,27,46,.16);padding:8px 10px;min-width:200px;display:none;flex-direction:column;gap:6px">
     <button class="btn small" id="hgAddClassBtn" title="지난달엔 없던 반을 새로 만들거나, 이미 추가한 반에 과목을 한 줄 더 추가할 때 사용">➕ 새 반(과목) 추가</button>
+    </div></span>
     <span class="hgm" style="position:relative;display:inline-block"><button type="button" class="btn small hgmb">👁 보기 ▾</button><div class="hgmp" style="display:none;position:absolute;left:0;top:112%;z-index:70;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(23,27,46,.16);padding:8px 10px;min-width:200px;display:none;flex-direction:column;gap:6px">
     <span style="position:relative;display:inline-block"><button class="btn small" id="hgColsBtn" title="안 쓰는 칸을 숨기거나 다시 보이게 해요 (내 화면에만 적용)">👁 칸 숨기기${hgHidden().length?` (${hgHidden().length})`:''}</button>
       <div id="hgColsMenu" style="display:none;position:absolute;left:0;top:110%;z-index:60;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(23,27,46,.14);padding:8px 10px;min-width:170px">${HG_HIDE_GROUPS.map(([id,label])=>`<label style="display:flex;align-items:center;gap:6px;padding:4px 2px;font-size:.82rem;cursor:pointer;white-space:nowrap"><input type="checkbox" data-hghide="${id}" ${hgHidden().includes(id)?'':'checked'}> ${label}</label>`).join('')}<div style="font-size:.7rem;color:var(--sub);margin-top:4px">체크를 풀면 그 칸이 숨겨져요</div></div></span>
@@ -13252,15 +13271,20 @@ function yearlyPivot(a){
   const rows={}, order=[];
   ms.forEach(m=>{
     (dataFor(a,m)||[]).forEach(c=>{
+      const nsMark=(c.subjects||[]).some(x=>/내신/.test(String(x.subject||''))); // 내신 기간이면 그 반의 첫 과목 줄에 '내신'만 표시(엑셀 연간표와 같은 방식)
+      const nsFirst=(c.subjects||[]).find(x=>(x.subject||x.book) && !/내신/.test(String(x.subject||'')) && !isHandoverExcludedSubj(x.subject)); // IBT·단어시험 같은 줄 말고 첫 교재 과목 줄
+      let nsDone=false;
       (c.subjects||[]).forEach(s=>{
         if(!s.subject && !s.book) return;
+        if(/내신/.test(String(s.subject||''))) return; // 내신 과목은 따로 줄을 만들지 않는다
         const key=yrKey(c.name, s.subject||'-');
         if(!rows[key]){ rows[key]={name:c.name, dept:c.dept, subject:String(s.subject||'-').trim(), months:{}}; order.push(key); }
         let b=s.book||'';
         if(b.startsWith('〃')){
-          const prev=ms.filter(x=>x<m).reverse().map(x=>rows[key].months[x]).find(Boolean);
+          const prev=ms.filter(x=>x<m).reverse().map(x=>rows[key].months[x]).find(v=>v && v!=='내신');
           b=prev||'';
         }
+        if(nsMark && !nsDone && s===nsFirst){ nsDone=true; b='내신'; } // 내신 달에는 첫 과목 줄의 교재 칸을 '내신'으로
         if(b) rows[key].months[m]=b;
       });
     });
